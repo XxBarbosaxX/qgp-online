@@ -3,36 +3,11 @@ import streamlit as st
 import pandas as pd
 
 # =========================
-# LOGO DIESP - SVG INLINE
-# =========================
-DIESP_SVG = """
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 120" width="140" height="84">
-    <rect width="200" height="120" fill="white" rx="10"/>
-    <text x="100" y="22" font-family="Arial Black,Arial" font-weight="900" font-size="22"
-          fill="#f39a1f" text-anchor="middle" letter-spacing="6">DIESP</text>
-    <ellipse cx="100" cy="70" rx="62" ry="36" fill="none" stroke="#2e6b3e" stroke-width="4"/>
-    <line x1="38" y1="70" x2="28" y2="60" stroke="#2e6b3e" stroke-width="3" stroke-linecap="round"/>
-    <line x1="162" y1="70" x2="172" y2="60" stroke="#2e6b3e" stroke-width="3" stroke-linecap="round"/>
-    <circle cx="100" cy="70" r="26" fill="#2e6b3e"/>
-    <circle cx="100" cy="70" r="18" fill="#5a9e6f"/>
-    <circle cx="108" cy="74" r="12" fill="#1a4a2a"/>
-    <circle cx="105" cy="76" r="8" fill="#0d2d18"/>
-    <circle cx="96" cy="67" r="3" fill="white" opacity="0.7"/>
-    <circle cx="115" cy="80" r="10" fill="none" stroke="white" stroke-width="2.5"/>
-    <line x1="122" y1="87" x2="130" y2="95" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
-    <text x="100" y="112" font-family="Arial" font-size="7" fill="#2e6b3e"
-          text-anchor="middle" font-weight="700">DIRETORIA DE ESTRATEGIA DE SEG. PUBLICA</text>
-</svg>
-"""
-
-DIESP_SVG_B64 = "data:image/svg+xml;base64," + __import__('base64').b64encode(DIESP_SVG.encode()).decode()
-
-# =========================
 # CONFIGURACAO DA PAGINA
 # =========================
 st.set_page_config(
     page_title="QGP Online - SUPESP/CE",
-    page_icon="\U0001f6e1",
+    page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -76,33 +51,6 @@ def load_custom_css():
             text-transform: uppercase;
             letter-spacing: 0.08em;
             margin-top: 0.25rem;
-        }
-        .sidebar-brand {
-            text-align: center;
-            margin-top: 0.4rem;
-            margin-bottom: 1.2rem;
-            padding-bottom: 1rem;
-            border-bottom: 1px solid rgba(216,138,24,0.14);
-        }
-        .sidebar-brand img {
-            width: 130px;
-            max-width: 100%;
-            border-radius: 10px;
-            border: 1px solid rgba(243,154,31,0.25);
-            margin-bottom: 0.5rem;
-            background: #ffffff;
-            padding: 4px;
-        }
-        .sidebar-brand-title {
-            color: #f3f4ef;
-            font-size: 1.06rem;
-            font-weight: 800;
-            margin-bottom: 0.2rem;
-        }
-        .sidebar-brand-subtitle {
-            color: #cfd7d2;
-            font-size: 0.84rem;
-            font-weight: 500;
         }
         .stButton > button {
             background: #f39a1f !important;
@@ -151,23 +99,9 @@ def render_topbar():
     """, unsafe_allow_html=True)
 
 # =========================
-# SIDEBAR BRAND
-# =========================
-def render_sidebar_brand():
-    with st.sidebar:
-        st.markdown(f"""
-            <div class="sidebar-brand">
-                <img src="{DIESP_SVG_B64}" alt="Logo DIESP">
-                <div class="sidebar-brand-title">SUPESP / CE</div>
-                <div class="sidebar-brand-subtitle">Sistema Integrado de Gestao e Inteligencia</div>
-            </div>
-        """, unsafe_allow_html=True)
-
-# =========================
 # INICIALIZACAO
 # =========================
 load_custom_css()
-render_sidebar_brand()
 render_topbar()
 
 # =========================
