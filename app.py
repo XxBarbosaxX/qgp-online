@@ -1,298 +1,384 @@
+from pathlib import Path
+import base64
+from datetime import datetime
 import streamlit as st
 import pandas as pd
-from io import BytesIO
-from datetime import datetime
 
-# =============================================================================
-# CONFIGURACAO DA PAGINA
-# =============================================================================
+# =========================
+# CONFIGURAÇÃO DA PÁGINA
+# =========================
 st.set_page_config(
     page_title="QGP Online - SUPESP/CE",
-    page_icon="\U0001f6e1",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# =============================================================================
-# ESTILOS CUSTOMIZADOS - PALETA VERDE ESCURO + LARANJA
-# =============================================================================
-st.markdown("""
-    <style>
-    /* Fundo geral da pagina */
-    .stApp {
-        background-color: #0d2318;
-    }
-    /* Cabecalho principal */
-    .main-header {
-        background: linear-gradient(135deg, #0b3d2a, #1a5c3a);
-        padding: 24px 30px;
-        border-radius: 12px;
-        margin-bottom: 24px;
-        color: white;
-        text-align: center;
-        box-shadow: 0 4px 16px rgba(0,0,0,0.4);
-        border: 1px solid #2a7a4a;
-    }
-    .main-header h1 {
-        font-size: 2.4rem;
-        font-weight: 800;
-        margin: 0 0 6px 0;
-        letter-spacing: 1px;
-        color: #ffffff;
-    }
-    .main-header p {
-        font-size: 1.05rem;
-        margin: 4px 0;
-        opacity: 0.9;
-        color: #d4f0e0;
-    }
-    .main-header small {
-        font-size: 0.85rem;
-        opacity: 0.75;
-        color: #f59e0b;
-    }
-    /* Cards de upload */
-    .upload-card {
-        background: #122b1c;
-        border: 1px solid #2a6640;
-        border-radius: 10px;
-        padding: 16px;
-        margin-bottom: 10px;
-    }
-    /* Botao primario - laranja */
-    .stButton > button[kind="primary"] {
-        background-color: #f59e0b !important;
-        color: #0d2318 !important;
-        border: none !important;
-        font-weight: 700 !important;
-        border-radius: 8px !important;
-    }
-    .stButton > button[kind="primary"]:hover {
-        background-color: #d97706 !important;
-        color: #0d2318 !important;
-    }
-    /* Sidebar */
-    [data-testid="stSidebar"] {
-        background-color: #0b2d1c !important;
-        border-right: 1px solid #1e5c32 !important;
-    }
-    [data-testid="stSidebar"] .stMarkdown, 
-    [data-testid="stSidebar"] label,
-    [data-testid="stSidebar"] p {
-        color: #c8e6c9 !important;
-    }
-    /* Toggle / selectbox destaque laranja */
-    [data-testid="stSidebar"] .stSelectbox label {
-        color: #f59e0b !important;
-        font-weight: 600 !important;
-    }
-    /* Rodape */
-    .footer {
-        text-align: center;
-        color: #4a7a5a;
-        margin-top: 50px;
-        padding-top: 16px;
-        border-top: 1px solid #1e4a2e;
-        font-size: 12px;
-    }
-    /* Sidebar info */
-    .sidebar-info {
-        background: #122b1c;
-        border-radius: 8px;
-        padding: 10px 14px;
-        font-size: 13px;
-        color: #88b898;
-    }
-    /* Titulos das secoes */
-    h2, h3 {
-        color: #f59e0b !important;
-    }
-    /* Divider */
-    hr {
-        border-color: #1e5c32 !important;
-    }
-    /* Metricas */
-    [data-testid="stMetric"] {
-        background-color: #122b1c;
-        border-radius: 8px;
-        padding: 10px;
-        border: 1px solid #2a6640;
-    }
-    [data-testid="stMetricLabel"] {
-        color: #88b898 !important;
-    }
-    [data-testid="stMetricValue"] {
-        color: #f59e0b !important;
-    }
-    </style>
-""", unsafe_allow_html=True)
+# =========================
+# FUNÇÕES AUXILIARES
+# =========================
+def image_to_base64(image_path: str) -> str:
+    path = Path(image_path)
+    if not path.exists():
+        return ""
+    return base64.b64encode(path.read_bytes()).decode("utf-8")
 
-# =============================================================================
-# CABECALHO
-# =============================================================================
-st.markdown("""
-<div class="main-header">
-    <h1>&#x1F6E1; QGP Online</h1>
-    <p>Atualizador de Indicadores de Seguran&#231;a P&#250;blica</p>
-    <small>SUPESP &mdash; Cear&#225;</small>
-</div>
-""", unsafe_allow_html=True)
 
-# =============================================================================
-# SIDEBAR
-# =============================================================================
-with st.sidebar:
+def load_custom_css():
     st.markdown("""
-    <div style="text-align:center; padding: 10px 0 6px 0;">
-        <span style="font-size:2.5rem;">&#x1F6E1;</span><br>
-        <span style="font-size:0.8rem; color:#f59e0b; font-weight:600; letter-spacing:2px;">SUPESP / CE</span>
-    </div>
-    """, unsafe_allow_html=True)
-    st.title("Painel de Controle")
-    st.divider()
+    <style>
+        .stApp {
+            background: linear-gradient(180deg, #022b26 0%, #011917 100%);
+            color: #f3f4ef;
+        }
 
-    INDICADORES = [
-        "Selecione um indicador...",
-        "CVLI - Crimes Violentos Letais Intencionais",
-        "CVP (SPORTAL) - Crimes Violentos ao Patrim\u00f4nio",
-        "CVP (SIP) - Crimes Violentos ao Patrim\u00f4nio",
-        "Perturba\u00e7\u00e3o do Sossego Alheio",
-        "Outros Indicadores",
-        "TODOS OS INDICADORES",
-    ]
-    indicador_selecionado = st.selectbox(
+        section[data-testid="stSidebar"] {
+            background: #031f1b;
+            border-right: 3px solid #d88a18;
+        }
+
+        section[data-testid="stSidebar"] * {
+            color: #f3f4ef !important;
+        }
+
+        .topbar {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 1rem;
+            padding: 0.4rem 0 0.8rem 0;
+            border-bottom: 1px solid rgba(216, 138, 24, 0.18);
+        }
+
+        .topbar-logo {
+            width: 58px;
+            height: 58px;
+            object-fit: cover;
+            border-radius: 10px;
+            border: 1px solid rgba(243, 154, 31, 0.35);
+            background: #ffffff;
+        }
+
+        .topbar-title {
+            font-size: 1.9rem;
+            font-weight: 800;
+            color: #ffffff;
+            line-height: 1.05;
+            margin: 0;
+        }
+
+        .topbar-subtitle {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #f39a1f;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-top: 0.25rem;
+        }
+
+        .sidebar-brand {
+            text-align: center;
+            margin-top: 0.4rem;
+            margin-bottom: 1.2rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid rgba(216, 138, 24, 0.14);
+        }
+
+        .sidebar-brand img {
+            width: 118px;
+            max-width: 100%;
+            border-radius: 12px;
+            border: 1px solid rgba(243, 154, 31, 0.25);
+            margin-bottom: 0.65rem;
+            background: #ffffff;
+            padding: 4px;
+        }
+
+        .sidebar-brand-title {
+            color: #f3f4ef;
+            font-size: 1.06rem;
+            font-weight: 800;
+            margin-bottom: 0.2rem;
+        }
+
+        .sidebar-brand-subtitle {
+            color: #cfd7d2;
+            font-size: 0.84rem;
+            font-weight: 500;
+        }
+
+        .section-title {
+            font-size: 2rem;
+            font-weight: 800;
+            color: #ffffff;
+            margin-bottom: 0.1rem;
+        }
+
+        .section-subtitle {
+            font-size: 1rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            color: #f39a1f;
+            text-transform: uppercase;
+            margin-bottom: 1.8rem;
+        }
+
+        .custom-card {
+            background: rgba(4, 58, 50, 0.92);
+            border: 1px solid rgba(216, 138, 24, 0.16);
+            border-radius: 22px;
+            padding: 1.4rem 1.4rem 1.2rem 1.4rem;
+            box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+            margin-bottom: 1rem;
+        }
+
+        .custom-card h3 {
+            color: #ffffff;
+            margin-bottom: 0.75rem;
+            font-size: 1.25rem;
+            font-weight: 800;
+        }
+
+        .custom-card p {
+            color: #d5ddd8;
+            line-height: 1.65;
+            font-size: 0.98rem;
+            margin-bottom: 0;
+        }
+
+        .status-box {
+            background: rgba(3, 46, 40, 0.85);
+            border: 1px dashed rgba(216, 138, 24, 0.28);
+            border-radius: 18px;
+            padding: 1rem 1.2rem;
+            margin-top: 1rem;
+        }
+
+        .stButton > button {
+            background: #f39a1f !important;
+            color: #16211d !important;
+            border: none !important;
+            border-radius: 12px !important;
+            font-weight: 800 !important;
+            padding: 0.75rem 1.15rem !important;
+        }
+
+        .stButton > button:hover {
+            background: #ffae34 !important;
+            color: #101816 !important;
+        }
+
+        div[data-testid="stSelectbox"] > div,
+        div[data-testid="stFileUploader"],
+        div[data-testid="stTextInput"] > div {
+            background: rgba(5, 47, 41, 0.55);
+            border-radius: 14px;
+        }
+
+        .metric-chip {
+            display: inline-block;
+            background: rgba(243, 154, 31, 0.12);
+            color: #ffd089;
+            border: 1px solid rgba(243, 154, 31, 0.22);
+            border-radius: 999px;
+            padding: 0.35rem 0.8rem;
+            font-size: 0.85rem;
+            font-weight: 700;
+            margin-right: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .footer-note {
+            color: #b8c3bd;
+            font-size: 0.9rem;
+            margin-top: 1rem;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+
+def render_topbar(logo_base64: str):
+    logo_html = ""
+    if logo_base64:
+        logo_html = f'<img src="data:image/jpeg;base64,{logo_base64}" class="topbar-logo">'
+    st.markdown(
+        f"""
+        <div class="topbar">
+            {logo_html}
+            <div>
+                <div class="topbar-title">QGP Online</div>
+                <div class="topbar-subtitle">SUPESP / CE · Atualizador de Indicadores</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+def render_sidebar_brand(logo_base64: str):
+    logo_html = ""
+    if logo_base64:
+        logo_html = f'<img src="data:image/jpeg;base64,{logo_base64}" alt="Logo DIESP">'
+    with st.sidebar:
+        st.markdown(
+            f"""
+            <div class="sidebar-brand">
+                {logo_html}
+                <div class="sidebar-brand-title">SUPESP / CE</div>
+                <div class="sidebar-brand-subtitle">Sistema Integrado de Gestão e Inteligência</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+
+# =========================
+# PREPARAÇÃO DO LOGO E CSS
+# =========================
+LOGO_PATH = "assets/DIESP_nano_v3.jpg"
+LOGO_BASE64 = image_to_base64(LOGO_PATH)
+
+load_custom_css()
+render_sidebar_brand(LOGO_BASE64)
+render_topbar(LOGO_BASE64)
+
+# =========================
+# SIDEBAR
+# =========================
+with st.sidebar:
+    st.markdown("### Painel de Controle")
+    indicador = st.selectbox(
         "Selecione o Indicador",
-        INDICADORES,
-        help="Escolha qual indicador deseja processar"
+        [
+            "Selecione um indicador...",
+            "CVLI",
+            "CVP (SPORTAL)",
+            "CVP (SIP)",
+            "PERTURBAÇÃO DO SOSSEGO ALHEIO",
+            "DESLOCAMENTO FORÇADO",
+            "ROUBO DE VEÍCULO (SPORTAL)",
+            "ROUBO DE VEÍCULO (SIP)",
+            "ACIDENTE DE TRÂNSITO",
+            "FURTO (SPORTAL)",
+            "FURTO (SIP)",
+            "TODOS OS INDICADORES",
+        ],
     )
-    st.divider()
-    salvar_drive = st.toggle(
-        "\U0001f4c2 Salvar no Google Drive",
-        value=False,
-        help="Envia o arquivo gerado automaticamente para uma pasta do Google Drive"
-    )
-    st.divider()
-    agora = datetime.now()
-    st.markdown(f"""
-    <div class="sidebar-info">
-        &#x1F4CC; <b>Vers&#227;o:</b> 1.0.0<br>
-        &#x1F4C5; <b>Data:</b> {agora.strftime('%d/%m/%Y')}<br>
-        &#x23F0; <b>Hora:</b> {agora.strftime('%H:%M:%S')}
-    </div>
-    """, unsafe_allow_html=True)
 
-# =============================================================================
-# AREA PRINCIPAL - UPLOADS
-# =============================================================================
-col1, col2 = st.columns([1, 1], gap="large")
+    salvar_drive = st.checkbox("📂 Salvar no Google Drive")
+
+    st.markdown("### Informações")
+    st.markdown('<div class="metric-chip">Versão 1.0.0</div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="metric-chip">Data {datetime.now().strftime("%d/%m/%Y")}</div>',
+        unsafe_allow_html=True
+    )
+    st.markdown(
+        f'<div class="metric-chip">Hora {datetime.now().strftime("%H:%M:%S")}</div>',
+        unsafe_allow_html=True
+    )
+
+# =========================
+# CONTEÚDO PRINCIPAL
+# =========================
+st.markdown('<div class="section-title">Painel Estratégico</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="section-subtitle">Sistema Integrado de Gestão e Inteligência</div>',
+    unsafe_allow_html=True
+)
+
+col1, col2, col3 = st.columns(3)
 
 with col1:
-    st.subheader("\U0001f4c4 Arquivo 02")
-    st.caption("Arquivo principal com as metas e refer\u00eancias")
-    arquivo_02 = st.file_uploader(
-        "Envie o Arquivo 02",
-        type=["xlsx", "xls"],
-        key="arquivo_02",
-        help="Selecione o Arquivo 02 no formato Excel (.xlsx ou .xls)"
-    )
-    if arquivo_02:
-        st.success(f"\u2705 Carregado: {arquivo_02.name}")
-        st.caption(f"Tamanho: {arquivo_02.size / 1024:.1f} KB")
+    st.markdown("""
+    <div class="custom-card">
+        <h3>Sobre a Plataforma</h3>
+        <p>
+            Aplicação web para atualização, tratamento e consolidação dos indicadores
+            de segurança pública, com foco em padronização operacional, auditoria e
+            escalabilidade da rotina técnica.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
 
 with col2:
-    st.subheader("\U0001f4c1 Arquivos 01")
-    st.caption("Arquivos de entrada com os dados brutos")
+    st.markdown("""
+    <div class="custom-card">
+        <h3>Processamento Inteligente</h3>
+        <p>
+            O sistema foi estruturado para receber planilhas, validar entradas,
+            processar indicadores e futuramente integrar armazenamento automatizado
+            com Google Drive e controle de execução online.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+with col3:
+    st.markdown("""
+    <div class="custom-card">
+        <h3>Operação QGP</h3>
+        <p>
+            Interface institucional com foco em produtividade, visual estratégico e
+            organização do fluxo de trabalho para atualização das bases e geração
+            dos arquivos finais do QGP.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+st.markdown("## Upload de Arquivos")
+
+col_up1, col_up2 = st.columns([1, 1])
+
+with col_up1:
+    arquivo_02 = st.file_uploader(
+        "Arquivo 02 (planilha com múltiplas abas)",
+        type=["xlsx", "xls"]
+    )
+
+with col_up2:
     arquivos_01 = st.file_uploader(
-        "Envie os Arquivos 01",
+        "Arquivos 01 (um ou vários)",
         type=["xlsx", "xls"],
-        accept_multiple_files=True,
-        key="arquivos_01",
-        help="Selecione um ou mais Arquivos 01 no formato Excel"
-    )
-    if arquivos_01:
-        for arq in arquivos_01:
-            st.success(f"\u2705 {arq.name}")
-        st.caption(f"Total: {len(arquivos_01)} arquivo(s) carregado(s)")
-
-st.divider()
-
-# =============================================================================
-# PAINEL DE STATUS PRE-PROCESSAMENTO
-# =============================================================================
-if indicador_selecionado != "Selecione um indicador...":
-    col_s1, col_s2, col_s3 = st.columns(3)
-    with col_s1:
-        status_02 = "\u2705 Pronto" if arquivo_02 else "\u274c Pendente"
-        st.metric("Arquivo 02", status_02)
-    with col_s2:
-        status_01 = f"\u2705 {len(arquivos_01)} arquivo(s)" if arquivos_01 else "\u274c Pendente"
-        st.metric("Arquivos 01", status_01)
-    with col_s3:
-        st.metric("Indicador", indicador_selecionado.split(" - ")[0] if " - " in indicador_selecionado else indicador_selecionado)
-    st.divider()
-
-# =============================================================================
-# BOTAO DE PROCESSAMENTO
-# =============================================================================
-col_btn1, col_btn2, col_btn3 = st.columns([2, 1, 2])
-with col_btn2:
-    btn_disabled = (
-        indicador_selecionado == "Selecione um indicador..."
-        or not arquivo_02
-        or not arquivos_01
-    )
-    processar = st.button(
-        "\u25b6\ufe0f Processar",
-        type="primary",
-        use_container_width=True,
-        disabled=btn_disabled
+        accept_multiple_files=True
     )
 
-if btn_disabled and indicador_selecionado != "Selecione um indicador...":
-    if not arquivo_02 and not arquivos_01:
-        st.warning("\u26a0\ufe0f Envie o Arquivo 02 e os Arquivos 01 para habilitar o processamento.")
-    elif not arquivo_02:
-        st.warning("\u26a0\ufe0f Envie o Arquivo 02 para habilitar o processamento.")
-    elif not arquivos_01:
-        st.warning("\u26a0\ufe0f Envie pelo menos um Arquivo 01 para habilitar o processamento.")
+processar = st.button("Processar Indicador")
 
-# =============================================================================
-# LOGICA DE PROCESSAMENTO
-# =============================================================================
+# =========================
+# PROCESSAMENTO DEMO / MVP
+# =========================
 if processar:
-    st.divider()
-    st.subheader("\U0001f4cb Log de Processamento")
-    log_area = st.empty()
-    progress_bar = st.progress(0, text="Iniciando...")
-    logs = []
+    erros = []
 
-    def log(mensagem: str):
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        entrada = f"[{timestamp}] {mensagem}"
-        logs.append(entrada)
-        log_area.code("\n".join(logs), language="bash")
+    if indicador == "Selecione um indicador...":
+        erros.append("Selecione um indicador válido.")
+    if arquivo_02 is None:
+        erros.append("Envie o Arquivo 02.")
+    if not arquivos_01:
+        erros.append("Envie pelo menos um Arquivo 01.")
 
-    log(f"Indicador selecionado: {indicador_selecionado}")
-    progress_bar.progress(10, text="Verificando arquivos...")
-    log(f"Arquivo 02: {arquivo_02.name} ({arquivo_02.size / 1024:.1f} KB)")
-    progress_bar.progress(30, text="Lendo Arquivo 02...")
-    log(f"{len(arquivos_01)} Arquivo(s) 01 recebido(s):")
-    for arq in arquivos_01:
-        log(f"  -> {arq.name} ({arq.size / 1024:.1f} KB)")
-    progress_bar.progress(60, text="Processando...")
-    log("Modulo de processamento sera integrado na proxima versao.")
-    progress_bar.progress(90, text="Finalizando...")
-    log("Processamento concluido com sucesso.")
-    progress_bar.progress(100, text="Concluido!")
-    st.success("\u2705 Processamento finalizado com sucesso!")
-    if salvar_drive:
-        st.info("\U0001f4c2 Integracao com Google Drive sera ativada na proxima versao.")
+    if erros:
+        for erro in erros:
+            st.error(erro)
+    else:
+        st.success("Arquivos recebidos com sucesso.")
+        st.markdown('<div class="status-box">', unsafe_allow_html=True)
+        st.write(f"**Indicador selecionado:** {indicador}")
+        st.write(f"**Salvar no Google Drive:** {'Sim' if salvar_drive else 'Não'}")
+        st.write(f"**Arquivo 02:** {arquivo_02.name}")
+        st.write("**Arquivos 01 carregados:**")
+        for arq in arquivos_01:
+            st.write(f"- {arq.name}")
+        st.markdown("</div>", unsafe_allow_html=True)
 
-# =============================================================================
-# RODAPE
-# =============================================================================
-st.markdown("""
-<div class="footer">
-    QGP Online v1.0 &mdash; SUPESP/CE &mdash; Desenvolvido em Python + Streamlit
-</div>
-""", unsafe_allow_html=True)
+        # Demonstração simples de leitura do primeiro arquivo
+        try:
+            df_preview = pd.read_excel(arquivo_02)
+            st.info("Pré-visualização do Arquivo 02")
+            st.dataframe(df_preview.head())
+        except Exception as exc:
+            st.warning(f"Não foi possível gerar preview do Arquivo 02: {exc}")
+
+st.markdown(
+    '<div class="footer-note">QGP Online - Atualizador de Indicadores de Segurança Pública - SUPESP/CE</div>',
+    unsafe_allow_html=True
+)
