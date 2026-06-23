@@ -1,6 +1,17 @@
 from datetime import datetime
 import streamlit as st
 import pandas as pd
+import sys
+import os
+
+# Adicionar pasta modulos ao path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'modulos'))
+
+try:
+    from modulos.cvli import interface_cvli
+except ImportError:
+    st.error("Erro ao importar módulo CVLI")
+    interface_cvli = None
 
 # =========================
 # CONFIGURACAO DA PAGINA
@@ -127,8 +138,6 @@ with st.sidebar:
         ],
     )
 
-    salvar_drive = st.checkbox("\U0001f4c2 Salvar no Google Drive")
-
     st.markdown("### Informacoes")
     st.markdown(f'<div class="metric-chip">Versao 1.0.0</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="metric-chip">Data {datetime.now().strftime("%d/%m/%Y")}</div>', unsafe_allow_html=True)
@@ -137,57 +146,46 @@ with st.sidebar:
 # =========================
 # CONTEUDO PRINCIPAL
 # =========================
-st.markdown("## Upload de Arquivos")
-col_up1, col_up2 = st.columns([1, 1])
 
-with col_up1:
-    arquivo_02 = st.file_uploader(
-        "Arquivo 02 (planilha com multiplas abas)",
-        type=["xlsx", "xls"]
-    )
+if indicador == "Selecione um indicador...":
+    st.markdown("## Bem-vindo ao QGP Online")
+    st.info("👉 Selecione um indicador no painel lateral para começar")
+    
+    st.markdown("### Indicadores Disponíveis")
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("""
+        - ✅ CVLI
+        - 🚧 CVP (SPORTAL)
+        - 🚧 CVP (SIP)
+        - 🚧 PERTURBACAO DO SOSSEGO
+        """)
+    
+    with col2:
+        st.markdown("""
+        - 🚧 DESLOCAMENTO FORCADO
+        - 🚧 ROUBO DE VEICULO (SPORTAL)
+        - 🚧 ROUBO DE VEICULO (SIP)
+        - 🚧 ACIDENTE DE TRANSITO
+        """)
+    
+    with col3:
+        st.markdown("""
+        - 🚧 FURTO (SPORTAL)
+        - 🚧 FURTO (SIP)
+        - 🚧 TODOS OS INDICADORES
+        """)
 
-with col_up2:
-    arquivos_01 = st.file_uploader(
-        "Arquivos 01 (um ou varios)",
-        type=["xlsx", "xls"],
-        accept_multiple_files=True
-    )
-
-processar = st.button("\u25b6\ufe0f Processar Indicador")
-
-# =========================
-# PROCESSAMENTO
-# =========================
-if processar:
-    erros = []
-
-    if indicador == "Selecione um indicador...":
-        erros.append("Selecione um indicador valido.")
-
-    if arquivo_02 is None:
-        erros.append("Envie o Arquivo 02.")
-
-    if not arquivos_01:
-        erros.append("Envie pelo menos um Arquivo 01.")
-
-    if erros:
-        for erro in erros:
-            st.error(erro)
+elif indicador == "CVLI":
+    if interface_cvli:
+        interface_cvli()
     else:
-        st.success("Arquivos recebidos com sucesso.")
-        st.write(f"**Indicador selecionado:** {indicador}")
-        st.write(f"**Salvar no Google Drive:** {'Sim' if salvar_drive else 'Nao'}")
-        st.write(f"**Arquivo 02:** {arquivo_02.name}")
-        st.write("**Arquivos 01 carregados:**")
-        for arq in arquivos_01:
-            st.write(f"- {arq.name}")
+        st.error("❌ Módulo CVLI não disponível")
 
-        try:
-            df_preview = pd.read_excel(arquivo_02)
-            st.info("Pre-visualizacao do Arquivo 02")
-            st.dataframe(df_preview.head())
-        except Exception as exc:
-            st.warning(f"Nao foi possivel gerar preview: {exc}")
+else:
+    st.warning(f"🚧 O indicador **{indicador}** estará disponível em breve")
+    st.info("👨‍💻 Sistema em desenvolvimento")
 
 # =========================
 # RODAPE
