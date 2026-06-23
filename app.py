@@ -13,7 +13,11 @@ except ImportError:
     st.error("Erro ao importar módulo CVLI")
     interface_cvli = None
 
-try:\n    from modulos.cvp_sportal import interface_cvp_sportal\nexcept ImportError:\n    st.error(\"Erro ao importar módulo CVP SPORTAL\")\n    interface_cvp_sportal = None
+try:
+        from modulos.cvp_sportal import interface_cvp_sportal
+    except ImportError:
+            st.error("Erro ao importar módulo CVP SPORTAL")
+            interface_cvp_sportal = None
 
 # =========================
 # CONFIGURACAO DA PAGINA
@@ -185,7 +189,11 @@ elif indicador == "CVLI":
     else:
         st.error("❌ Módulo CVLI não disponível")
 
-elif indicador == "CVP (SPORTAL)":\n    if interface_cvp_sportal:\n        interface_cvp_sportal()\n    else:\n        st.error("❌ Módulo CVP (SPORTAL) não disponível")
+elif indicador == "CVP (SPORTAL)":
+        if interface_cvp_sportal:
+                    interface_cvp_sportal()
+                else:
+                            st.error("❌ Módulo CVP (SPORTAL) não disponível")
 
 else:
     st.warning(f"🚧 O indicador **{indicador}** estará disponível em breve")
