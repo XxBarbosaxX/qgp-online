@@ -4,18 +4,14 @@ from datetime import datetime
 import streamlit as st
 import pandas as pd
 
-# =========================
-# CONFIGURAÇÃO DA PÁGINA
-# =========================
+
 st.set_page_config(
     page_title="QGP Online - SUPESP/CE",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# =========================
-# FUNÇÕES AUXILIARES
-# =========================
+
 def image_to_base64(image_path: str) -> str:
     path = Path(image_path)
     if not path.exists():
@@ -231,9 +227,6 @@ def render_sidebar_brand(logo_base64: str):
         )
 
 
-# =========================
-# PREPARAÇÃO DO LOGO E CSS
-# =========================
 LOGO_PATH = "assets/DIESP_nano_v3.jpg"
 LOGO_BASE64 = image_to_base64(LOGO_PATH)
 
@@ -241,9 +234,6 @@ load_custom_css()
 render_sidebar_brand(LOGO_BASE64)
 render_topbar(LOGO_BASE64)
 
-# =========================
-# SIDEBAR
-# =========================
 with st.sidebar:
     st.markdown("### Painel de Controle")
     indicador = st.selectbox(
@@ -277,9 +267,6 @@ with st.sidebar:
         unsafe_allow_html=True
     )
 
-# =========================
-# CONTEÚDO PRINCIPAL
-# =========================
 st.markdown('<div class="section-title">Painel Estratégico</div>', unsafe_allow_html=True)
 st.markdown(
     '<div class="section-subtitle">Sistema Integrado de Gestão e Inteligência</div>',
@@ -343,9 +330,6 @@ with col_up2:
 
 processar = st.button("Processar Indicador")
 
-# =========================
-# PROCESSAMENTO DEMO / MVP
-# =========================
 if processar:
     erros = []
 
@@ -370,7 +354,6 @@ if processar:
             st.write(f"- {arq.name}")
         st.markdown("</div>", unsafe_allow_html=True)
 
-        # Demonstração simples de leitura do primeiro arquivo
         try:
             df_preview = pd.read_excel(arquivo_02)
             st.info("Pré-visualização do Arquivo 02")
