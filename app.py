@@ -14,10 +14,10 @@ except ImportError:
     interface_cvli = None
 
 try:
-        from modulos.cvp_sportal import interface_cvp_sportal
-    except ImportError:
-            st.error("Erro ao importar módulo CVP SPORTAL")
-            interface_cvp_sportal = None
+    from modulos.cvp_sportal import interface_cvp_sportal
+except ImportError:
+    st.error("Erro ao importar módulo CVP SPORTAL")
+    interface_cvp_sportal = None
 
 # =========================
 # CONFIGURACAO DA PAGINA
