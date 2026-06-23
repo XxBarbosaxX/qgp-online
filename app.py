@@ -190,10 +190,10 @@ elif indicador == "CVLI":
         st.error("❌ Módulo CVLI não disponível")
 
 elif indicador == "CVP (SPORTAL)":
-        if interface_cvp_sportal:
-                    interface_cvp_sportal()
-                else:
-                            st.error("❌ Módulo CVP (SPORTAL) não disponível")
+    if interface_cvp_sportal:
+        interface_cvp_sportal()
+    else:
+        st.error("❌ Módulo CVP (SPORTAL) não disponível")
 
 else:
     st.warning(f"🚧 O indicador **{indicador}** estará disponível em breve")
