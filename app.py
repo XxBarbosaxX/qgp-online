@@ -1,3 +1,4 @@
+# QGP Online - Força redeploy
 from datetime import datetime
 import streamlit as st
 import pandas as pd
