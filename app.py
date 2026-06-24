@@ -146,7 +146,7 @@ def render_topbar():
         <div class="topbar">
             <div>
                 <div class="topbar-title">QGP Online</div>
-                <div class="topbar-subtitle">SUPESP / CE &middot; Atualizador de Indicadores</div>
+                <div class="topbar-subtitle">SUPESP / CE · Atualizador de Indicadores</div>
             </div>
         </div>
     """, unsafe_allow_html=True)
@@ -162,6 +162,7 @@ render_topbar()
 # =========================
 with st.sidebar:
     st.markdown("### Painel de Controle")
+    
     indicador = st.selectbox(
         "Selecione o Indicador",
         [
@@ -179,7 +180,7 @@ with st.sidebar:
             "TODOS OS INDICADORES",
         ],
     )
-
+    
     st.markdown("### Informacoes")
     st.markdown(f'<div class="metric-chip">Versao 1.0.0</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="metric-chip">Data {datetime.now().strftime("%d/%m/%Y")}</div>', unsafe_allow_html=True)
@@ -231,19 +232,19 @@ elif indicador == "CVP (SPORTAL)":
     else:
         st.error("❌ Módulo CVP (SPORTAL) não disponível")
 
-
 elif indicador == "CVP (SIP)":
     if interface_cvp_sip:
         interface_cvp_sip()
     else:
         st.error("❌ Módulo CVP (SIP) não disponível")
-    elif indicador == "PERTURBACAO DO SOSSEGO ALHEIO":
+
+elif indicador == "PERTURBACAO DO SOSSEGO ALHEIO":
     if interface_perturbacao_sossego:
         interface_perturbacao_sossego()
     else:
         st.error("❌ Módulo Perturbação do Sossego não disponível")
 
-    elif indicador == "DESLOCAMENTO FORCADO":
+elif indicador == "DESLOCAMENTO FORCADO":
     if interface_deslocamento_forcado:
         interface_deslocamento_forcado()
     else:
@@ -266,6 +267,8 @@ elif indicador == "ACIDENTE DE TRANSITO":
         interface_acidente_transito()
     else:
         st.error("❌ Módulo Acidente de Trânsito não disponível")
+
+else:
     st.warning(f"🚧 O indicador **{indicador}** estará disponível em breve")
     st.info("👨‍💻 Sistema em desenvolvimento")
 
@@ -273,6 +276,6 @@ elif indicador == "ACIDENTE DE TRANSITO":
 # RODAPE
 # =========================
 st.markdown(
-    '<div class="footer-note">QGP Online &mdash; Atualizador de Indicadores de Seguranca Publica &mdash; SUPESP/CE</div>',
+    '<div class="footer-note">QGP Online — Atualizador de Indicadores de Segurança Pública — SUPESP/CE</div>',
     unsafe_allow_html=True
 )
