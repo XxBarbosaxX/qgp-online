@@ -239,57 +239,68 @@ if indicador == "Selecione um indicador...":
 elif indicador == "CVLI":
     if interface_cvli:
         interface_cvli()
-        st.error("❌ Módulo CVLI não disponível")
+            else:
+            st.error("❌ Módulo CVLI não disponível")
 
 elif indicador == "CVP (SPORTAL)":
     if interface_cvp_sportal:
         interface_cvp_sportal()
-        st.error("❌ Módulo CVP (SPORTAL) não disponível")
+            else:
+            st.error("❌ Módulo CVP (SPORTAL) não disponível")
 
 elif indicador == "CVP (SIP)":
     if interface_cvp_sip:
         interface_cvp_sip()
-        st.error("❌ Módulo CVP (SIP) não disponível")
+    else:
+            st.error("❌ Módulo CVP (SIP) não disponível")
 
 elif indicador == "PERTURBACAO DO SOSSEGO ALHEIO":
     if interface_perturbacao_sossego:
         interface_perturbacao_sossego()
-        st.error("❌ Módulo Perturbação do Sossego não disponível")
+    else:
+            st.error("❌ Módulo Perturbação do Sossego não disponível")
 
 elif indicador == "DESLOCAMENTO FORCADO":
     if interface_deslocamento_forcado:
         interface_deslocamento_forcado()
-        st.error("❌ Módulo Deslocamento Forçado não disponível")
+    else:
+            st.error("❌ Módulo Deslocamento Forçado não disponível")
 
 elif indicador == "ROUBO DE VEICULO (SPORTAL)":
     if interface_roubo_veiculo_sportal:
         interface_roubo_veiculo_sportal()
-        st.error("❌ Módulo Roubo de Veículo (SPORTAL) não disponível")
+    else:
+            st.error("❌ Módulo Roubo de Veículo (SPORTAL) não disponível")
 
 elif indicador == "ROUBO DE VEICULO (SIP)":
     if interface_roubo_veiculo_sip:
         interface_roubo_veiculo_sip()
-        st.error("❌ Módulo Roubo de Veículo (SIP) não disponível")
+    else:
+            st.error("❌ Módulo Roubo de Veículo (SIP) não disponível")
 
 elif indicador == "ACIDENTE DE TRANSITO":
     if interface_acidente_transito:
         interface_acidente_transito()
-        st.error("❌ Módulo Acidente de Trânsito não disponível")
+    else:
+            st.error("❌ Módulo Acidente de Trânsito não disponível")
 
 elif indicador == "FURTO (SPORTAL)":
     if interface_furto_veiculo_sportal:
         interface_furto_veiculo_sportal()
-        st.error("❌ Módulo Furto de Veículo (SPORTAL) não disponível")
+    else:
+            st.error("❌ Módulo Furto de Veículo (SPORTAL) não disponível")
 
 elif indicador == "FURTO (SIP)":
     if interface_furto_veiculo_sip:
         interface_furto_veiculo_sip()
-        st.error("❌ Módulo Furto de Veículo (SIP) não disponível")
+    else:
+            st.error("❌ Módulo Furto de Veículo (SIP) não disponível")
 
 elif indicador == "TODOS OS INDICADORES":
     if interface_todos_indicadores:
         interface_todos_indicadores()
-        st.error("❌ Módulo TODOS OS INDICADORES não disponível")
+    else:
+            st.error("❌ Módulo TODOS OS INDICADORES não disponível")
 
 else:
     st.warning(f"🚧 O indicador **{indicador}** estará disponível em breve")
