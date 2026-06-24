@@ -14,7 +14,6 @@ Fluxo:
 from __future__ import annotations
 
 import json
-import os
 import re
 import unicodedata
 from pathlib import Path
@@ -81,6 +80,7 @@ SUBST = {
     "PROF": "Professor",
     "MAE": "Maestro",
 }
+
 CORR = {"RAIMUINDO": "RAIMUNDO", "OSWALDO": "OSVALDO"}
 RUIDO = ["LADO PAR", "LADO IMPAR", "- P", "FORTALEZA, CE", ", CE"]
 RE_BNI = re.compile(r"\(?\s*bairro\s+n[aã]o\s+identificad[oa]\s*\)?", flags=re.IGNORECASE)
@@ -462,10 +462,20 @@ def interface_cvp_sip():
 
                 col_lat_base = encontrar_coluna_por_nomes(df_base, ["lat", "latitude"])
                 col_lon_base = encontrar_coluna_por_nomes(df_base, ["long", "longitude", "lon"])
-                    
-                col_numero = encontrar_coluna_por_nomes(
-                    df_novo, ["numero", "número", "nº", "n°", "num", "num.", "localnumero", "local_numero", "Número"]
+
+                col_endereco = encontrar_coluna_por_nomes(
+                    df_novo, ["endereco", "endereço", "logradouro", "rua"]
                 )
+
+                col_numero = encontrar_coluna_por_nomes(
+                    df_novo,
+                    ["numero", "número", "nº", "n°", "num", "num.", "localnumero", "local_numero", "Número"],
+                    obrigatoria=False,
+                )
+                if col_numero is None:
+                    df_novo["Numero"] = ""
+                    col_numero = "Numero"
+
                 col_bairro = encontrar_coluna_por_nomes(df_novo, ["bairro"])
                 col_municipio = encontrar_coluna_por_nomes(
                     df_novo, ["municipio", "município", "cidade"]
