@@ -27,8 +27,8 @@ except ImportError:
     interface_perturbacao_sossego = None
 
 try:
-    from modulos.cvp_sportal import interface_cvp_sportalexcept ImportError:
-    st.error("Erro ao importar módulo CVP SPORTAL")
+    from modulos.cvp_sportal import interface_cvp_sportal
+    except ImportError:
     interface_cvp_sportal = None
 
 try:
