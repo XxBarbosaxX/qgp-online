@@ -25,6 +25,36 @@ except ImportError:
     st.error("Erro ao importar módulo Perturbação do Sossego")
     interface_perturbacao_sossego = None
 
+try:
+    from modulos.cvp_sportal import interface_cvp_sportal
+except ImportError:
+    st.error("Erro ao importar módulo CVP SPORTAL")
+    interface_cvp_sportal = None
+
+try:
+    from modulos.deslocamento_forcado import interface_deslocamento_forcado
+except ImportError:
+    st.error("Erro ao importar módulo Deslocamento Forçado")
+    interface_deslocamento_forcado = None
+
+try:
+    from modulos.roubo_veiculo_sportal import interface_roubo_veiculo_sportal
+except ImportError:
+    st.error("Erro ao importar módulo Roubo de Veículo SPORTAL")
+    interface_roubo_veiculo_sportal = None
+
+try:
+    from modulos.roubo_veiculo_sip import interface_roubo_veiculo_sip
+except ImportError:
+    st.error("Erro ao importar módulo Roubo de Veículo SIP")
+    interface_roubo_veiculo_sip = None
+
+try:
+    from modulos.acidente_transito import interface_acidente_transito
+except ImportError:
+    st.error("Erro ao importar módulo Acidente de Trânsito")
+    interface_acidente_transito = None
+
 # =========================
 # CONFIGURACAO DA PAGINA
 # =========================
@@ -212,6 +242,30 @@ elif indicador == "CVP (SIP)":
         interface_perturbacao_sossego()
     else:
         st.error("❌ Módulo Perturbação do Sossego não disponível")
+
+    elif indicador == "DESLOCAMENTO FORCADO":
+    if interface_deslocamento_forcado:
+        interface_deslocamento_forcado()
+    else:
+        st.error("❌ Módulo Deslocamento Forçado não disponível")
+
+elif indicador == "ROUBO DE VEICULO (SPORTAL)":
+    if interface_roubo_veiculo_sportal:
+        interface_roubo_veiculo_sportal()
+    else:
+        st.error("❌ Módulo Roubo de Veículo (SPORTAL) não disponível")
+
+elif indicador == "ROUBO DE VEICULO (SIP)":
+    if interface_roubo_veiculo_sip:
+        interface_roubo_veiculo_sip()
+    else:
+        st.error("❌ Módulo Roubo de Veículo (SIP) não disponível")
+
+elif indicador == "ACIDENTE DE TRANSITO":
+    if interface_acidente_transito:
+        interface_acidente_transito()
+    else:
+        st.error("❌ Módulo Acidente de Trânsito não disponível")
     st.warning(f"🚧 O indicador **{indicador}** estará disponível em breve")
     st.info("👨‍💻 Sistema em desenvolvimento")
 
