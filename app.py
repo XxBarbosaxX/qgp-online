@@ -13,6 +13,12 @@ except ImportError:
     st.error("Erro ao importar módulo CVLI")
     interface_cvli = None
 
+try:
+    from modulos.cvp_sip import interface_cvp_sip
+except ImportError:
+    st.error("Erro ao importar módulo CVP SIP")
+    interface_cvp_sip = None
+
 # =========================
 # CONFIGURACAO DA PAGINA
 # =========================
@@ -189,6 +195,12 @@ elif indicador == "CVP (SPORTAL)":
     else:
         st.error("❌ Módulo CVP (SPORTAL) não disponível")
 
+
+elif indicador == "CVP (SIP)":
+    if interface_cvp_sip:
+        interface_cvp_sip()
+    else:
+        st.error("❌ Módulo CVP (SIP) não disponível")
 else:
     st.warning(f"🚧 O indicador **{indicador}** estará disponível em breve")
     st.info("👨‍💻 Sistema em desenvolvimento")
