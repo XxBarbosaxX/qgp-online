@@ -17,6 +17,7 @@ st.set_page_config(
 )
 
 # Adicionar pasta modulos ao path
+sys.path.insert(0, os.path.dirname(__file__))  # Raiz do projeto para imports como 'from modulos.utils import'
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'modulos'))
 
 # =========================
