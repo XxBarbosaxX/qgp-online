@@ -306,7 +306,6 @@ class MotorGeocodificacaoSoberana:
             self.glon = self.base["lon"].values.astype(float)
             self.gnome = self.base["nome_norm"].astype(str).values
             self.gcod = self.base["cod_mun"].astype(str).values
-
             self.tree = cKDTree(np.c_[self.glat, self.glon])
 
             centroides = self.base.groupby("cod_mun")[["lat", "lon"]].mean()
@@ -394,7 +393,6 @@ class MotorGeocodificacaoSoberana:
                     False,
                     None,
                 )
-
             return (None, None, "Nao Encontrado", "-", False, None)
 
         partes = [f"{rua_limpa}, {numero}" if numero else rua_limpa]
@@ -524,8 +522,7 @@ def geocodificar_linhas_novas(
         if resultado[0] is not None and resultado[1] is not None:
             geocodificados += 1
 
-        percentual = indice / max(total, 1)
-        progresso.progress(percentual)
+        progresso.progress(indice / max(total, 1))
         status.info(
             f"Geocodificando linhas novas... {indice}/{total} | "
             f"Geocodificados: {geocodificados}"
@@ -756,3 +753,10 @@ def render():
 
         except Exception as exc:
             st.exception(exc)
+
+
+def main():
+    render()
+
+
+main()
