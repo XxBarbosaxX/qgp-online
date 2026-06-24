@@ -207,8 +207,6 @@ elif indicador == "CVP (SIP)":
         interface_cvp_sip()
     else:
         st.error("❌ Módulo CVP (SIP) não disponível")
-else:
-
     elif indicador == "PERTURBACAO DO SOSSEGO ALHEIO":
     if interface_perturbacao_sossego:
         interface_perturbacao_sossego()
