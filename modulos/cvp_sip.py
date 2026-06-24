@@ -686,7 +686,7 @@ def _init_state():
 def render():
     _init_state()
 
-    st.title("CVP (SIP) - Geocodificação por Endereço")
+    st.subheader("CVP (SIP) - Geocodificação por Endereço")
     st.write(
         "Envie a base histórica e o complemento SIP para atualizar a base com geocodificação."
     )
@@ -760,6 +760,3 @@ def render():
 
         except Exception as exc:
             st.exception(exc)
-
-
-render()
