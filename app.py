@@ -240,7 +240,7 @@ elif indicador == "CVLI":
     if interface_cvli:
         interface_cvli()
             else:
-            st.error("❌ Módulo CVLI não disponível")
+                st.error("❌ Módulo CVLI não disponível")
 
 elif indicador == "CVP (SPORTAL)":
     if interface_cvp_sportal:
