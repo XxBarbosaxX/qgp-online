@@ -462,12 +462,9 @@ def interface_cvp_sip():
 
                 col_lat_base = encontrar_coluna_por_nomes(df_base, ["lat", "latitude"])
                 col_lon_base = encontrar_coluna_por_nomes(df_base, ["long", "longitude", "lon"])
-
-                col_numero = encontrar_coluna_por_nomes(
-                    df_novo, ["numero", "número", "nº", "n°", "num", "num.", "localnumero", "local_numero"]
                     
                 col_numero = encontrar_coluna_por_nomes(
-                    df_novo, ["numero", "número", "localNumero", "num"]
+                    df_novo, ["numero", "número", "nº", "n°", "num", "num.", "localnumero", "local_numero"]
                 )
                 col_bairro = encontrar_coluna_por_nomes(df_novo, ["bairro"])
                 col_municipio = encontrar_coluna_por_nomes(
