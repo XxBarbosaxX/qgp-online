@@ -323,3 +323,50 @@ def gerar_arquivo_excel(
 def nome_arquivo_padrao(numero: int, sigla: str) -> str:
     """Gera nome padrao do arquivo de saida: ex. '1-CVLI-2026-QGP.xlsx'"""
     return f"{numero}-{sigla}-{datetime.now().year}-QGP.xlsx"
+def converter_coordenadas_para_wgs84_auto(
+    df: pd.DataFrame,
+    col_y_or_lat: str,
+    col_x_or_lon: str,
+    col_lat_destino: str = "LAT",
+    col_lon_destino: str = "LONG"
+) -> pd.DataFrame:
+    """Detecta se as coordenadas estao em graus ou UTM e converte apenas quando necessario."""
+    try:
+        from pyproj import Transformer
+        transformer = Transformer.from_crs(
+            "EPSG:31984", "EPSG:4326", always_xy=True
+        )
+    except ImportError:
+        raise ImportError(
+            "pyproj nao esta instalado. Adicione 'pyproj>=3.6.0' ao requirements.txt"
+        )
+
+    lat_resultado = []
+    lon_resultado = []
+
+    for y_raw, x_raw in zip(df[col_y_or_lat], df[col_x_or_lon]):
+        y = valor_numerico_exato(y_raw)
+        x = valor_numerico_exato(x_raw)
+
+        if y is None or x is None or y == 0 or x == 0:
+            lat_resultado.append(pd.NA)
+            lon_resultado.append(pd.NA)
+            continue
+
+        parecem_graus = (-90 <= y <= 90) and (-180 <= x <= 180)
+        parecem_utm = (100000 <= abs(x) <= 900000) and (1000000 <= abs(y) <= 10000000)
+
+        if parecem_graus:
+            lat_resultado.append(y)
+            lon_resultado.append(x)
+        elif parecem_utm:
+            lon, lat = transformer.transform(x, y)
+            lat_resultado.append(lat)
+            lon_resultado.append(lon)
+        else:
+            lat_resultado.append(pd.NA)
+            lon_resultado.append(pd.NA)
+
+    df[col_lat_destino] = lat_resultado
+    df[col_lon_destino] = lon_resultado
+    return df
