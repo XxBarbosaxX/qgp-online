@@ -14,10 +14,9 @@ from modulos.utils import (
     encontrar_coluna_por_nomes,
     renomear_colunas_equivalentes,
     alinhar_colunas_com_base,
-    valor_numerico_exato,
     criar_coluna_datahora,
     excluir_coordenadas_invalidas,
-    reprojetar_utm_para_wgs84,
+    converter_coordenadas_para_wgs84_auto,
     obter_ultima_datahora,
     filtrar_apenas_registros_posteriores,
     gerar_arquivo_excel,
@@ -141,10 +140,10 @@ def interface_cvp_sportal():
 
                 # Reprojetar coordenadas UTM -> WGS84
                 if not df_novo_util.empty:
-                    df_novo_util = reprojetar_utm_para_wgs84(
+                    df_novo_util = converter_coordenadas_para_wgs84_auto(
                         df_novo_util,
-                        col_y=col_lat_novo,
-                        col_x=col_lon_novo,
+                        col_y_or_lat=col_lat_novo,
+                        col_x_or_lon=col_lon_novo,
                         col_lat_destino=col_lat_base,
                         col_lon_destino=col_lon_base
                     )
