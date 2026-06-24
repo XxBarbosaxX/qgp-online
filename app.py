@@ -18,7 +18,6 @@ try:
 except ImportError:
     st.error("Erro ao importar módulo CVP SPORTAL")
     interface_cvp_sportal = None
-
 # =========================
 # CONFIGURACAO DA PAGINA
 # =========================
