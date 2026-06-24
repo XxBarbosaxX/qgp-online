@@ -175,10 +175,10 @@ def reprojetar_utm_para_wgs84(df, col_y, col_x, col_lat_destino="LAT", col_lon_d
         else:
                 lon, lat = transformer.transform(x, y)
                     lat_resultado.append(lat)
-                        lon_resultado.append(lon)
+                                    lon_resultado.append(lon)
     df[col_lat_destino] = lat_resultado
         df[col_lon_destino] = lon_resultado
-    return df
+                lat_resultado.append(lat)
 
 def alinhar_colunas_arquivo_02_com_base(df_base, df_novo):
     """Alinha colunas do arquivo novo com o base"""
