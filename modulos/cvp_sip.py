@@ -416,7 +416,7 @@ def interface_cvp_sip():
     - **Arquivo 02:** Complemento SIP com enderecos
 
     O sistema ira:
-    - Identificar Data/Hora da base e Data do complemento SIP
+    - Identificar Data/Hora da base e Data/Hora do complemento SIP
     - Filtrar apenas ocorrencias posteriores a ultima DataHora da base
     - Geocodificar apenas as novas linhas
     - Alinhar o resultado ao layout da base
@@ -458,7 +458,13 @@ def interface_cvp_sip():
 
                 col_data_base = encontrar_coluna_data(df_base)
                 col_hora_base = encontrar_coluna_hora(df_base)
-                col_datahora_novo = encontrar_coluna_data(df_novo)
+
+                col_data_novo = encontrar_coluna_data(df_novo)
+                col_hora_novo = encontrar_coluna_por_nomes(
+                    df_novo,
+                    ["hora", "horario", "horário", "hora fato", "hora_fato"],
+                    obrigatoria=False,
+                )
 
                 col_lat_base = encontrar_coluna_por_nomes(df_base, ["lat", "latitude"])
                 col_lon_base = encontrar_coluna_por_nomes(df_base, ["long", "longitude", "lon"])
@@ -483,17 +489,23 @@ def interface_cvp_sip():
 
                 df_novo = renomear_colunas_equivalentes(df_base, df_novo)
                 df_base = criar_coluna_datahora(df_base, col_data_base, col_hora_base, nome_coluna="datahora")
-                df_novo["Hora"] = "00:00:00"
-                df_novo = criar_coluna_datahora(df_novo, col_datahora_novo, "Hora", nome_coluna="datahora")
+
+                if col_hora_novo is None:
+                    df_novo["Hora"] = "00:00:00"
+                    col_hora_novo = "Hora"
+
+                df_novo = criar_coluna_datahora(df_novo, col_data_novo, col_hora_novo, nome_coluna="datahora")
 
                 ultima_datahora_base = obter_ultima_datahora(df_base, "datahora")
                 total_antes_filtro_tempo = len(df_novo)
+
                 df_novo_filtrado = filtrar_apenas_registros_posteriores(
                     df_novo, "datahora", ultima_datahora_base
                 )
                 removidos_por_datahora = total_antes_filtro_tempo - len(df_novo_filtrado)
 
                 base_sem_aux = df_base.drop(columns=["datahora"])
+
                 for col_aux in [
                     "Nivel_Geocodificacao",
                     "Fonte",
@@ -529,6 +541,7 @@ def interface_cvp_sip():
                         col_bairro,
                         col_municipio,
                     )
+
                     df_novo_util, geocodificados = geocodificar_linhas_novas(
                         df_novo_util,
                         col_lat_base,
@@ -536,6 +549,13 @@ def interface_cvp_sip():
                         progress_bar,
                         status_placeholder,
                     )
+
+                    if col_data_base in base_sem_aux.columns and col_data_novo in df_novo_util.columns:
+                        df_novo_util[col_data_base] = df_novo_util[col_data_novo]
+
+                    if col_hora_base in base_sem_aux.columns and col_hora_novo in df_novo_util.columns:
+                        df_novo_util[col_hora_base] = df_novo_util[col_hora_novo]
+
                     df_novo_util = df_novo_util.drop(
                         columns=[
                             c
@@ -549,6 +569,7 @@ def interface_cvp_sip():
                             if c in df_novo_util.columns
                         ]
                     )
+
                     df_novo_util = alinhar_colunas_com_base(base_sem_aux, df_novo_util)
                     df_final = pd.concat([base_sem_aux, df_novo_util], ignore_index=True)
             else:
@@ -564,9 +585,11 @@ def interface_cvp_sip():
                 "_loc_aproximada",
             ]
             df_final = df_final.drop(columns=[c for c in colunas_excluir_saida if c in df_final.columns])
+
             df_final = criar_coluna_datahora(df_final, col_data_base, col_hora_base, nome_coluna="datahora")
             df_final = df_final.sort_values(by="datahora", ascending=True, na_position="last").reset_index(drop=True)
             df_final = df_final.drop(columns=["datahora"])
+
             total_final = len(df_final)
 
             st.success("Processamento Finalizado com Sucesso!")
@@ -583,6 +606,7 @@ def interface_cvp_sip():
             if ultima_datahora_base is not None:
                 st.info(f"Ultima DataHora da base: {ultima_datahora_base.strftime('%d/%m/%Y %H:%M:%S')}")
             st.info(f"Situacao: {situacao}")
+
             if removidos_por_datahora > 0:
                 st.warning(
                     f"Registros excluidos por serem anteriores/iguais a ultima DataHora: {removidos_por_datahora}"
