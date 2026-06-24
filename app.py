@@ -19,6 +19,12 @@ except ImportError:
     st.error("Erro ao importar módulo CVP SIP")
     interface_cvp_sip = None
 
+try:
+    from modulos.perturbacao_sossego import interface_perturbacao_sossego
+except ImportError:
+    st.error("Erro ao importar módulo Perturbação do Sossego")
+    interface_perturbacao_sossego = None
+
 # =========================
 # CONFIGURACAO DA PAGINA
 # =========================
@@ -202,6 +208,12 @@ elif indicador == "CVP (SIP)":
     else:
         st.error("❌ Módulo CVP (SIP) não disponível")
 else:
+
+    elif indicador == "PERTURBACAO DO SOSSEGO ALHEIO":
+    if interface_perturbacao_sossego:
+        interface_perturbacao_sossego()
+    else:
+        st.error("❌ Módulo Perturbação do Sossego não disponível")
     st.warning(f"🚧 O indicador **{indicador}** estará disponível em breve")
     st.info("👨‍💻 Sistema em desenvolvimento")
 
