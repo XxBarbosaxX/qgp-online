@@ -1,14 +1,6 @@
 """
 Modulo CVP (SIP) - Geocodificacao por endereco
 Versao Streamlit adaptada para o QGP Online.
-
-Fluxo:
-- Arquivo 01: base historica CVP
-- Arquivo 02: complemento SIP com enderecos
-- Filtra apenas registros posteriores a ultima DataHora da base
-- Geocodifica apenas as novas linhas
-- Alinha colunas com a base
-- Gera arquivo final para download
 """
 
 from __future__ import annotations
@@ -41,6 +33,8 @@ from modulos.utils import (
     obter_ultima_datahora,
     renomear_colunas_equivalentes,
 )
+
+st.set_page_config(page_title="CVP (SIP)", layout="wide")
 
 NOME_ARQUIVO_FINAL = nome_arquivo_padrao(3, "CVP-SIP-ENDERECO")
 
@@ -85,40 +79,17 @@ SUBST = {
     "MAE": "Maestro",
 }
 
-CORR = {
-    "RAIMUINDO": "RAIMUNDO",
-    "OSWALDO": "OSVALDO",
-}
+CORR = {"RAIMUINDO": "RAIMUNDO", "OSWALDO": "OSVALDO"}
 
-RUIDO = [
-    "LADO PAR",
-    "LADO IMPAR",
-    "- P",
-    "FORTALEZA, CE",
-    ", CE",
-]
+RUIDO = ["LADO PAR", "LADO IMPAR", "- P", "FORTALEZA, CE", ", CE"]
 
 RE_BNI = re.compile(
     r"\(?\s*bairro\s+n[aã]o\s+identificad[oa]\s*\)?",
     flags=re.IGNORECASE,
 )
 
-TIPOS = (
-    "Rua",
-    "Avenida",
-    "Travessa",
-    "Praca",
-    "Rodovia",
-    "Alameda",
-    "Passeio",
-)
-
-ROOFTOP = (
-    "pointaddress",
-    "streetaddress",
-    "subaddress",
-    "pointaddressvd",
-)
+TIPOS = ("Rua", "Avenida", "Travessa", "Praca", "Rodovia", "Alameda", "Passeio")
+ROOFTOP = ("pointaddress", "streetaddress", "subaddress", "pointaddressvd")
 
 
 def sem_acento(texto: str) -> str:
@@ -170,9 +141,14 @@ def carregar_base_geografica() -> Optional[pd.DataFrame]:
     if not caminho_gpkg.exists():
         return None
 
-    import fiona
-    from pyproj import Transformer
-    from shapely.geometry import shape
+    try:
+        import fiona
+        from pyproj import Transformer
+        from shapely.geometry import shape
+    except Exception as exc:
+        raise RuntimeError(
+            "Dependências geoespaciais não disponíveis: fiona, pyproj e shapely são necessárias."
+        ) from exc
 
     transformador = Transformer.from_crs(f"EPSG:{EPSG_GPKG}", "EPSG:4326", always_xy=True)
     registros = []
@@ -212,7 +188,6 @@ def carregar_base_geografica() -> Optional[pd.DataFrame]:
         registros,
         columns=["cod_mun", "nome_norm", "nome_orig", "lat", "lon", "tot_geral"],
     )
-
     base.to_parquet(caminho_parquet, index=False)
     return base.reset_index(drop=True)
 
@@ -221,7 +196,6 @@ def carregar_base_geografica() -> Optional[pd.DataFrame]:
 def obter_geocoder_arcgis():
     if not USAR_EXTERNO:
         return None
-
     arc = ArcGIS(timeout=15)
     return RateLimiter(
         arc.geocode,
@@ -699,14 +673,15 @@ def processar_cvp_sip(arquivo_01, arquivo_02):
 
 
 def _init_state():
-    if "cvp_sip_arquivo_01_bytes" not in st.session_state:
-        st.session_state.cvp_sip_arquivo_01_bytes = None
-    if "cvp_sip_arquivo_01_nome" not in st.session_state:
-        st.session_state.cvp_sip_arquivo_01_nome = None
-    if "cvp_sip_arquivo_02_bytes" not in st.session_state:
-        st.session_state.cvp_sip_arquivo_02_bytes = None
-    if "cvp_sip_arquivo_02_nome" not in st.session_state:
-        st.session_state.cvp_sip_arquivo_02_nome = None
+    defaults = {
+        "cvp_sip_arquivo_01_bytes": None,
+        "cvp_sip_arquivo_01_nome": None,
+        "cvp_sip_arquivo_02_bytes": None,
+        "cvp_sip_arquivo_02_nome": None,
+    }
+    for chave, valor in defaults.items():
+        if chave not in st.session_state:
+            st.session_state[chave] = valor
 
 
 def _salvar_uploads():
@@ -727,35 +702,26 @@ def _salvar_uploads():
 def render():
     _init_state()
 
-    st.subheader("CVP (SIP) - Geocodificação por Endereço")
-
-    st.markdown(
-        """
-        Atualiza a base histórica CVP/SIP com geocodificação por endereço.
-
-        **Fluxo**
-        - Arquivo 01: base histórica CVP
-        - Arquivo 02: complemento SIP
-        - Filtra apenas registros posteriores à última Data/Hora
-        - Geocodifica somente novas linhas
-        - Alinha as colunas com a base histórica
-        """
+    st.title("CVP (SIP) - Geocodificação por Endereço")
+    st.write(
+        "Envie a base histórica e o complemento SIP para atualizar a base com geocodificação."
     )
 
-    with st.form("form_cvp_sip_upload"):
-        st.file_uploader(
-            "Arquivo 01 - Base histórica CVP",
-            type=["xlsx", "xls"],
-            key="cvp_sip_upload_01",
-        )
+    with st.container():
+        with st.form("form_cvp_sip_upload", clear_on_submit=False):
+            st.file_uploader(
+                "Arquivo 01 - Base histórica CVP",
+                type=["xlsx", "xls"],
+                key="cvp_sip_upload_01",
+            )
 
-        st.file_uploader(
-            "Arquivo 02 - Complemento SIP",
-            type=["xlsx", "xls"],
-            key="cvp_sip_upload_02",
-        )
+            st.file_uploader(
+                "Arquivo 02 - Complemento SIP",
+                type=["xlsx", "xls"],
+                key="cvp_sip_upload_02",
+            )
 
-        submitted = st.form_submit_button("Carregar arquivos")
+            submitted = st.form_submit_button("Carregar arquivos")
 
     if submitted:
         _salvar_uploads()
@@ -782,17 +748,16 @@ def render():
 
             st.success("Processamento concluído com sucesso.")
 
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Novos registros adicionados", resumo["adicionados"])
-            col2.metric("Total final da base", resumo["total_final"])
-            col3.metric("Registros geocodificados", resumo["geocodificados"])
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Novos registros adicionados", resumo["adicionados"])
+            c2.metric("Total final da base", resumo["total_final"])
+            c3.metric("Registros geocodificados", resumo["geocodificados"])
 
             st.info(
                 f"Última Data/Hora da base: {resumo['ultima_datahora_base']} | "
                 f"Removidos por filtro temporal: {resumo['removidos_por_datahora']}"
             )
             st.caption(resumo["situacao"])
-
             st.dataframe(df_final.head(50), use_container_width=True)
 
             arquivo_excel = gerar_arquivo_excel(
@@ -809,3 +774,6 @@ def render():
 
         except Exception as exc:
             st.exception(exc)
+
+
+render()
