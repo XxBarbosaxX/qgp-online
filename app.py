@@ -240,7 +240,7 @@ if indicador == "Selecione um indicador...":
 elif indicador == "CVLI":
     if interface_cvli:
         interface_cvli()
-            else:
+                else:
                 st.error("❌ Módulo CVLI não disponível")
 
 elif indicador == "CVP (SPORTAL)":
