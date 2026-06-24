@@ -29,8 +29,8 @@ except ImportError:
 
 try:
     from modulos.cvp_sportal import interface_cvp_sportal
-    except ImportError:
-    st.error("Erro ao importar módulo CVO SPORTAL")
+except ImportError:
+    st.error("Erro ao importar módulo CVP SPORTAL")
     interface_cvp_sportal = None
 
 try:
