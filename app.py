@@ -1,4 +1,4 @@
-# QGP Online - Força redeploy
+# QGP Online - Força redeploy v2
 from datetime import datetime
 import streamlit as st
 import pandas as pd
