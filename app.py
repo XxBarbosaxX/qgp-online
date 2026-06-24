@@ -55,6 +55,24 @@ except ImportError:
     st.error("Erro ao importar módulo Acidente de Trânsito")
     interface_acidente_transito = None
 
+try:
+    from modulos.furto_veiculo_sportal import interface_furto_veiculo_sportal
+except ImportError:
+    st.error("Erro ao importar módulo Furto de Veículo SPORTAL")
+    interface_furto_veiculo_sportal = None
+
+try:
+    from modulos.furto_veiculo_sip import interface_furto_veiculo_sip
+except ImportError:
+    st.error("Erro ao importar módulo Furto de Veículo SIP")
+    interface_furto_veiculo_sip = None
+
+try:
+    from modulos.todos_indicadores import interface_todos_indicadores
+except ImportError:
+    st.error("Erro ao importar módulo TODOS OS INDICADORES")
+    interface_todos_indicadores = None
+
 # =========================
 # CONFIGURACAO DA PAGINA
 # =========================
@@ -71,70 +89,70 @@ st.set_page_config(
 def load_custom_css():
     st.markdown("""
         <style>
-        .stApp {
-            background: linear-gradient(180deg, #022b26 0%, #011917 100%);
-            color: #f3f4ef;
-        }
-        section[data-testid="stSidebar"] {
-            background: #031f1b;
-            border-right: 3px solid #d88a18;
-        }
-        section[data-testid="stSidebar"] * {
-            color: #f3f4ef !important;
-        }
-        .topbar {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            margin-bottom: 1rem;
-            padding: 0.4rem 0 0.8rem 0;
-            border-bottom: 1px solid rgba(216,138,24,0.18);
-        }
-        .topbar-title {
-            font-size: 1.9rem;
-            font-weight: 800;
-            color: #ffffff;
-            line-height: 1.05;
-            margin: 0;
-        }
-        .topbar-subtitle {
-            font-size: 0.95rem;
-            font-weight: 700;
-            color: #f39a1f;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            margin-top: 0.25rem;
-        }
-        .stButton > button {
-            background: #f39a1f !important;
-            color: #16211d !important;
-            border: none !important;
-            border-radius: 12px !important;
-            font-weight: 800 !important;
-            padding: 0.75rem 1.15rem !important;
-        }
-        .stButton > button:hover {
-            background: #ffae34 !important;
-            color: #101816 !important;
-        }
-        .metric-chip {
-            display: inline-block;
-            background: rgba(243,154,31,0.12);
-            color: #ffd089;
-            border: 1px solid rgba(243,154,31,0.22);
-            border-radius: 999px;
-            padding: 0.35rem 0.8rem;
-            font-size: 0.85rem;
-            font-weight: 700;
-            margin-right: 0.5rem;
-            margin-bottom: 0.5rem;
-        }
-        .footer-note {
-            color: #b8c3bd;
-            font-size: 0.9rem;
-            margin-top: 1rem;
-            text-align: center;
-        }
+            .stApp {
+                background: linear-gradient(180deg, #022b26 0%, #011917 100%);
+                color: #f3f4ef;
+            }
+            section[data-testid="stSidebar"] {
+                background: #031f1b;
+                border-right: 3px solid #d88a18;
+            }
+            section[data-testid="stSidebar"] * {
+                color: #f3f4ef !important;
+            }
+            .topbar {
+                display: flex;
+                align-items: center;
+                gap: 14px;
+                margin-bottom: 1rem;
+                padding: 0.4rem 0 0.8rem 0;
+                border-bottom: 1px solid rgba(216,138,24,0.18);
+            }
+            .topbar-title {
+                font-size: 1.9rem;
+                font-weight: 800;
+                color: #ffffff;
+                line-height: 1.05;
+                margin: 0;
+            }
+            .topbar-subtitle {
+                font-size: 0.95rem;
+                font-weight: 700;
+                color: #f39a1f;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                margin-top: 0.25rem;
+            }
+            .stButton > button {
+                background: #f39a1f !important;
+                color: #16211d !important;
+                border: none !important;
+                border-radius: 12px !important;
+                font-weight: 800 !important;
+                padding: 0.75rem 1.15rem !important;
+            }
+            .stButton > button:hover {
+                background: #ffae34 !important;
+                color: #101816 !important;
+            }
+            .metric-chip {
+                display: inline-block;
+                background: rgba(243,154,31,0.12);
+                color: #ffd089;
+                border: 1px solid rgba(243,154,31,0.22);
+                border-radius: 999px;
+                padding: 0.35rem 0.8rem;
+                font-size: 0.85rem;
+                font-weight: 700;
+                margin-right: 0.5rem;
+                margin-bottom: 0.5rem;
+            }
+            .footer-note {
+                color: #b8c3bd;
+                font-size: 0.9rem;
+                margin-top: 1rem;
+                text-align: center;
+            }
         </style>
     """, unsafe_allow_html=True)
 
@@ -162,7 +180,6 @@ render_topbar()
 # =========================
 with st.sidebar:
     st.markdown("### Painel de Controle")
-    
     indicador = st.selectbox(
         "Selecione o Indicador",
         [
@@ -189,7 +206,6 @@ with st.sidebar:
 # =========================
 # CONTEUDO PRINCIPAL
 # =========================
-
 if indicador == "Selecione um indicador...":
     st.markdown("## Bem-vindo ao QGP Online")
     st.info("👉 Selecione um indicador no painel lateral para começar")
@@ -199,25 +215,25 @@ if indicador == "Selecione um indicador...":
     
     with col1:
         st.markdown("""
-        - ✅ CVLI
-        - 🚧 CVP (SPORTAL)
-        - 🚧 CVP (SIP)
-        - 🚧 PERTURBACAO DO SOSSEGO
+            - ✅ CVLI
+            - 🚧 CVP (SPORTAL)
+            - 🚧 CVP (SIP)
+            - 🚧 PERTURBACAO DO SOSSEGO
         """)
     
     with col2:
         st.markdown("""
-        - 🚧 DESLOCAMENTO FORCADO
-        - 🚧 ROUBO DE VEICULO (SPORTAL)
-        - 🚧 ROUBO DE VEICULO (SIP)
-        - 🚧 ACIDENTE DE TRANSITO
+            - 🚧 DESLOCAMENTO FORCADO
+            - 🚧 ROUBO DE VEICULO (SPORTAL)
+            - 🚧 ROUBO DE VEICULO (SIP)
+            - 🚧 ACIDENTE DE TRANSITO
         """)
     
     with col3:
         st.markdown("""
-        - 🚧 FURTO (SPORTAL)
-        - 🚧 FURTO (SIP)
-        - 🚧 TODOS OS INDICADORES
+            - 🚧 FURTO (SPORTAL)
+            - 🚧 FURTO (SIP)
+            - 🚧 TODOS OS INDICADORES
         """)
 
 elif indicador == "CVLI":
@@ -268,6 +284,24 @@ elif indicador == "ACIDENTE DE TRANSITO":
     else:
         st.error("❌ Módulo Acidente de Trânsito não disponível")
 
+elif indicador == "FURTO (SPORTAL)":
+    if interface_furto_veiculo_sportal:
+        interface_furto_veiculo_sportal()
+    else:
+        st.error("❌ Módulo Furto de Veículo (SPORTAL) não disponível")
+
+elif indicador == "FURTO (SIP)":
+    if interface_furto_veiculo_sip:
+        interface_furto_veiculo_sip()
+    else:
+        st.error("❌ Módulo Furto de Veículo (SIP) não disponível")
+
+elif indicador == "TODOS OS INDICADORES":
+    if interface_todos_indicadores:
+        interface_todos_indicadores()
+    else:
+        st.error("❌ Módulo TODOS OS INDICADORES não disponível")
+
 else:
     st.warning(f"🚧 O indicador **{indicador}** estará disponível em breve")
     st.info("👨‍💻 Sistema em desenvolvimento")
@@ -276,6 +310,6 @@ else:
 # RODAPE
 # =========================
 st.markdown(
-    '<div class="footer-note">QGP Online — Atualizador de Indicadores de Segurança Pública — SUPESP/CE</div>',
+    '<p class="footer-note">QGP Online — Atualizador de Indicadores de Segurança Pública — SUPESP/CE</p>',
     unsafe_allow_html=True
 )
