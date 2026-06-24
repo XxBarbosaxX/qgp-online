@@ -407,6 +407,26 @@ def geocodificar_linhas_novas(
     return df, geocodificados
 
 
+def copiar_valor_entre_colunas(
+    df: pd.DataFrame,
+    coluna_destino: str,
+    colunas_origem: list[str],
+):
+    if coluna_destino not in df.columns:
+        return df
+    if coluna_destino in colunas_origem:
+        return df
+
+    serie_destino = df[coluna_destino] if coluna_destino in df.columns else pd.Series(index=df.index, dtype="object")
+
+    for col_origem in colunas_origem:
+        if col_origem in df.columns:
+            mask_vazio = serie_destino.isna() | (serie_destino.astype(str).str.strip() == "")
+            df.loc[mask_vazio, coluna_destino] = df.loc[mask_vazio, col_origem]
+            serie_destino = df[coluna_destino]
+    return df
+
+
 def interface_cvp_sip():
     st.markdown("## Atualizar CVP (SIP)")
     st.info(
@@ -475,7 +495,7 @@ def interface_cvp_sip():
 
                 col_numero = encontrar_coluna_por_nomes(
                     df_novo,
-                    ["numero", "número", "nº", "n°", "num", "num.", "localnumero", "local_numero", "Número"],
+                    ["numero", "número", "nº", "n°", "num", "num.", "localnumero", "local_numero"],
                     obrigatoria=False,
                 )
                 if col_numero is None:
@@ -487,7 +507,57 @@ def interface_cvp_sip():
                     df_novo, ["municipio", "município", "cidade"]
                 )
 
-                df_novo = renomear_colunas_equivalentes(df_base, df_novo)
+                col_regioes_novo = encontrar_coluna_por_nomes(
+                    df_novo,
+                    ["regioes", "regiões", "regiao", "região", "territorio", "território"],
+                    obrigatoria=False,
+                )
+
+                col_complemento_novo = encontrar_coluna_por_nomes(
+                    df_novo,
+                    [
+                        "complemento do endereco",
+                        "complemento do endereço",
+                        "complemento endereco",
+                        "complemento endereço",
+                        "complemento",
+                    ],
+                    obrigatoria=False,
+                )
+
+                col_territorio_base = encontrar_coluna_por_nomes(
+                    df_base,
+                    ["territorio", "território", "regioes", "regiões", "regiao", "região"],
+                    obrigatoria=False,
+                )
+
+                col_numero_base = encontrar_coluna_por_nomes(
+                    df_base,
+                    ["numero", "número", "nº", "n°", "num"],
+                    obrigatoria=False,
+                )
+
+                col_complemento_base = encontrar_coluna_por_nomes(
+                    df_base,
+                    [
+                        "complemento do endereco",
+                        "complemento do endereço",
+                        "complemento endereco",
+                        "complemento endereço",
+                        "complemento",
+                    ],
+                    obrigatoria=False,
+                )
+
+                mapa_extra = {}
+                if col_regioes_novo and col_territorio_base:
+                    mapa_extra[col_territorio_base] = [col_regioes_novo]
+                if col_complemento_novo and col_complemento_base:
+                    mapa_extra[col_complemento_base] = [col_complemento_novo]
+                if col_numero and col_numero_base and col_numero != col_numero_base:
+                    mapa_extra[col_numero_base] = [col_numero]
+
+                df_novo = renomear_colunas_equivalentes(df_base, df_novo, mapa_extra=mapa_extra)
                 df_base = criar_coluna_datahora(df_base, col_data_base, col_hora_base, nome_coluna="datahora")
 
                 if col_hora_novo is None:
@@ -555,6 +625,32 @@ def interface_cvp_sip():
 
                     if col_hora_base in base_sem_aux.columns and col_hora_novo in df_novo_util.columns:
                         df_novo_util[col_hora_base] = df_novo_util[col_hora_novo]
+
+                    if col_territorio_base:
+                        df_novo_util = copiar_valor_entre_colunas(
+                            df_novo_util,
+                            col_territorio_base,
+                            [col_regioes_novo, "Regioes", "Regiões", "Territorio", "Território"],
+                        )
+
+                    if col_numero_base:
+                        df_novo_util = copiar_valor_entre_colunas(
+                            df_novo_util,
+                            col_numero_base,
+                            [col_numero, "Numero", "Número"],
+                        )
+
+                    if col_complemento_base:
+                        df_novo_util = copiar_valor_entre_colunas(
+                            df_novo_util,
+                            col_complemento_base,
+                            [
+                                col_complemento_novo,
+                                "Complemento do Endereco",
+                                "Complemento do Endereço",
+                                "Complemento",
+                            ],
+                        )
 
                     df_novo_util = df_novo_util.drop(
                         columns=[
