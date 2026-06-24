@@ -34,8 +34,6 @@ from modulos.utils import (
     renomear_colunas_equivalentes,
 )
 
-st.set_page_config(page_title="CVP (SIP)", layout="wide")
-
 NOME_ARQUIVO_FINAL = nome_arquivo_padrao(3, "CVP-SIP-ENDERECO")
 
 USAR_EXTERNO = True
@@ -188,6 +186,7 @@ def carregar_base_geografica() -> Optional[pd.DataFrame]:
         registros,
         columns=["cod_mun", "nome_norm", "nome_orig", "lat", "lon", "tot_geral"],
     )
+
     base.to_parquet(caminho_parquet, index=False)
     return base.reset_index(drop=True)
 
@@ -684,9 +683,25 @@ def _init_state():
             st.session_state[chave] = valor
 
 
-def _salvar_uploads():
-    arquivo_01 = st.session_state.get("cvp_sip_upload_01")
-    arquivo_02 = st.session_state.get("cvp_sip_upload_02")
+def render():
+    _init_state()
+
+    st.title("CVP (SIP) - Geocodificação por Endereço")
+    st.write(
+        "Envie a base histórica e o complemento SIP para atualizar a base com geocodificação."
+    )
+
+    arquivo_01 = st.file_uploader(
+        "Arquivo 01 - Base histórica CVP",
+        type=["xlsx", "xls"],
+        key="cvp_sip_upload_01",
+    )
+
+    arquivo_02 = st.file_uploader(
+        "Arquivo 02 - Complemento SIP",
+        type=["xlsx", "xls"],
+        key="cvp_sip_upload_02",
+    )
 
     if arquivo_01 is not None:
         arquivo_01.seek(0)
@@ -697,35 +712,6 @@ def _salvar_uploads():
         arquivo_02.seek(0)
         st.session_state.cvp_sip_arquivo_02_bytes = arquivo_02.read()
         st.session_state.cvp_sip_arquivo_02_nome = arquivo_02.name
-
-
-def render():
-    _init_state()
-
-    st.title("CVP (SIP) - Geocodificação por Endereço")
-    st.write(
-        "Envie a base histórica e o complemento SIP para atualizar a base com geocodificação."
-    )
-
-    with st.container():
-        with st.form("form_cvp_sip_upload", clear_on_submit=False):
-            st.file_uploader(
-                "Arquivo 01 - Base histórica CVP",
-                type=["xlsx", "xls"],
-                key="cvp_sip_upload_01",
-            )
-
-            st.file_uploader(
-                "Arquivo 02 - Complemento SIP",
-                type=["xlsx", "xls"],
-                key="cvp_sip_upload_02",
-            )
-
-            submitted = st.form_submit_button("Carregar arquivos")
-
-    if submitted:
-        _salvar_uploads()
-        st.success("Arquivos carregados com sucesso.")
 
     if st.session_state.cvp_sip_arquivo_01_nome:
         st.info(f"Arquivo 01 carregado: {st.session_state.cvp_sip_arquivo_01_nome}")
