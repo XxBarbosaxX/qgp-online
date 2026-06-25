@@ -139,7 +139,7 @@ def _selecionar_aba_arquivo_01(sheet_names: list[str]) -> str:
 
 def gerar_excel_em_memoria(df: pd.DataFrame) -> bytes:
     buffer = BytesIO()
-    with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name="CVP_SIP_ENDERECO")
     buffer.seek(0)
     return buffer.getvalue()
@@ -799,6 +799,7 @@ def render():
     if arquivo_01 is not None:
         arquivo_01.seek(0)
         st.session_state.cvp_sip_arquivo_01_bytes = arquivo_01.read()
+
         st.session_state.cvp_sip_arquivo_01_nome = arquivo_01.name
 
     if arquivo_02 is not None:
