@@ -1,6 +1,6 @@
 """
 Modulo Deslocamento Forcado
-Versao Streamlit adaptada para o QGP Online no padrao de Perturbacao ao Sossego Alheio.
+Versao Streamlit adaptada para o QGP Online.
 """
 
 from __future__ import annotations
@@ -14,10 +14,6 @@ from pyproj import Transformer
 from modulos.utils import nome_arquivo_padrao
 
 NOME_ARQUIVO_FINAL = nome_arquivo_padrao(5, "DESLOCAMENTO-FORCADO")
-
-
-EPSG_UTM_SIRGAS_24S = 31984
-EPSG_WGS84 = 4326
 
 
 def _normalizar_nome_aba(nome: str) -> str:
@@ -57,7 +53,6 @@ def _selecionar_aba_arquivo_02(sheet_names: list[str]) -> str:
         "DESLOCAMENTOFORCADO",
         "DESLOCAMENTO",
         "FORCADO",
-        "COMPLEMENTO",
     ]
     normalizadas = {aba: _normalizar_nome_aba(aba) for aba in sheet_names}
 
@@ -128,10 +123,6 @@ def encontrar_coluna_por_nomes(
 
 
 def renomear_colunas_equivalentes(df_base: pd.DataFrame, df_novo: pd.DataFrame) -> pd.DataFrame:
-    """
-    Alinha nomes de colunas entre base e complemento.
-    Inclui AIS, Territorio e mantem colunas como Nome/Subnome da Ocorrencia da base.
-    """
     mapa_equivalencias = {
         "AIS": ["AISNova", "AIS Nova", "AIS_NOVA", "aisnova", "ais_nova"],
         "Território": [
@@ -143,21 +134,6 @@ def renomear_colunas_equivalentes(df_base: pd.DataFrame, df_novo: pd.DataFrame) 
             "territorio",
             "regiões",
             "regioes",
-        ],
-        # se o complemento tiver variações de nome/subnome, adicione aqui:
-        "Nome da Ocorrência": [
-            "Nome Ocorrencia",
-            "Nome Ocorrência",
-            "Nome_Ocorrencia",
-            "nome da ocorrencia",
-            "nome ocorrencia",
-        ],
-        "Subnome da Ocorrência": [
-            "Subnome Ocorrencia",
-            "Subnome Ocorrência",
-            "Subnome_Ocorrencia",
-            "subnome da ocorrencia",
-            "subnome ocorrencia",
         ],
     }
 
@@ -335,10 +311,6 @@ def alinhar_colunas_arquivo_02_com_base(
     df_base: pd.DataFrame,
     df_novo: pd.DataFrame,
 ) -> pd.DataFrame:
-    """
-    Garante que o complemento tenha todas as colunas da base, preservando
-    colunas como Nome da Ocorrencia e Subnome da Ocorrencia.
-    """
     colunas_base = list(df_base.columns)
 
     df_novo = renomear_colunas_equivalentes(df_base, df_novo)
@@ -404,7 +376,6 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
     df_novo = normalizar_colunas(df_novo)
     progresso.progress(30)
 
-    status.info("Identificando colunas de Data e Hora...")
     col_data_base = encontrar_coluna_data(df_base)
     col_data_novo = encontrar_coluna_data(df_novo)
     col_hora_base = encontrar_coluna_hora(df_base)
@@ -552,8 +523,7 @@ def render():
     )
 
     st.caption(
-        "Fluxo: identificar a ultima Data/Hora do Arquivo 01, localizar no Arquivo 02 apenas ocorrencias posteriores, "
-        "excluir coordenadas invalidas, reprojetar UTM SIRGAS2000 / 24S para WGS84 e gerar a planilha final mantendo todas as colunas da base."
+        "Fluxo: identificar a ultima Data/Hora do Arquivo 01, localizar no Arquivo 02 apenas ocorrencias posteriores, excluir coordenadas invalidas, reprojetar UTM SIRGAS2000 / 24S para WGS84 e gerar a planilha final."
     )
 
     arquivo_01 = st.file_uploader(
