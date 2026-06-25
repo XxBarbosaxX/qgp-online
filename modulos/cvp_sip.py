@@ -772,6 +772,15 @@ def processar_cvp_sip(arquivo_01, arquivo_02):
     ).reset_index(drop=True)
     df_final = df_final.drop(columns=["__datahora__"], errors="ignore")
 
+    contagens_nivel = {}
+    if "Nivel_Geocodificacao" in df_final.columns:
+        contagens_nivel = (
+            df_final["Nivel_Geocodificacao"]
+            .fillna("Nao Informado")
+            .value_counts(dropna=False)
+            .to_dict()
+        )
+
     df_final = df_final.drop(
         columns=[
             "Fonte",
@@ -801,6 +810,7 @@ def processar_cvp_sip(arquivo_01, arquivo_02):
         "situacao": situacao,
         "aba_arquivo_01": aba_base,
         "aba_arquivo_02": aba_novo,
+        "contagens_nivel": contagens_nivel,
     }
 
     return df_final, resumo
@@ -895,6 +905,29 @@ def render():
         c1.metric("Novos registros adicionados", resumo["adicionados"])
         c2.metric("Total final da base", resumo["total_final"])
         c3.metric("Registros geocodificados", resumo["geocodificados"])
+
+        contagens_nivel = resumo.get("contagens_nivel", {})
+        if contagens_nivel:
+            st.subheader("Resumo dos niveis de geocodificacao")
+
+            exato_numero = contagens_nivel.get("Exato (Numero)", 0)
+            centroide_rua = contagens_nivel.get("Centroide de Rua", 0)
+            centroide_bairro = contagens_nivel.get("Centroide de Bairro", 0)
+            centroide_cidade = contagens_nivel.get("Centroide de Cidade", 0)
+            nao_encontrado = contagens_nivel.get("Nao Encontrado", 0)
+
+            n1, n2, n3 = st.columns(3)
+            n1.metric("Exato (Numero)", exato_numero)
+            n2.metric("Centroide de Rua", centroide_rua)
+            n3.metric("Centroide de Bairro", centroide_bairro)
+
+            n4, n5 = st.columns(2)
+            n4.metric("Centroide de Cidade", centroide_cidade)
+            n5.metric("Nao Encontrado", nao_encontrado)
+
+            st.caption(
+                "Os valores acima mostram quantos registros cairam em cada nivel de geocodificacao."
+            )
 
         st.info(
             f"Aba usada no Arquivo 01: {resumo['aba_arquivo_01']} | "
