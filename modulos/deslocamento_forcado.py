@@ -1,6 +1,6 @@
 """
 Modulo Deslocamento Forcado
-Versao Streamlit adaptada para o QGP Online, com logs de auditoria.
+Versao Streamlit adaptada para o QGP Online, com logs de auditoria seguros.
 """
 
 from __future__ import annotations
@@ -220,10 +220,6 @@ def filtrar_apenas_registros_posteriores(df: pd.DataFrame, coluna_datahora: str,
 
 
 def montar_dataframe_no_esquema_da_base(df_base: pd.DataFrame, df_novo: pd.DataFrame) -> pd.DataFrame:
-    """
-    Monta o complemento usando EXATAMENTE o esquema do Arquivo 01.
-    Isso elimina colisao de nomes e garante Nome/Subnome no resultado.
-    """
     base_cols = list(df_base.columns)
     saida = pd.DataFrame(index=df_novo.index)
 
@@ -231,8 +227,8 @@ def montar_dataframe_no_esquema_da_base(df_base: pd.DataFrame, df_novo: pd.DataF
         "Endereço": ["Endereço"],
         "Latitude": ["Latitude"],
         "Longitude": ["Longitude"],
-        "Nome da Ocorrência": ["Nome da Ocorrência"],
-        "Subnome da Ocorrência": ["Subnome da Ocorrência"],
+        "Nome da Ocorrência": ["Nome da Ocorrência", "Nome Ocorrencia", "nome da ocorrencia"],
+        "Subnome da Ocorrência": ["Subnome da Ocorrência", "Subnome Ocorrencia", "subnome da ocorrencia"],
         "Território": ["Território", "Regiões", "Regioes", "Região", "Regiao"],
         "Município": ["Município"],
         "Bairro": ["Bairro"],
@@ -256,6 +252,22 @@ def montar_dataframe_no_esquema_da_base(df_base: pd.DataFrame, df_novo: pd.DataF
             saida[col_base] = pd.NA
 
     return saida[base_cols].copy()
+
+
+def colunas_existentes(df: pd.DataFrame, colunas_desejadas: list[str]) -> list[str]:
+    return [c for c in colunas_desejadas if c in df.columns]
+
+
+def mostrar_amostra_segura(titulo: str, df: pd.DataFrame, colunas_desejadas: list[str], n: int = 10):
+    st.write(titulo)
+    cols = colunas_existentes(df, colunas_desejadas)
+
+    if cols:
+        st.dataframe(df[cols].head(n))
+    else:
+        st.warning("Nenhuma das colunas solicitadas existe nesta etapa.")
+        st.write("Colunas disponiveis:")
+        st.write(list(df.columns))
 
 
 def gerar_excel_em_memoria(df: pd.DataFrame) -> bytes:
@@ -288,20 +300,33 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
 
     df_base = normalizar_colunas(df_base)
     df_novo = normalizar_colunas(df_novo)
-    st.write("Pré-visualização Arquivo 01 (base):")
-    st.dataframe(df_base.head(5))
-    st.write("Pré-visualização Arquivo 02 (complemento):")
-    st.dataframe(df_novo.head(5))
+
+    mostrar_amostra_segura(
+        "Pré-visualização Arquivo 01 (base):",
+        df_base,
+        ["Endereço", "Latitude", "Longitude", "Nome da Ocorrência", "Subnome da Ocorrência"],
+        5,
+    )
+
+    mostrar_amostra_segura(
+        "Pré-visualização Arquivo 02 (complemento):",
+        df_novo,
+        ["Endereço", "Latitude", "Longitude", "Nome da Ocorrência", "Subnome da Ocorrência", "Regiões", "AISNova"],
+        5,
+    )
     progresso.progress(30)
 
-    # Isola UTM do Arquivo 02 logo no inicio
     if "Latitude" not in df_novo.columns or "Longitude" not in df_novo.columns:
         raise ValueError("O Arquivo 02 nao possui as colunas Latitude e Longitude esperadas.")
 
     df_novo = df_novo.rename(columns={"Latitude": "Latitude_UTM", "Longitude": "Longitude_UTM"})
 
-    st.write("Arquivo 02 após renomear Latitude/Longitude -> Latitude_UTM/Longitude_UTM:")
-    st.dataframe(df_novo[["Latitude_UTM", "Longitude_UTM"]].head(5))
+    mostrar_amostra_segura(
+        "Arquivo 02 após renomear Latitude/Longitude -> Latitude_UTM/Longitude_UTM:",
+        df_novo,
+        ["Latitude_UTM", "Longitude_UTM", "Nome da Ocorrência", "Subnome da Ocorrência"],
+        5,
+    )
     progresso.progress(40)
 
     col_data_base = encontrar_coluna_data(df_base)
@@ -320,8 +345,13 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
     status.info("Excluindo registros com coordenadas invalidas...")
     total_lido_arquivo_02 = len(df_novo)
     df_novo, removidos_invalidos = excluir_coordenadas_invalidas(df_novo, "Latitude_UTM", "Longitude_UTM")
-    st.write("Arquivo 02 após filtro de coordenadas inválidas:")
-    st.dataframe(df_novo[["Latitude_UTM", "Longitude_UTM"]].head(5))
+
+    mostrar_amostra_segura(
+        "Arquivo 02 após filtro de coordenadas inválidas:",
+        df_novo,
+        ["Latitude_UTM", "Longitude_UTM", "Nome da Ocorrência", "Subnome da Ocorrência"],
+        5,
+    )
     progresso.progress(50)
 
     status.info("Criando referencia temporal...")
@@ -335,8 +365,13 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
     total_antes_filtro = len(df_novo)
     df_novo_filtrado = filtrar_apenas_registros_posteriores(df_novo, "__datahora__", ultimo_datahora_base)
     removidos_por_datahora = total_antes_filtro - len(df_novo_filtrado)
-    st.write("Arquivo 02 após filtro por Data/Hora:")
-    st.dataframe(df_novo_filtrado[["__datahora__", "Latitude_UTM", "Longitude_UTM"]].head(5))
+
+    mostrar_amostra_segura(
+        "Arquivo 02 após filtro por Data/Hora:",
+        df_novo_filtrado,
+        ["__datahora__", "Latitude_UTM", "Longitude_UTM", "Nome da Ocorrência", "Subnome da Ocorrência"],
+        5,
+    )
     progresso.progress(70)
 
     base_sem_aux = df_base.drop(columns=["__datahora__"], errors="ignore").copy()
@@ -354,20 +389,22 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
     if not df_novo_util.empty:
         status.info("Reprojetando coordenadas...")
         df_novo_util = reprojetar_utm_para_wgs84(df_novo_util, "Latitude_UTM", "Longitude_UTM")
-        st.write("Complemento após reprojeção UTM -> WGS84 (amostra):")
-        st.dataframe(
-            df_novo_util[
-                ["Latitude_UTM", "Longitude_UTM", "Latitude", "Longitude", "Nome da Ocorrência", "Subnome da Ocorrência"]
-            ].head(10)
+
+        mostrar_amostra_segura(
+            "Complemento após reprojeção UTM -> WGS84:",
+            df_novo_util,
+            ["Latitude_UTM", "Longitude_UTM", "Latitude", "Longitude", "Nome da Ocorrência", "Subnome da Ocorrência"],
+            10,
         )
 
         status.info("Montando complemento no esquema exato da base...")
         df_novo_saida = montar_dataframe_no_esquema_da_base(base_sem_aux, df_novo_util)
-        st.write("Complemento final (esquema da base) - amostra:")
-        st.dataframe(
-            df_novo_saida[
-                ["Endereço", "Latitude", "Longitude", "Nome da Ocorrência", "Subnome da Ocorrência"]
-            ].head(10)
+
+        mostrar_amostra_segura(
+            "Complemento final no esquema da base:",
+            df_novo_saida,
+            ["Endereço", "Latitude", "Longitude", "Nome da Ocorrência", "Subnome da Ocorrência", "Território", "Município", "Bairro"],
+            10,
         )
 
         df_final = pd.concat([base_sem_aux, df_novo_saida], ignore_index=True)
@@ -384,17 +421,17 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
     df_final = df_final.drop(columns=["__datahora__"], errors="ignore")
     progresso.progress(100)
 
+    mostrar_amostra_segura(
+        "Resultado final (amostra):",
+        df_final,
+        ["Endereço", "Latitude", "Longitude", "Nome da Ocorrência", "Subnome da Ocorrência", "Território", "Município", "Bairro"],
+        20,
+    )
+
     ultima_ref = (
         ultimo_datahora_base.strftime("%d/%m/%Y %H:%M:%S")
         if ultimo_datahora_base is not None
         else "sem referencia anterior valida"
-    )
-
-    st.write("Resultado final (amostra):")
-    st.dataframe(
-        df_final[
-            ["Endereço", "Latitude", "Longitude", "Nome da Ocorrência", "Subnome da Ocorrência"]
-        ].tail(20)
     )
 
     resumo = {
@@ -480,7 +517,6 @@ def render():
         st.session_state.deslocamento_resultado_df is not None
         and st.session_state.deslocamento_resumo is not None
     ):
-        df_final = st.session_state.deslocamento_resultado_df
         resumo = st.session_state.deslocamento_resumo
 
         c1, c2, c3 = st.columns(3)
