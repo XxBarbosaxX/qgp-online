@@ -183,7 +183,14 @@ def carregar_municipios() -> dict:
 def carregar_base_geografica() -> Optional[pd.DataFrame]:
     caminho_parquet = Path(CAMINHO_BASE_ENXUTA)
     if caminho_parquet.exists():
-        return pd.read_parquet(caminho_parquet).reset_index(drop=True)
+        base = pd.read_parquet(caminho_parquet).reset_index(drop=True)
+        colunas_esperadas = {"cod_mun", "nome_norm", "nome_orig", "lat", "lon", "tot_geral"}
+        faltantes = colunas_esperadas - set(base.columns)
+        if faltantes:
+            raise ValueError(
+                f"O arquivo {CAMINHO_BASE_ENXUTA} nao possui as colunas esperadas: {sorted(faltantes)}"
+            )
+        return base
 
     caminho_gpkg = Path(CAMINHO_GPKG)
     if not caminho_gpkg.exists():
@@ -433,7 +440,7 @@ class MotorGeocodificacaoSoberana:
                         externo[0],
                         externo[1],
                         "Exato (Numero)",
-                        "ArcGIS+GPKG",
+                        "ArcGIS+Parquet",
                         True,
                         distancia,
                     )
@@ -444,7 +451,7 @@ class MotorGeocodificacaoSoberana:
                     geobase[0],
                     geobase[1],
                     "Centroide de Rua",
-                    "GPKG (Faces de Quadra)",
+                    "Parquet (Base Enxuta)",
                     True,
                     0.0,
                 )
@@ -471,17 +478,16 @@ class MotorGeocodificacaoSoberana:
             if self.geocode_ext is not None:
                 loc = self.geocode_ext(consulta, out_fields="*")
                 if loc:
-                    addr_type = ((loc.raw or {}).get("attributes", {}) or {}).get("Addr_type", "")
-                    externo = (float(loc.latitude), float(loc.longitude), str(addr_type).lower())
+                    externo = (float(loc.latitude), float(loc.longitude))
 
-            ancora = (externo[0], externo[1]) if externo else None
+            ancora = externo if externo else None
             geobase = self.casar_rua(rua_norm, cod, ancora)
             if geobase:
                 return (
                     geobase[0],
                     geobase[1],
                     "Centroide de Rua",
-                    "GPKG (Faces de Quadra)",
+                    "Parquet (Base Enxuta)",
                     True,
                     0.0,
                 )
@@ -673,8 +679,8 @@ def processar_cvp_sip(arquivo_01, arquivo_02):
         obrigatoria=False,
     )
 
-    if col_territorio_novo and col_territorio_novo != "territorio":
-        df_novo = df_novo.rename(columns={col_territorio_novo: "territorio"})
+    if col_territorio_novo and col_territorio_novo != "Território":
+        df_novo = df_novo.rename(columns={col_territorio_novo: "Território"})
 
     df_novo = renomear_colunas_equivalentes(df_base, df_novo)
 
@@ -840,8 +846,21 @@ def render():
     )
 
     st.caption(
-        "Coloque o arquivo Faces_de_Quadra_-_Ceara_ARRUAMENTO.gpkg na raiz do projeto para melhorar a acuracia da geocodificacao."
+        f"Base geográfica esperada na raiz do projeto: {CAMINHO_BASE_ENXUTA}"
     )
+
+    try:
+        base_geo = carregar_base_geografica()
+        if base_geo is not None and not base_geo.empty:
+            st.success(
+                f"Base geográfica carregada com sucesso: {len(base_geo):,} registros em {CAMINHO_BASE_ENXUTA}"
+            )
+        else:
+            st.warning(
+                f"A base geográfica não foi carregada. Verifique o arquivo {CAMINHO_BASE_ENXUTA}."
+            )
+    except Exception as exc:
+        st.error(f"Erro ao carregar base geográfica: {exc}")
 
     arquivo_01 = st.file_uploader(
         "Arquivo 01 - Base historica CVP",
