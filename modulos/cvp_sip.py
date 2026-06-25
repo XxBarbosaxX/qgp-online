@@ -403,77 +403,112 @@ class MotorGeocodificacaoSoberana:
     def geocodificar(self, rua: str, numero: str, bairro: str, municipio: str):
         rua_limpa = limpar_logradouro(rua)
         bairro_limpo = limpar_bairro(bairro, municipio)
+        numero_limpo = limpar_numero(numero)
+        municipio_limpo = str(municipio or "").strip()
         rua_norm = sem_acento(rua_limpa)
-        cod = self.cod_municipio(municipio)
+        cod = self.cod_municipio(municipio_limpo)
 
-        if not rua_limpa:
-            centroide = self.centroides_municipio.get(cod)
-            if centroide:
+        tem_rua = rua_limpa != ""
+        tem_numero = numero_limpo != ""
+        tem_bairro = bairro_limpo != ""
+        tem_municipio = municipio_limpo != ""
+
+        if tem_rua and tem_numero and tem_bairro and tem_municipio:
+            partes = [f"{rua_limpa}, {numero_limpo}", bairro_limpo, municipio_limpo, "Ceara", "Brasil"]
+            consulta = ", ".join([p for p in partes if p])
+
+            externo = None
+            if self.geocode_ext is not None:
+                loc = self.geocode_ext(consulta, out_fields="*")
+                if loc:
+                    addr_type = ((loc.raw or {}).get("attributes", {}) or {}).get("Addr_type", "")
+                    externo = (float(loc.latitude), float(loc.longitude), str(addr_type).lower())
+
+            ancora = (externo[0], externo[1]) if externo else None
+
+            if externo and externo[2] in ROOFTOP:
+                ok, distancia = self.validar(externo[0], externo[1], rua_norm, cod, ancora)
+                if ok:
+                    return (
+                        externo[0],
+                        externo[1],
+                        "Exato (Numero)",
+                        "ArcGIS+GPKG",
+                        True,
+                        distancia,
+                    )
+
+            geobase = self.casar_rua(rua_norm, cod, ancora)
+            if geobase:
                 return (
-                    centroide[0],
-                    centroide[1],
-                    "Centroide de Cidade",
-                    "Centroide Municipio",
-                    False,
-                    None,
+                    geobase[0],
+                    geobase[1],
+                    "Centroide de Rua",
+                    "GPKG (Faces de Quadra)",
+                    True,
+                    0.0,
                 )
-            return (None, None, "Nao Encontrado", "-", False, None)
 
-        partes = [f"{rua_limpa}, {numero}" if numero else rua_limpa]
-        if bairro_limpo:
-            partes.append(bairro_limpo)
-
-        partes += [str(municipio).strip(), "Ceara", "Brasil"]
-        consulta = ", ".join(p for p in partes if p)
-
-        externo = None
-        if self.geocode_ext is not None:
-            loc = self.geocode_ext(consulta, out_fields="*")
-            if loc:
-                addr_type = ((loc.raw or {}).get("attributes", {}) or {}).get("Addr_type", "")
-                externo = (float(loc.latitude), float(loc.longitude), str(addr_type).lower())
-
-        ancora = (externo[0], externo[1]) if externo else None
-
-        if externo and externo[2] in ROOFTOP and numero:
-            ok, distancia = self.validar(externo[0], externo[1], rua_norm, cod, ancora)
-            if ok:
+            if externo:
                 return (
                     externo[0],
                     externo[1],
-                    "Exato (Numero)",
-                    "ArcGIS+GPKG",
-                    True,
-                    distancia,
+                    "Centroide de Rua",
+                    "ArcGIS (nao confirmado)",
+                    False,
+                    None,
                 )
 
-        geobase = self.casar_rua(rua_norm, cod, ancora)
-        if geobase:
-            return (
-                geobase[0],
-                geobase[1],
-                "Centroide de Rua",
-                "GPKG (Faces de Quadra)",
-                True,
-                0.0,
-            )
+        if tem_rua:
+            partes = [rua_limpa]
+            if tem_bairro:
+                partes.append(bairro_limpo)
+            if tem_municipio:
+                partes.extend([municipio_limpo, "Ceara", "Brasil"])
+            consulta = ", ".join([p for p in partes if p])
 
-        if externo:
-            if externo[2] in ("streetname", "streetmidblock", "streetint") or numero:
-                nivel = "Centroide de Rua"
-            elif externo[2] in ("locality", "neighborhood", "district"):
-                nivel = "Centroide de Bairro"
-            else:
-                nivel = "Centroide de Cidade"
+            externo = None
+            if self.geocode_ext is not None:
+                loc = self.geocode_ext(consulta, out_fields="*")
+                if loc:
+                    addr_type = ((loc.raw or {}).get("attributes", {}) or {}).get("Addr_type", "")
+                    externo = (float(loc.latitude), float(loc.longitude), str(addr_type).lower())
 
-            return (
-                externo[0],
-                externo[1],
-                nivel,
-                "ArcGIS (nao confirmado)",
-                False,
-                None,
-            )
+            ancora = (externo[0], externo[1]) if externo else None
+            geobase = self.casar_rua(rua_norm, cod, ancora)
+            if geobase:
+                return (
+                    geobase[0],
+                    geobase[1],
+                    "Centroide de Rua",
+                    "GPKG (Faces de Quadra)",
+                    True,
+                    0.0,
+                )
+
+            if externo:
+                return (
+                    externo[0],
+                    externo[1],
+                    "Centroide de Rua",
+                    "ArcGIS (nao confirmado)",
+                    False,
+                    None,
+                )
+
+        if tem_bairro and tem_municipio:
+            consulta = ", ".join([bairro_limpo, municipio_limpo, "Ceara", "Brasil"])
+            if self.geocode_ext is not None:
+                loc = self.geocode_ext(consulta, out_fields="*")
+                if loc:
+                    return (
+                        float(loc.latitude),
+                        float(loc.longitude),
+                        "Centroide de Bairro",
+                        "ArcGIS Bairro",
+                        False,
+                        None,
+                    )
 
         centroide = self.centroides_municipio.get(cod)
         if centroide:
@@ -485,6 +520,18 @@ class MotorGeocodificacaoSoberana:
                 False,
                 None,
             )
+
+        if tem_municipio and self.geocode_ext is not None:
+            loc = self.geocode_ext(f"{municipio_limpo}, Ceara, Brasil", out_fields="*")
+            if loc:
+                return (
+                    float(loc.latitude),
+                    float(loc.longitude),
+                    "Centroide de Cidade",
+                    "ArcGIS Cidade",
+                    False,
+                    None,
+                )
 
         return (None, None, "Nao Encontrado", "-", False, None)
 
@@ -527,11 +574,9 @@ def geocodificar_linhas_novas(
     status = st.empty()
 
     for indice, (_, linha) in enumerate(df.iterrows(), start=1):
-        numero = limpar_numero(linha.get("numero_busca", ""))
-
         resultado = motor.geocodificar(
             linha.get("logradouro_busca", ""),
-            numero,
+            linha.get("numero_busca", ""),
             linha.get("bairro_busca", ""),
             linha.get("municipio_busca", ""),
         )
@@ -784,6 +829,10 @@ def render():
         "Envie a base historica e o complemento SIP para atualizar a base com geocodificacao."
     )
 
+    st.caption(
+        "Coloque o arquivo Faces_de_Quadra_-_Ceara_ARRUAMENTO.gpkg na raiz do projeto para melhorar a acuracia da geocodificacao."
+    )
+
     arquivo_01 = st.file_uploader(
         "Arquivo 01 - Base historica CVP",
         type=["xlsx", "xls"],
@@ -799,7 +848,6 @@ def render():
     if arquivo_01 is not None:
         arquivo_01.seek(0)
         st.session_state.cvp_sip_arquivo_01_bytes = arquivo_01.read()
-
         st.session_state.cvp_sip_arquivo_01_nome = arquivo_01.name
 
     if arquivo_02 is not None:
