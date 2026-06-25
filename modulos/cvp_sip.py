@@ -615,6 +615,15 @@ def processar_cvp_sip(arquivo_01, arquivo_02):
         obrigatoria=True,
     )
 
+    col_territorio_novo = encontrar_coluna_por_nomes(
+        df_novo,
+        ["regiões", "regioes"],
+        obrigatoria=False,
+    )
+
+    if col_territorio_novo and col_territorio_novo != "territorio":
+        df_novo = df_novo.rename(columns={col_territorio_novo: "territorio"})
+
     df_novo = renomear_colunas_equivalentes(df_base, df_novo)
 
     df_base = criar_coluna_datahora(df_base, col_data_base, col_hora_base, "__datahora__")
@@ -664,6 +673,7 @@ def processar_cvp_sip(arquivo_01, arquivo_02):
         )
 
     geocodificados = 0
+    removidos_sem_geocodificacao = 0
 
     if not df_novo_util.empty:
         df_novo_util = preparar_campos_geocodificacao(
@@ -679,6 +689,10 @@ def processar_cvp_sip(arquivo_01, arquivo_02):
             col_lat_base,
             col_lon_base,
         )
+
+        antes_exclusao_sem_geo = len(df_novo_util)
+        df_novo_util = df_novo_util.dropna(subset=[col_lat_base, col_lon_base]).copy()
+        removidos_sem_geocodificacao = antes_exclusao_sem_geo - len(df_novo_util)
 
         df_novo_util = df_novo_util.drop(
             columns=[
@@ -706,6 +720,17 @@ def processar_cvp_sip(arquivo_01, arquivo_02):
     ).reset_index(drop=True)
     df_final = df_final.drop(columns=["__datahora__"], errors="ignore")
 
+    df_final = df_final.drop(
+        columns=[
+            "Fonte",
+            "_confirmado_base",
+            "_dist_validacao_m",
+            "Ocorrencias_Mesmo_Ponto",
+            "_loc_aproximada",
+        ],
+        errors="ignore",
+    )
+
     total_final = len(df_final)
 
     ultima_ref = (
@@ -719,6 +744,7 @@ def processar_cvp_sip(arquivo_01, arquivo_02):
         "total_final": total_final,
         "geocodificados": geocodificados,
         "removidos_por_datahora": removidos_por_datahora,
+        "removidos_sem_geocodificacao": removidos_sem_geocodificacao,
         "ultima_datahora_base": ultima_ref,
         "situacao": situacao,
         "aba_arquivo_01": aba_base,
@@ -803,8 +829,10 @@ def render():
 
             st.info(
                 f"Ultima Data/Hora da base: {resumo['ultima_datahora_base']} | "
-                f"Removidos por filtro temporal: {resumo['removidos_por_datahora']}"
+                f"Removidos por filtro temporal: {resumo['removidos_por_datahora']} | "
+                f"Removidos sem geocodificacao: {resumo['removidos_sem_geocodificacao']}"
             )
+
             st.caption(resumo["situacao"])
             st.dataframe(df_final.head(50), use_container_width=True)
 
