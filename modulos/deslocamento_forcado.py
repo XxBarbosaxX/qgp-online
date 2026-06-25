@@ -15,7 +15,6 @@ from modulos.utils import nome_arquivo_padrao
 
 NOME_ARQUIVO_FINAL = nome_arquivo_padrao(5, "DESLOCAMENTO-FORCADO")
 
-
 EPSG_UTM_SIRGAS_24S = 31984
 EPSG_WGS84 = 4326
 
@@ -130,7 +129,7 @@ def encontrar_coluna_por_nomes(
 def renomear_colunas_equivalentes(df_base: pd.DataFrame, df_novo: pd.DataFrame) -> pd.DataFrame:
     """
     Alinha nomes de colunas entre base e complemento.
-    Inclui AIS, Territorio e mantem colunas como Nome/Subnome da Ocorrencia da base.
+    Inclui AIS, Territorio e possiveis variacoes de Nome/Subnome da Ocorrencia.
     """
     mapa_equivalencias = {
         "AIS": ["AISNova", "AIS Nova", "AIS_NOVA", "aisnova", "ais_nova"],
@@ -144,7 +143,6 @@ def renomear_colunas_equivalentes(df_base: pd.DataFrame, df_novo: pd.DataFrame) 
             "regiões",
             "regioes",
         ],
-        # se o complemento tiver variações de nome/subnome, adicione aqui:
         "Nome da Ocorrência": [
             "Nome Ocorrencia",
             "Nome Ocorrência",
@@ -307,9 +305,18 @@ def reprojetar_utm_para_wgs84(
     col_lat_destino: str,
     col_lon_destino: str,
 ) -> pd.DataFrame:
+    """
+    col_y = Latitude UTM (Y / Northing)
+    col_x = Longitude UTM (X / Easting)
+    Resultado gravado em col_lat_destino (Lat_WGS) e col_lon_destino (Long_WGS).
+    """
     df = df.copy()
 
-    transformer = Transformer.from_crs("EPSG:31984", "EPSG:4326", always_xy=True)
+    transformer = Transformer.from_crs(
+        f"EPSG:{EPSG_UTM_SIRGAS_24S}",
+        f"EPSG:{EPSG_WGS84}",
+        always_xy=True,
+    )
 
     lat_resultado = []
     lon_resultado = []
@@ -419,18 +426,28 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
     col_hora = col_hora_base
 
     status.info("Identificando colunas de coordenadas e equivalencias...")
-    col_lat_base = encontrar_coluna_por_nomes(df_base, ["lat", "latitude"], obrigatoria=True)
-    col_lon_base = encontrar_coluna_por_nomes(df_base, ["long", "longitude", "lon"], obrigatoria=True)
+    col_lat_base_utm = encontrar_coluna_por_nomes(
+        df_base, ["lat", "latitude"], obrigatoria=True
+    )
+    col_lon_base_utm = encontrar_coluna_por_nomes(
+        df_base, ["long", "longitude", "lon"], obrigatoria=True
+    )
 
-    col_lat_novo = encontrar_coluna_por_nomes(df_novo, ["latitude"], obrigatoria=True)
-    col_lon_novo = encontrar_coluna_por_nomes(df_novo, ["longitude"], obrigatoria=True)
+    col_lat_novo_utm = encontrar_coluna_por_nomes(
+        df_novo, ["latitude"], obrigatoria=True
+    )
+    col_lon_novo_utm = encontrar_coluna_por_nomes(
+        df_novo, ["longitude"], obrigatoria=True
+    )
 
     df_novo = renomear_colunas_equivalentes(df_base, df_novo)
     progresso.progress(40)
 
     status.info("Excluindo registros com coordenadas invalidas no Arquivo 02...")
     total_lido_arquivo_02 = len(df_novo)
-    df_novo, removidos_invalidos = excluir_coordenadas_invalidas(df_novo, col_lat_novo, col_lon_novo)
+    df_novo, removidos_invalidos = excluir_coordenadas_invalidas(
+        df_novo, col_lat_novo_utm, col_lon_novo_utm
+    )
 
     if df_novo.empty:
         raise ValueError(
@@ -456,6 +473,12 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
 
     base_sem_aux = df_base.drop(columns=["__datahora__"], errors="ignore").copy()
 
+    # Cria colunas WGS na base (se ainda nao existirem)
+    if "Lat_WGS" not in base_sem_aux.columns:
+        base_sem_aux["Lat_WGS"] = pd.NA
+    if "Long_WGS" not in base_sem_aux.columns:
+        base_sem_aux["Long_WGS"] = pd.NA
+
     if ultimo_datahora_base is None:
         df_novo_util = df_novo.copy()
         situacao = "Base anterior sem Data/Hora valida: Arquivo 02 foi incluido integralmente."
@@ -477,10 +500,10 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
         status.info("Reprojetando coordenadas UTM (SIRGAS2000 / 24S) para WGS84...")
         df_novo_util = reprojetar_utm_para_wgs84(
             df_novo_util,
-            col_y=col_lat_novo,
-            col_x=col_lon_novo,
-            col_lat_destino=col_lat_base,
-            col_lon_destino=col_lon_base,
+            col_y=col_lat_novo_utm,
+            col_x=col_lon_novo_utm,
+            col_lat_destino="Lat_WGS",
+            col_lon_destino="Long_WGS",
         )
         progresso.progress(80)
 
