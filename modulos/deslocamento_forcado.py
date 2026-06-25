@@ -157,18 +157,18 @@ def criar_coluna_datahora(df: pd.DataFrame, coluna_data: str, coluna_hora: str, 
     return df
 
 
-def excluir_coordenadas_invalidas(df: pd.DataFrame, col_easting: str, col_northing: str):
+def excluir_coordenadas_invalidas(df: pd.DataFrame, col_lat_utm: str, col_lon_utm: str):
     manter = []
 
-    for e_raw, n_raw in zip(df[col_easting], df[col_northing]):
-        e = valor_numerico_exato(e_raw)
-        n = valor_numerico_exato(n_raw)
+    for lat_raw, lon_raw in zip(df[col_lat_utm], df[col_lon_utm]):
+        lat = valor_numerico_exato(lat_raw)
+        lon = valor_numerico_exato(lon_raw)
 
         valido = (
-            e is not None
-            and n is not None
-            and e != 0
-            and n != 0
+            lat is not None
+            and lon is not None
+            and lat != 0
+            and lon != 0
         )
         manter.append(valido)
 
@@ -177,16 +177,7 @@ def excluir_coordenadas_invalidas(df: pd.DataFrame, col_easting: str, col_northi
     return df_filtrado, removidos
 
 
-def reprojetar_utm_para_wgs84(df: pd.DataFrame, col_easting: str, col_northing: str) -> pd.DataFrame:
-    """
-    No Arquivo 02:
-    - coluna 'Latitude'  = UTM Easting  (X / Oriental) <- nome enganoso
-    - coluna 'Longitude' = UTM Northing (Y / Norte)    <- nome enganoso
-
-    O Transformer com always_xy=True espera (X, Y) = (Easting, Northing).
-    Portanto: transformer.transform(easting, northing)
-    Retorna: (longitude_wgs, latitude_wgs)
-    """
+def reprojetar_utm_para_wgs84(df: pd.DataFrame, col_lat_utm: str, col_lon_utm: str) -> pd.DataFrame:
     df = df.copy()
 
     transformer = Transformer.from_crs(
@@ -195,23 +186,23 @@ def reprojetar_utm_para_wgs84(df: pd.DataFrame, col_easting: str, col_northing: 
         always_xy=True,
     )
 
-    latitudes_wgs = []
-    longitudes_wgs = []
+    latitudes = []
+    longitudes = []
 
-    for easting_raw, northing_raw in zip(df[col_easting], df[col_northing]):
-        easting = valor_numerico_exato(easting_raw)
-        northing = valor_numerico_exato(northing_raw)
+    for lat_utm_raw, lon_utm_raw in zip(df[col_lat_utm], df[col_lon_utm]):
+        y = valor_numerico_exato(lat_utm_raw)
+        x = valor_numerico_exato(lon_utm_raw)
 
-        if easting is None or northing is None:
-            latitudes_wgs.append(pd.NA)
-            longitudes_wgs.append(pd.NA)
+        if y is None or x is None:
+            latitudes.append(pd.NA)
+            longitudes.append(pd.NA)
         else:
-            lon_wgs, lat_wgs = transformer.transform(easting, northing)
-            latitudes_wgs.append(lat_wgs)
-            longitudes_wgs.append(lon_wgs)
+            lon_wgs, lat_wgs = transformer.transform(x, y)
+            latitudes.append(lat_wgs)
+            longitudes.append(lon_wgs)
 
-    df["Latitude"] = latitudes_wgs
-    df["Longitude"] = longitudes_wgs
+    df["Latitude"] = latitudes
+    df["Longitude"] = longitudes
     return df
 
 
@@ -229,21 +220,17 @@ def filtrar_apenas_registros_posteriores(df: pd.DataFrame, coluna_datahora: str,
 
 
 def montar_dataframe_no_esquema_da_base(df_base: pd.DataFrame, df_novo: pd.DataFrame) -> pd.DataFrame:
-    """
-    Monta o complemento usando EXATAMENTE o esquema do Arquivo 01.
-    Garante que Nome da Ocorrencia e Subnome da Ocorrencia apareçam no resultado.
-    """
     base_cols = list(df_base.columns)
     saida = pd.DataFrame(index=df_novo.index)
 
     mapa_preferencial = {
-        "Endereço": ["Endereço", "Endereco"],
+        "Endereço": ["Endereço"],
         "Latitude": ["Latitude"],
         "Longitude": ["Longitude"],
-        "Nome da Ocorrência": ["Nome da Ocorrência", "Nome da Ocorrencia", "Nome Ocorrencia"],
-        "Subnome da Ocorrência": ["Subnome da Ocorrência", "Subnome da Ocorrencia", "Subnome Ocorrencia"],
-        "Território": ["Território", "Territorio", "Regiões", "Regioes", "Região", "Regiao"],
-        "Município": ["Município", "Municipio"],
+        "Nome da Ocorrência": ["Nome da Ocorrência", "Nome Ocorrencia", "nome da ocorrencia"],
+        "Subnome da Ocorrência": ["Subnome da Ocorrência", "Subnome Ocorrencia", "subnome da ocorrencia"],
+        "Território": ["Território", "Regiões", "Regioes", "Região", "Regiao"],
+        "Município": ["Município"],
         "Bairro": ["Bairro"],
         "AIS": ["AIS", "AISNova", "AIS Nova", "AIS_NOVA"],
         "data": ["data", "Data"],
@@ -260,7 +247,7 @@ def montar_dataframe_no_esquema_da_base(df_base: pd.DataFrame, df_novo: pd.DataF
                 break
 
         if coluna_encontrada is not None:
-            saida[col_base] = df_novo[coluna_encontrada].values
+            saida[col_base] = df_novo[coluna_encontrada]
         else:
             saida[col_base] = pd.NA
 
@@ -279,7 +266,8 @@ def mostrar_amostra_segura(titulo: str, df: pd.DataFrame, colunas_desejadas: lis
         st.dataframe(df[cols].head(n))
     else:
         st.warning("Nenhuma das colunas solicitadas existe nesta etapa.")
-        st.write("Colunas disponiveis:", list(df.columns))
+        st.write("Colunas disponiveis:")
+        st.write(list(df.columns))
 
 
 def gerar_excel_em_memoria(df: pd.DataFrame) -> bytes:
@@ -314,14 +302,14 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
     df_novo = normalizar_colunas(df_novo)
 
     mostrar_amostra_segura(
-        "AUDITORIA — Arquivo 01 (base):",
+        "Pré-visualização Arquivo 01 (base):",
         df_base,
         ["Endereço", "Latitude", "Longitude", "Nome da Ocorrência", "Subnome da Ocorrência"],
         5,
     )
 
     mostrar_amostra_segura(
-        "AUDITORIA — Arquivo 02 (complemento, colunas brutas):",
+        "Pré-visualização Arquivo 02 (complemento):",
         df_novo,
         ["Endereço", "Latitude", "Longitude", "Nome da Ocorrência", "Subnome da Ocorrência", "Regiões", "AISNova"],
         5,
@@ -331,18 +319,231 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
     if "Latitude" not in df_novo.columns or "Longitude" not in df_novo.columns:
         raise ValueError("O Arquivo 02 nao possui as colunas Latitude e Longitude esperadas.")
 
-    # No Arquivo 02:
-    # 'Latitude'  = UTM Easting  (X / Oriental) — nome enganoso
-    # 'Longitude' = UTM Northing (Y / Norte)    — nome enganoso
-    df_novo = df_novo.rename(columns={
-        "Latitude": "UTM_Easting",
-        "Longitude": "UTM_Northing",
-    })
+    df_novo = df_novo.rename(columns={"Latitude": "Latitude_UTM", "Longitude": "Longitude_UTM"})
 
     mostrar_amostra_segura(
-        "AUDITORIA — Arquivo 02 após renomear coordenadas UTM:",
+        "Arquivo 02 após renomear Latitude/Longitude -> Latitude_UTM/Longitude_UTM:",
         df_novo,
-        ["UTM_Easting", "UTM_Northing", "Nome da Ocorrência", "Subnome da Ocorrência"],
+        ["Latitude_UTM", "Longitude_UTM", "Nome da Ocorrência", "Subnome da Ocorrência"],
         5,
     )
-    progresso.progress(40
+    progresso.progress(40)
+
+    col_data_base = encontrar_coluna_data(df_base)
+    col_hora_base = encontrar_coluna_hora(df_base)
+    col_data_novo = encontrar_coluna_data(df_novo)
+    col_hora_novo = encontrar_coluna_hora(df_novo)
+
+    if col_data_novo != col_data_base:
+        df_novo = df_novo.rename(columns={col_data_novo: col_data_base})
+    if col_hora_novo != col_hora_base:
+        df_novo = df_novo.rename(columns={col_hora_novo: col_hora_base})
+
+    col_data = col_data_base
+    col_hora = col_hora_base
+
+    status.info("Excluindo registros com coordenadas invalidas...")
+    total_lido_arquivo_02 = len(df_novo)
+    df_novo, removidos_invalidos = excluir_coordenadas_invalidas(df_novo, "Latitude_UTM", "Longitude_UTM")
+
+    mostrar_amostra_segura(
+        "Arquivo 02 após filtro de coordenadas inválidas:",
+        df_novo,
+        ["Latitude_UTM", "Longitude_UTM", "Nome da Ocorrência", "Subnome da Ocorrência"],
+        5,
+    )
+    progresso.progress(50)
+
+    status.info("Criando referencia temporal...")
+    df_base = criar_coluna_datahora(df_base, col_data, col_hora, "__datahora__")
+    df_novo = criar_coluna_datahora(df_novo, col_data, col_hora, "__datahora__")
+    ultimo_datahora_base = obter_ultimo_datahora(df_base, "__datahora__")
+    st.write("Última Data/Hora da base:", ultimo_datahora_base)
+    progresso.progress(60)
+
+    status.info("Filtrando apenas registros posteriores...")
+    total_antes_filtro = len(df_novo)
+    df_novo_filtrado = filtrar_apenas_registros_posteriores(df_novo, "__datahora__", ultimo_datahora_base)
+    removidos_por_datahora = total_antes_filtro - len(df_novo_filtrado)
+
+    mostrar_amostra_segura(
+        "Arquivo 02 após filtro por Data/Hora:",
+        df_novo_filtrado,
+        ["__datahora__", "Latitude_UTM", "Longitude_UTM", "Nome da Ocorrência", "Subnome da Ocorrência"],
+        5,
+    )
+    progresso.progress(70)
+
+    base_sem_aux = df_base.drop(columns=["__datahora__"], errors="ignore").copy()
+
+    if ultimo_datahora_base is None:
+        df_novo_util = df_novo.copy()
+        situacao = "Base sem Data/Hora valida; complemento incluido integralmente."
+    elif df_novo_filtrado.empty:
+        df_novo_util = df_novo_filtrado.copy()
+        situacao = "Nenhum registro novo posterior a base."
+    else:
+        df_novo_util = df_novo_filtrado.copy()
+        situacao = "Somente registros posteriores a ultima Data/Hora da base foram adicionados."
+
+    if not df_novo_util.empty:
+        status.info("Reprojetando coordenadas...")
+        df_novo_util = reprojetar_utm_para_wgs84(df_novo_util, "Latitude_UTM", "Longitude_UTM")
+
+        mostrar_amostra_segura(
+            "Complemento após reprojeção UTM -> WGS84:",
+            df_novo_util,
+            ["Latitude_UTM", "Longitude_UTM", "Latitude", "Longitude", "Nome da Ocorrência", "Subnome da Ocorrência"],
+            10,
+        )
+
+        status.info("Montando complemento no esquema exato da base...")
+        df_novo_saida = montar_dataframe_no_esquema_da_base(base_sem_aux, df_novo_util)
+
+        mostrar_amostra_segura(
+            "Complemento final no esquema da base:",
+            df_novo_saida,
+            ["Endereço", "Latitude", "Longitude", "Nome da Ocorrência", "Subnome da Ocorrência", "Território", "Município", "Bairro"],
+            10,
+        )
+
+        df_final = pd.concat([base_sem_aux, df_novo_saida], ignore_index=True)
+        adicionados = len(df_novo_saida)
+    else:
+        df_final = base_sem_aux.copy()
+        adicionados = 0
+
+    progresso.progress(85)
+
+    status.info("Ordenando resultado final...")
+    df_final = criar_coluna_datahora(df_final, col_data, col_hora, "__datahora__")
+    df_final = df_final.sort_values(by="__datahora__", ascending=True, na_position="last").reset_index(drop=True)
+    df_final = df_final.drop(columns=["__datahora__"], errors="ignore")
+    progresso.progress(100)
+
+    mostrar_amostra_segura(
+        "Resultado final (amostra):",
+        df_final,
+        ["Endereço", "Latitude", "Longitude", "Nome da Ocorrência", "Subnome da Ocorrência", "Território", "Município", "Bairro"],
+        20,
+    )
+
+    ultima_ref = (
+        ultimo_datahora_base.strftime("%d/%m/%Y %H:%M:%S")
+        if ultimo_datahora_base is not None
+        else "sem referencia anterior valida"
+    )
+
+    resumo = {
+        "adicionados": adicionados,
+        "total_final": len(df_final),
+        "removidos_coord_invalidas": removidos_invalidos,
+        "removidos_por_datahora": removidos_por_datahora,
+        "ultima_datahora_base": ultima_ref,
+        "situacao": situacao,
+        "aba_arquivo_01": aba_base,
+        "aba_arquivo_02": aba_novo,
+        "total_lido_arquivo_02": total_lido_arquivo_02,
+    }
+
+    status.success(f"Processo finalizado. {adicionados} registros novos adicionados.")
+    return df_final, resumo
+
+
+def _init_state():
+    defaults = {
+        "deslocamento_arquivo_01_bytes": None,
+        "deslocamento_arquivo_01_nome": None,
+        "deslocamento_arquivo_02_bytes": None,
+        "deslocamento_arquivo_02_nome": None,
+        "deslocamento_resultado_excel": None,
+        "deslocamento_resultado_df": None,
+        "deslocamento_resumo": None,
+    }
+    for chave, valor in defaults.items():
+        if chave not in st.session_state:
+            st.session_state[chave] = valor
+
+
+def render():
+    _init_state()
+
+    st.subheader("Deslocamento Forcado")
+    st.write("Envie a base historica e o arquivo complementar para atualizar a base com novos registros.")
+
+    arquivo_01 = st.file_uploader(
+        "Arquivo 01 - Base historica de Deslocamento Forcado",
+        type=["xlsx", "xls"],
+        key="deslocamento_upload_01",
+    )
+
+    arquivo_02 = st.file_uploader(
+        "Arquivo 02 - Complemento de Deslocamento Forcado",
+        type=["xlsx", "xls"],
+        key="deslocamento_upload_02",
+    )
+
+    if arquivo_01 is not None:
+        arquivo_01.seek(0)
+        st.session_state.deslocamento_arquivo_01_bytes = arquivo_01.read()
+        st.session_state.deslocamento_arquivo_01_nome = arquivo_01.name
+
+    if arquivo_02 is not None:
+        arquivo_02.seek(0)
+        st.session_state.deslocamento_arquivo_02_bytes = arquivo_02.read()
+        st.session_state.deslocamento_arquivo_02_nome = arquivo_02.name
+
+    pode_processar = (
+        st.session_state.deslocamento_arquivo_01_bytes is not None
+        and st.session_state.deslocamento_arquivo_02_bytes is not None
+    )
+
+    if st.button("Processar Deslocamento Forcado", type="primary", disabled=not pode_processar):
+        try:
+            arquivo_01_buffer = BytesIO(st.session_state.deslocamento_arquivo_01_bytes)
+            arquivo_02_buffer = BytesIO(st.session_state.deslocamento_arquivo_02_bytes)
+
+            df_final, resumo = processar_deslocamento_forcado(arquivo_01_buffer, arquivo_02_buffer)
+            arquivo_excel_bytes = gerar_excel_em_memoria(df_final)
+
+            st.session_state.deslocamento_resultado_df = df_final
+            st.session_state.deslocamento_resumo = resumo
+            st.session_state.deslocamento_resultado_excel = arquivo_excel_bytes
+
+        except Exception as exc:
+            st.exception(exc)
+
+    if (
+        st.session_state.deslocamento_resultado_df is not None
+        and st.session_state.deslocamento_resumo is not None
+    ):
+        resumo = st.session_state.deslocamento_resumo
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Novos registros adicionados", resumo.get("adicionados", 0))
+        c2.metric("Total final da base", resumo.get("total_final", 0))
+        c3.metric("Coordenadas invalidas removidas", resumo.get("removidos_coord_invalidas", 0))
+
+        st.info(
+            f"Aba Arquivo 01: {resumo.get('aba_arquivo_01', '-')} | "
+            f"Aba Arquivo 02: {resumo.get('aba_arquivo_02', '-')}"
+        )
+
+        st.info(
+            f"Ultima Data/Hora da base: {resumo.get('ultima_datahora_base', '-')} | "
+            f"Removidos por filtro temporal: {resumo.get('removidos_por_datahora', 0)}"
+        )
+
+        st.caption(resumo.get("situacao", "Processamento concluido."))
+
+        if st.session_state.deslocamento_resultado_excel is not None:
+            st.download_button(
+                label="Baixar arquivo final",
+                data=st.session_state.deslocamento_resultado_excel,
+                file_name=NOME_ARQUIVO_FINAL,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="deslocamento_download_final",
+            )
+
+
+interface_deslocamento_forcado = render
