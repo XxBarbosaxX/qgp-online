@@ -115,19 +115,11 @@ def _padronizar_colunas(df: pd.DataFrame) -> pd.DataFrame:
     if col_ne and col_ne != "NE":
         renomeacoes[col_ne] = "NE"
 
-    col_x = encontrar_coluna_por_nomes(
-        df,
-        ["longitude", "long", "lon"],
-        obrigatoria=False,
-    )
+    col_x = encontrar_coluna_por_nomes(df, ["longitude", "long", "lon"], obrigatoria=False)
     if col_x and col_x != "Longitude":
         renomeacoes[col_x] = "Longitude"
 
-    col_y = encontrar_coluna_por_nomes(
-        df,
-        ["latitude", "lat"],
-        obrigatoria=False,
-    )
+    col_y = encontrar_coluna_por_nomes(df, ["latitude", "lat"], obrigatoria=False)
     if col_y and col_y != "Latitude":
         renomeacoes[col_y] = "Latitude"
 
@@ -148,7 +140,6 @@ def _validar_e_converter_utm_para_wgs84(
     y = pd.to_numeric(df[col_y], errors="coerce")
 
     mascara_valida = x.notna() & y.notna() & (x != 0) & (y != 0)
-
     removidos_invalidos_entrada = len(df) - int(mascara_valida.sum())
 
     df = df.loc[mascara_valida].copy()
@@ -233,4 +224,285 @@ def processar_perturbacao_sossego(arquivo_01, arquivo_02):
     col_hora_base = encontrar_coluna_por_nomes(df_base, ["Hora"], obrigatoria=False) or encontrar_coluna_hora(df_base)
 
     col_data_novo = encontrar_coluna_por_nomes(df_novo, ["Data"], obrigatoria=False) or encontrar_coluna_data(df_novo)
-    
+    col_hora_novo = encontrar_coluna_por_nomes(df_novo, ["Hora"], obrigatoria=False) or encontrar_coluna_hora(df_novo)
+
+    if col_data_base is None:
+        raise ValueError("O Arquivo 01 precisa possuir uma coluna de Data valida.")
+
+    if col_data_novo is None:
+        raise ValueError("O Arquivo 02 precisa possuir uma coluna de Data valida.")
+
+    df_base = criar_coluna_datahora(df_base, col_data_base, col_hora_base, "__datahora__")
+    df_novo = criar_coluna_datahora(df_novo, col_data_novo, col_hora_novo, "__datahora__")
+    progresso.progress(40)
+
+    status.info("Verificando a ultima Data/Hora da base...")
+    ultima_datahora_base = obter_ultima_datahora(df_base, "__datahora__")
+
+    total_antes_filtro = len(df_novo)
+    df_novo_filtrado = filtrar_apenas_registros_posteriores(
+        df_novo,
+        "__datahora__",
+        ultima_datahora_base,
+    )
+    removidos_por_datahora = total_antes_filtro - len(df_novo_filtrado)
+    progresso.progress(50)
+
+    base_sem_aux = df_base.drop(columns=["__datahora__"], errors="ignore").copy()
+
+    if ultima_datahora_base is None:
+        df_novo_util = df_novo.copy()
+        situacao = "Base anterior sem Data/Hora valida: Arquivo 02 foi incluido integralmente."
+    elif df_novo_filtrado.empty:
+        df_novo_util = df_novo_filtrado.copy()
+        situacao = (
+            "Nenhum registro novo encontrado apos a ultima Data/Hora da base: "
+            "Arquivo 01 foi mantido sem acrescimos."
+        )
+    else:
+        df_novo_util = df_novo_filtrado.copy()
+        situacao = (
+            "Base anterior localizada: somente registros posteriores a ultima "
+            "Data/Hora foram adicionados."
+        )
+
+    if df_novo_util.empty:
+        progresso.progress(100)
+        status.success("Nenhum novo registro foi encontrado para processamento.")
+
+        df_final = base_sem_aux.copy()
+        df_final = criar_coluna_datahora(df_final, col_data_base, col_hora_base, "__datahora__")
+        df_final = df_final.sort_values(
+            by="__datahora__",
+            ascending=True,
+            na_position="last",
+        ).reset_index(drop=True)
+        df_final = df_final.drop(columns=["__datahora__"], errors="ignore")
+
+        ultima_ref = (
+            ultima_datahora_base.strftime("%d/%m/%Y %H:%M:%S")
+            if ultima_datahora_base is not None
+            else "sem referencia anterior valida"
+        )
+
+        resumo = {
+            "adicionados": 0,
+            "total_final": len(df_final),
+            "removidos_por_datahora": removidos_por_datahora,
+            "removidos_coord_invalidas": removidos_coord_invalidas,
+            "ultima_datahora_base": ultima_ref,
+            "situacao": situacao,
+            "aba_arquivo_01": aba_base,
+            "aba_arquivo_02": aba_novo,
+        }
+        return df_final, resumo
+
+    status.info("Removendo coordenadas invalidas e convertendo UTM (SIRGAS2000) para WGS84...")
+    col_x_novo = encontrar_coluna_por_nomes(df_novo_util, ["Longitude"], obrigatoria=False) or encontrar_coluna_por_nomes(
+        df_novo_util, ["Long", "lon"], obrigatoria=False
+    )
+    col_y_novo = encontrar_coluna_por_nomes(df_novo_util, ["Latitude"], obrigatoria=False) or encontrar_coluna_por_nomes(
+        df_novo_util, ["Lat"], obrigatoria=False
+    )
+
+    if col_x_novo is None or col_y_novo is None:
+        raise ValueError(
+            "O Arquivo 02 precisa conter colunas de coordenadas UTM, como Longitude/Latitude."
+        )
+
+    df_novo_util, removidos_coord_invalidas = _validar_e_converter_utm_para_wgs84(
+        df_novo_util,
+        col_x_novo,
+        col_y_novo,
+    )
+    progresso.progress(75)
+
+    if df_novo_util.empty:
+        progresso.progress(100)
+        status.warning("Todos os novos registros foram descartados por coordenadas invalidas.")
+
+        df_final = base_sem_aux.copy()
+        df_final = criar_coluna_datahora(df_final, col_data_base, col_hora_base, "__datahora__")
+        df_final = df_final.sort_values(
+            by="__datahora__",
+            ascending=True,
+            na_position="last",
+        ).reset_index(drop=True)
+        df_final = df_final.drop(columns=["__datahora__"], errors="ignore")
+
+        ultima_ref = (
+            ultima_datahora_base.strftime("%d/%m/%Y %H:%M:%S")
+            if ultima_datahora_base is not None
+            else "sem referencia anterior valida"
+        )
+
+        resumo = {
+            "adicionados": 0,
+            "total_final": len(df_final),
+            "removidos_por_datahora": removidos_por_datahora,
+            "removidos_coord_invalidas": removidos_coord_invalidas,
+            "ultima_datahora_base": ultima_ref,
+            "situacao": "Todos os novos registros foram descartados por coordenadas invalidas.",
+            "aba_arquivo_01": aba_base,
+            "aba_arquivo_02": aba_novo,
+        }
+        return df_final, resumo
+
+    status.info("Alinhando colunas e preparando inclusao dos novos registros...")
+    df_novo_util = df_novo_util.drop(columns=["__datahora__"], errors="ignore")
+    df_novo_util = _alinhar_com_base(base_sem_aux, df_novo_util)
+    progresso.progress(90)
+
+    status.info("Gerando arquivo final...")
+    df_final = pd.concat([base_sem_aux, df_novo_util], ignore_index=True)
+    df_final = criar_coluna_datahora(df_final, col_data_base, col_hora_base, "__datahora__")
+    df_final = df_final.sort_values(
+        by="__datahora__",
+        ascending=True,
+        na_position="last",
+    ).reset_index(drop=True)
+    df_final = df_final.drop(columns=["__datahora__"], errors="ignore")
+    progresso.progress(100)
+
+    adicionados = len(df_novo_util)
+
+    status.success(f"Processamento concluido. Novos registros adicionados: {adicionados}")
+
+    ultima_ref = (
+        ultima_datahora_base.strftime("%d/%m/%Y %H:%M:%S")
+        if ultima_datahora_base is not None
+        else "sem referencia anterior valida"
+    )
+
+    resumo = {
+        "adicionados": adicionados,
+        "total_final": len(df_final),
+        "removidos_por_datahora": removidos_por_datahora,
+        "removidos_coord_invalidas": removidos_coord_invalidas,
+        "ultima_datahora_base": ultima_ref,
+        "situacao": situacao,
+        "aba_arquivo_01": aba_base,
+        "aba_arquivo_02": aba_novo,
+    }
+
+    return df_final, resumo
+
+
+def _init_state():
+    defaults = {
+        "perturbacao_arquivo_01_bytes": None,
+        "perturbacao_arquivo_01_nome": None,
+        "perturbacao_arquivo_02_bytes": None,
+        "perturbacao_arquivo_02_nome": None,
+        "perturbacao_resultado_excel": None,
+        "perturbacao_resultado_df": None,
+        "perturbacao_resumo": None,
+    }
+    for chave, valor in defaults.items():
+        if chave not in st.session_state:
+            st.session_state[chave] = valor
+
+
+def render():
+    _init_state()
+
+    st.subheader("Perturbacao ao Sossego Alheio")
+    st.write(
+        "Envie a base historica e o arquivo complementar para atualizar a base com os novos registros."
+    )
+
+    st.caption(
+        "O sistema verifica a ultima Data/Hora da base historica, identifica apenas ocorrencias posteriores no arquivo complementar, elimina coordenadas invalidas, converte UTM (SIRGAS2000 / 24S) para WGS84 e inclui somente os novos registros validos no arquivo final."
+    )
+
+    arquivo_01 = st.file_uploader(
+        "Arquivo 01 - Base historica de Perturbacao ao Sossego Alheio",
+        type=["xlsx", "xls"],
+        key="perturbacao_upload_01",
+    )
+
+    arquivo_02 = st.file_uploader(
+        "Arquivo 02 - Complemento de Perturbacao ao Sossego Alheio",
+        type=["xlsx", "xls"],
+        key="perturbacao_upload_02",
+    )
+
+    if arquivo_01 is not None:
+        arquivo_01.seek(0)
+        st.session_state.perturbacao_arquivo_01_bytes = arquivo_01.read()
+        st.session_state.perturbacao_arquivo_01_nome = arquivo_01.name
+
+    if arquivo_02 is not None:
+        arquivo_02.seek(0)
+        st.session_state.perturbacao_arquivo_02_bytes = arquivo_02.read()
+        st.session_state.perturbacao_arquivo_02_nome = arquivo_02.name
+
+    if st.session_state.perturbacao_arquivo_01_nome:
+        st.info(f"Arquivo 01 carregado: {st.session_state.perturbacao_arquivo_01_nome}")
+
+    if st.session_state.perturbacao_arquivo_02_nome:
+        st.info(f"Arquivo 02 carregado: {st.session_state.perturbacao_arquivo_02_nome}")
+
+    pode_processar = (
+        st.session_state.perturbacao_arquivo_01_bytes is not None
+        and st.session_state.perturbacao_arquivo_02_bytes is not None
+    )
+
+    if st.button(
+        "Processar Perturbacao ao Sossego Alheio",
+        type="primary",
+        disabled=not pode_processar,
+    ):
+        try:
+            arquivo_01_buffer = BytesIO(st.session_state.perturbacao_arquivo_01_bytes)
+            arquivo_02_buffer = BytesIO(st.session_state.perturbacao_arquivo_02_bytes)
+
+            df_final, resumo = processar_perturbacao_sossego(
+                arquivo_01_buffer,
+                arquivo_02_buffer,
+            )
+            arquivo_excel_bytes = gerar_excel_em_memoria(df_final)
+
+            st.session_state.perturbacao_resultado_df = df_final
+            st.session_state.perturbacao_resumo = resumo
+            st.session_state.perturbacao_resultado_excel = arquivo_excel_bytes
+
+        except Exception as exc:
+            st.exception(exc)
+
+    if (
+        st.session_state.perturbacao_resultado_df is not None
+        and st.session_state.perturbacao_resumo is not None
+    ):
+        df_final = st.session_state.perturbacao_resultado_df
+        resumo = st.session_state.perturbacao_resumo
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Novos registros adicionados", resumo.get("adicionados", 0))
+        c2.metric("Total final da base", resumo.get("total_final", 0))
+        c3.metric("Coordenadas invalidas removidas", resumo.get("removidos_coord_invalidas", 0))
+
+        st.info(
+            f"Aba usada no Arquivo 01: {resumo.get('aba_arquivo_01', '-')} | "
+            f"Aba usada no Arquivo 02: {resumo.get('aba_arquivo_02', '-')}"
+        )
+
+        st.info(
+            f"Ultima Data/Hora da base: {resumo.get('ultima_datahora_base', '-')} | "
+            f"Removidos por filtro temporal: {resumo.get('removidos_por_datahora', 0)}"
+        )
+
+        st.caption(resumo.get("situacao", "Processamento concluido."))
+        st.dataframe(df_final.head(50), use_container_width=True)
+
+        if st.session_state.perturbacao_resultado_excel is not None:
+            st.download_button(
+                label="Baixar arquivo final",
+                data=st.session_state.perturbacao_resultado_excel,
+                file_name=NOME_ARQUIVO_FINAL,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="perturbacao_download_final",
+            )
+
+
+interface_perturbacao_sossego = render
