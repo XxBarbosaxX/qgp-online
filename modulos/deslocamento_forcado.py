@@ -1,6 +1,7 @@
 """
 Modulo Deslocamento Forcado
-Versao Streamlit adaptada para o QGP Online no padrao de Perturbacao ao Sossego Alheio.
+Versao Streamlit adaptada para o QGP Online.
+Padrao baseado em Perturbacao ao Sossego Alheio.
 """
 
 from __future__ import annotations
@@ -31,12 +32,7 @@ def _normalizar_nome_aba(nome: str) -> str:
 
 
 def _selecionar_aba_arquivo_01(sheet_names: list[str]) -> str:
-    prioridades = [
-        "DESLOCAMENTOFORCADO",
-        "DESLOCAMENTO",
-        "FORCADO",
-        "BASE",
-    ]
+    prioridades = ["DESLOCAMENTOFORCADO", "DESLOCAMENTO", "FORCADO", "BASE"]
     normalizadas = {aba: _normalizar_nome_aba(aba) for aba in sheet_names}
 
     for prioridade in prioridades:
@@ -52,12 +48,7 @@ def _selecionar_aba_arquivo_01(sheet_names: list[str]) -> str:
 
 
 def _selecionar_aba_arquivo_02(sheet_names: list[str]) -> str:
-    prioridades = [
-        "DESLOCAMENTOFORCADO",
-        "DESLOCAMENTO",
-        "FORCADO",
-        "COMPLEMENTO",
-    ]
+    prioridades = ["DESLOCAMENTOFORCADO", "DESLOCAMENTO", "FORCADO", "COMPLEMENTO"]
     normalizadas = {aba: _normalizar_nome_aba(aba) for aba in sheet_names}
 
     for prioridade in prioridades:
@@ -82,11 +73,9 @@ def encontrar_coluna_data(df: pd.DataFrame) -> str:
     exatos = [c for c in df.columns if str(c).strip().lower() == "data"]
     if exatos:
         return exatos[0]
-
     aproximados = [c for c in df.columns if "data" in str(c).strip().lower()]
     if aproximados:
         return aproximados[0]
-
     raise ValueError("Nao foi encontrada a coluna 'Data'.")
 
 
@@ -94,11 +83,9 @@ def encontrar_coluna_hora(df: pd.DataFrame) -> str:
     exatos = [c for c in df.columns if str(c).strip().lower() == "hora"]
     if exatos:
         return exatos[0]
-
     aproximados = [c for c in df.columns if "hora" in str(c).strip().lower()]
     if aproximados:
         return aproximados[0]
-
     raise ValueError("Nao foi encontrada a coluna 'Hora'.")
 
 
@@ -127,12 +114,6 @@ def encontrar_coluna_por_nomes(
 
 
 def renomear_colunas_equivalentes(df_base: pd.DataFrame, df_novo: pd.DataFrame) -> pd.DataFrame:
-    """
-    Ajusta os nomes do complemento para casar com a base.
-    Com base nos arquivos enviados:
-    - Arquivo 01: Território, AIS
-    - Arquivo 02: Regiões, AISNova
-    """
     mapa_equivalencias = {
         "AIS": ["AISNova", "AIS Nova", "AIS_NOVA", "aisnova", "ais_nova"],
         "Território": [
@@ -267,9 +248,7 @@ def criar_coluna_datahora(
         if d is None or h is None:
             combinado.append(pd.NaT)
         else:
-            combinado.append(
-                pd.to_datetime(f"{d} {h}", errors="coerce", dayfirst=True)
-            )
+            combinado.append(pd.to_datetime(f"{d} {h}", errors="coerce", dayfirst=True))
 
     df[nome_coluna] = combinado
     return df
@@ -303,14 +282,6 @@ def reprojetar_utm_para_wgs84(
     col_lat_utm: str,
     col_lon_utm: str,
 ) -> pd.DataFrame:
-    """
-    Arquivo 02 vem com:
-    - Latitude = Northing (Y)
-    - Longitude = Easting (X)
-    O resultado final deve ficar em:
-    - Latitude = graus WGS84
-    - Longitude = graus WGS84
-    """
     df = df.copy()
 
     transformer = Transformer.from_crs(
@@ -323,8 +294,8 @@ def reprojetar_utm_para_wgs84(
     lon_resultado = []
 
     for lat_utm_raw, lon_utm_raw in zip(df[col_lat_utm], df[col_lon_utm]):
-        y = valor_numerico_exato(lat_utm_raw)   # Latitude no arquivo = Y
-        x = valor_numerico_exato(lon_utm_raw)   # Longitude no arquivo = X
+        y = valor_numerico_exato(lat_utm_raw)
+        x = valor_numerico_exato(lon_utm_raw)
 
         if y is None or x is None:
             lat_resultado.append(pd.NA)
@@ -343,19 +314,13 @@ def alinhar_colunas_arquivo_02_com_base(
     df_base: pd.DataFrame,
     df_novo: pd.DataFrame,
 ) -> pd.DataFrame:
-    """
-    Garante que o complemento tenha exatamente as colunas da base.
-    Isso preserva Nome da Ocorrência e Subnome da Ocorrência no resultado final.
-    """
     colunas_base = list(df_base.columns)
-
-    df_novo = renomear_colunas_equivalentes(df_base, df_novo)
 
     for col in colunas_base:
         if col not in df_novo.columns:
             df_novo[col] = pd.NA
 
-    return df_novo[colunas_base]
+    return df_novo[colunas_base].copy()
 
 
 def obter_ultimo_datahora(df: pd.DataFrame, coluna_datahora: str):
@@ -414,6 +379,14 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
 
     status.info("Ajustando equivalencias de colunas...")
     df_novo = renomear_colunas_equivalentes(df_base, df_novo)
+
+    # Renomeia UTM do complemento para evitar colisao com Latitude/Longitude WGS
+    col_lat_novo = encontrar_coluna_por_nomes(df_novo, ["latitude"], obrigatoria=True)
+    col_lon_novo = encontrar_coluna_por_nomes(df_novo, ["longitude"], obrigatoria=True)
+    df_novo = df_novo.rename(columns={
+        col_lat_novo: "Latitude_UTM",
+        col_lon_novo: "Longitude_UTM",
+    })
     progresso.progress(40)
 
     status.info("Identificando colunas de Data e Hora...")
@@ -429,22 +402,16 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
 
     col_data = col_data_base
     col_hora = col_hora_base
-
-    status.info("Identificando colunas UTM do Arquivo 02...")
-    col_lat_novo_utm = encontrar_coluna_por_nomes(df_novo, ["latitude"], obrigatoria=True)
-    col_lon_novo_utm = encontrar_coluna_por_nomes(df_novo, ["longitude"], obrigatoria=True)
     progresso.progress(50)
 
     status.info("Excluindo registros com coordenadas invalidas no Arquivo 02...")
     total_lido_arquivo_02 = len(df_novo)
     df_novo, removidos_invalidos = excluir_coordenadas_invalidas(
-        df_novo, col_lat_novo_utm, col_lon_novo_utm
+        df_novo, "Latitude_UTM", "Longitude_UTM"
     )
 
     if df_novo.empty:
-        raise ValueError(
-            "Apos excluir coordenadas invalidas, o Arquivo 02 ficou sem registros validos."
-        )
+        raise ValueError("Apos excluir coordenadas invalidas, o Arquivo 02 ficou sem registros validos.")
     progresso.progress(60)
 
     status.info("Montando coluna Data/Hora e verificando a ultima referencia da base...")
@@ -457,9 +424,7 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
     status.info("Filtrando apenas registros posteriores a ultima Data/Hora da base...")
     total_antes_filtro_tempo = len(df_novo)
     df_novo_filtrado = filtrar_apenas_registros_posteriores(
-        df_novo,
-        "__datahora__",
-        ultimo_datahora_base,
+        df_novo, "__datahora__", ultimo_datahora_base
     )
     removidos_por_datahora = total_antes_filtro_tempo - len(df_novo_filtrado)
 
@@ -470,24 +435,18 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
         situacao = "Base anterior sem Data/Hora valida: Arquivo 02 foi incluido integralmente."
     elif df_novo_filtrado.empty:
         df_novo_util = df_novo_filtrado.copy()
-        situacao = (
-            "Nenhum registro novo encontrado apos a ultima Data/Hora da base: "
-            "Arquivo 01 foi mantido sem acrescimos."
-        )
+        situacao = "Nenhum registro novo encontrado apos a ultima Data/Hora da base: Arquivo 01 foi mantido sem acrescimos."
     else:
         df_novo_util = df_novo_filtrado.copy()
-        situacao = (
-            "Base anterior localizada: somente registros posteriores a ultima "
-            "Data/Hora foram adicionados."
-        )
+        situacao = "Base anterior localizada: somente registros posteriores a ultima Data/Hora foram adicionados."
     progresso.progress(80)
 
     if not df_novo_util.empty:
         status.info("Reprojetando coordenadas UTM (SIRGAS2000 / 24S) para WGS84...")
         df_novo_util = reprojetar_utm_para_wgs84(
             df_novo_util,
-            col_lat_utm=col_lat_novo_utm,
-            col_lon_utm=col_lon_novo_utm,
+            col_lat_utm="Latitude_UTM",
+            col_lon_utm="Longitude_UTM",
         )
 
         status.info("Alinhando colunas e gerando base final...")
@@ -501,11 +460,7 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
 
     status.info("Ordenando arquivo final...")
     df_final = criar_coluna_datahora(df_final, col_data, col_hora, "__datahora__")
-    df_final = df_final.sort_values(
-        by="__datahora__",
-        ascending=True,
-        na_position="last",
-    ).reset_index(drop=True)
+    df_final = df_final.sort_values(by="__datahora__", ascending=True, na_position="last").reset_index(drop=True)
     df_final = df_final.drop(columns=["__datahora__"], errors="ignore")
     progresso.progress(100)
 
@@ -527,10 +482,7 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
         "total_lido_arquivo_02": total_lido_arquivo_02,
     }
 
-    status.success(
-        f"Processo finalizado. {adicionados} registros novos adicionados ao arquivo final."
-    )
-
+    status.success(f"Processo finalizado. {adicionados} registros novos adicionados ao arquivo final.")
     return df_final, resumo
 
 
@@ -595,19 +547,12 @@ def render():
         and st.session_state.deslocamento_arquivo_02_bytes is not None
     )
 
-    if st.button(
-        "Processar Deslocamento Forcado",
-        type="primary",
-        disabled=not pode_processar,
-    ):
+    if st.button("Processar Deslocamento Forcado", type="primary", disabled=not pode_processar):
         try:
             arquivo_01_buffer = BytesIO(st.session_state.deslocamento_arquivo_01_bytes)
             arquivo_02_buffer = BytesIO(st.session_state.deslocamento_arquivo_02_bytes)
 
-            df_final, resumo = processar_deslocamento_forcado(
-                arquivo_01_buffer,
-                arquivo_02_buffer,
-            )
+            df_final, resumo = processar_deslocamento_forcado(arquivo_01_buffer, arquivo_02_buffer)
             arquivo_excel_bytes = gerar_excel_em_memoria(df_final)
 
             st.session_state.deslocamento_resultado_df = df_final
@@ -627,10 +572,7 @@ def render():
         c1, c2, c3 = st.columns(3)
         c1.metric("Novos registros adicionados", resumo.get("adicionados", 0))
         c2.metric("Total final da base", resumo.get("total_final", 0))
-        c3.metric(
-            "Coordenadas invalidas removidas",
-            resumo.get("removidos_coord_invalidas", 0),
-        )
+        c3.metric("Coordenadas invalidas removidas", resumo.get("removidos_coord_invalidas", 0))
 
         st.info(
             f"Aba usada no Arquivo 01: {resumo.get('aba_arquivo_01', '-')} | "
