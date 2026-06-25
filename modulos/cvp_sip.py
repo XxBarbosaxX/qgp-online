@@ -209,8 +209,14 @@ def carregar_base_geografica() -> Optional[pd.DataFrame]:
         )
 
     base = base.copy()
-
-    base["cod_mun"] = base["CD_MUN"].astype(str).str[:7]
+    base["cod_mun"] = (
+        base["CD_MUN"]
+        .fillna(base["CD_SETOR"])
+        .astype(str)
+        .str.extract(r"(\d+)", expand=False)
+        .fillna("")
+        .str[:7]
+    )
     base["nome_orig"] = base.apply(
         lambda linha: _montar_nome_logradouro(linha.get("NM_TIP_LOG"), linha.get("NM_LOG")),
         axis=1,
@@ -224,7 +230,9 @@ def carregar_base_geografica() -> Optional[pd.DataFrame]:
     base = base[base["nome_orig"].astype(str).str.strip() != ""].copy()
     base = base[base["cod_mun"].astype(str).str.strip() != ""].copy()
 
-    base = base.drop_duplicates(subset=["cod_mun", "nome_norm", "lat", "lon"]).reset_index(drop=True)
+    base = base.drop_duplicates(
+        subset=["cod_mun", "nome_norm", "lat", "lon"]
+    ).reset_index(drop=True)
 
     return base[["cod_mun", "nome_norm", "nome_orig", "lat", "lon", "tot_geral"]]
 
@@ -402,7 +410,13 @@ class MotorGeocodificacaoSoberana:
         tem_municipio = municipio_limpo != ""
 
         if tem_rua and tem_numero and tem_bairro and tem_municipio:
-            partes = [f"{rua_limpa}, {numero_limpo}", bairro_limpo, municipio_limpo, "Ceara", "Brasil"]
+            partes = [
+                f"{rua_limpa}, {numero_limpo}",
+                bairro_limpo,
+                municipio_limpo,
+                "Ceara",
+                "Brasil",
+            ]
             consulta = ", ".join([p for p in partes if p])
 
             externo = None
@@ -414,7 +428,7 @@ class MotorGeocodificacaoSoberana:
 
             ancora = (externo[0], externo[1]) if externo else None
 
-            if externo and externo[2] in ROOFTOP:
+            if externo:
                 ok, distancia = self.validar(externo[0], externo[1], rua_norm, cod, ancora)
                 if ok:
                     return (
@@ -423,6 +437,16 @@ class MotorGeocodificacaoSoberana:
                         "Exato (Numero)",
                         "ArcGIS+Parquet",
                         True,
+                        distancia,
+                    )
+
+                if externo[2] in ROOFTOP:
+                    return (
+                        externo[0],
+                        externo[1],
+                        "Exato (Numero)",
+                        "ArcGIS Rooftop",
+                        False,
                         distancia,
                     )
 
@@ -825,7 +849,7 @@ def render():
         "Envie a base historica e o complemento SIP para atualizar a base com geocodificacao."
     )
 
-    st.caption(f"Base geográfica esperada na raiz do projeto: {CAMINHO_BASE_ENXUTA}")
+    st.caption(f"Base geográfica utilizada na raiz do projeto: {CAMINHO_BASE_ENXUTA}")
 
     try:
         base_geo = carregar_base_geografica()
