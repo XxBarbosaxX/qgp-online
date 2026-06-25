@@ -95,6 +95,49 @@ def sem_acento(texto: str) -> str:
     return "".join(c for c in normalizado if not unicodedata.combining(c)).upper().strip()
 
 
+def _normalizar_nome_aba(nome: str) -> str:
+    return sem_acento(nome).replace(" ", "").replace("_", "").replace("-", "")
+
+
+def _selecionar_aba_arquivo_02(sheet_names: list[str]) -> str:
+    alvo = "CVPSIP"
+    for aba in sheet_names:
+        if _normalizar_nome_aba(aba) == alvo:
+            return aba
+
+    for aba in sheet_names:
+        nome = _normalizar_nome_aba(aba)
+        if "CVP" in nome and "SIP" in nome:
+            return aba
+
+    raise ValueError(
+        f"Aba 'CVPSIP' nao encontrada no Arquivo 02. Abas disponiveis: {sheet_names}"
+    )
+
+
+def _selecionar_aba_arquivo_01(sheet_names: list[str]) -> str:
+    prioridades = [
+        "CVPSIP",
+        "CVP",
+        "BASECVP",
+        "BASEHISTORICACVP",
+        "BASE",
+    ]
+
+    normalizadas = {aba: _normalizar_nome_aba(aba) for aba in sheet_names}
+
+    for prioridade in prioridades:
+        for aba, nome_norm in normalizadas.items():
+            if nome_norm == prioridade:
+                return aba
+
+    for aba, nome_norm in normalizadas.items():
+        if "CVP" in nome_norm:
+            return aba
+
+    return sheet_names[0]
+
+
 @st.cache_data(show_spinner=False)
 def carregar_municipios() -> dict:
     caminho = Path(ARQ_CACHE_MUN)
@@ -145,7 +188,7 @@ def carregar_base_geografica() -> Optional[pd.DataFrame]:
         from shapely.geometry import shape
     except Exception as exc:
         raise RuntimeError(
-            "Dependências geoespaciais não disponíveis: fiona, pyproj e shapely são necessárias."
+            "Dependencias geoespaciais nao disponiveis: fiona, pyproj e shapely sao necessarias."
         ) from exc
 
     transformador = Transformer.from_crs(f"EPSG:{EPSG_GPKG}", "EPSG:4326", always_xy=True)
@@ -373,7 +416,7 @@ class MotorGeocodificacaoSoberana:
         if bairro_limpo:
             partes.append(bairro_limpo)
 
-        partes += [str(municipio).strip(), "Ceará", "Brasil"]
+        partes += [str(municipio).strip(), "Ceara", "Brasil"]
         consulta = ", ".join(p for p in partes if p)
 
         externo = None
@@ -520,13 +563,25 @@ def geocodificar_linhas_novas(
         & (df["numero_busca"].fillna("").astype(str).str.strip() == "")
     )
 
-    status.success(f"Geocodificação concluída. Registros geocodificados: {geocodificados}")
+    status.success(f"Geocodificacao concluida. Registros geocodificados: {geocodificados}")
     return df, geocodificados
 
 
 def processar_cvp_sip(arquivo_01, arquivo_02):
-    df_base = pd.read_excel(arquivo_01)
-    df_novo = pd.read_excel(arquivo_02)
+    arquivo_01.seek(0)
+    arquivo_02.seek(0)
+
+    xls_base = pd.ExcelFile(arquivo_01)
+    xls_novo = pd.ExcelFile(arquivo_02)
+
+    abas_base = xls_base.sheet_names
+    abas_novo = xls_novo.sheet_names
+
+    aba_base = _selecionar_aba_arquivo_01(abas_base)
+    aba_novo = _selecionar_aba_arquivo_02(abas_novo)
+
+    df_base = pd.read_excel(xls_base, sheet_name=aba_base)
+    df_novo = pd.read_excel(xls_novo, sheet_name=aba_novo)
 
     df_base = normalizar_colunas(df_base)
     df_novo = normalizar_colunas(df_novo)
@@ -594,17 +649,17 @@ def processar_cvp_sip(arquivo_01, arquivo_02):
 
     if ultima_datahora_base is None:
         df_novo_util = df_novo.copy()
-        situacao = "Base anterior sem Data/Hora válida: Arquivo 02 foi incluído integralmente."
+        situacao = "Base anterior sem Data/Hora valida: Arquivo 02 foi incluido integralmente."
     elif df_novo_filtrado.empty:
         df_novo_util = df_novo_filtrado.copy()
         situacao = (
-            "Nenhum registro novo encontrado após a última Data/Hora da base: "
-            "Arquivo 01 foi mantido sem acréscimos."
+            "Nenhum registro novo encontrado apos a ultima Data/Hora da base: "
+            "Arquivo 01 foi mantido sem acrescimos."
         )
     else:
         df_novo_util = df_novo_filtrado.copy()
         situacao = (
-            "Base anterior localizada: somente registros posteriores à última "
+            "Base anterior localizada: somente registros posteriores a ultima "
             "Data/Hora foram adicionados."
         )
 
@@ -656,7 +711,7 @@ def processar_cvp_sip(arquivo_01, arquivo_02):
     ultima_ref = (
         ultima_datahora_base.strftime("%d/%m/%Y %H:%M:%S")
         if ultima_datahora_base is not None
-        else "sem referência anterior válida"
+        else "sem referencia anterior valida"
     )
 
     resumo = {
@@ -666,6 +721,8 @@ def processar_cvp_sip(arquivo_01, arquivo_02):
         "removidos_por_datahora": removidos_por_datahora,
         "ultima_datahora_base": ultima_ref,
         "situacao": situacao,
+        "aba_arquivo_01": aba_base,
+        "aba_arquivo_02": aba_novo,
     }
 
     return df_final, resumo
@@ -686,13 +743,13 @@ def _init_state():
 def render():
     _init_state()
 
-    st.subheader("CVP (SIP) - Geocodificação por Endereço")
+    st.subheader("CVP (SIP) - Geocodificacao por Endereco")
     st.write(
-        "Envie a base histórica e o complemento SIP para atualizar a base com geocodificação."
+        "Envie a base historica e o complemento SIP para atualizar a base com geocodificacao."
     )
 
     arquivo_01 = st.file_uploader(
-        "Arquivo 01 - Base histórica CVP",
+        "Arquivo 01 - Base historica CVP",
         type=["xlsx", "xls"],
         key="cvp_sip_upload_01",
     )
@@ -732,7 +789,7 @@ def render():
             with st.spinner("Processando e geocodificando registros..."):
                 df_final, resumo = processar_cvp_sip(arquivo_01_buffer, arquivo_02_buffer)
 
-            st.success("Processamento concluído com sucesso.")
+            st.success("Processamento concluido com sucesso.")
 
             c1, c2, c3 = st.columns(3)
             c1.metric("Novos registros adicionados", resumo["adicionados"])
@@ -740,7 +797,12 @@ def render():
             c3.metric("Registros geocodificados", resumo["geocodificados"])
 
             st.info(
-                f"Última Data/Hora da base: {resumo['ultima_datahora_base']} | "
+                f"Aba usada no Arquivo 01: {resumo['aba_arquivo_01']} | "
+                f"Aba usada no Arquivo 02: {resumo['aba_arquivo_02']}"
+            )
+
+            st.info(
+                f"Ultima Data/Hora da base: {resumo['ultima_datahora_base']} | "
                 f"Removidos por filtro temporal: {resumo['removidos_por_datahora']}"
             )
             st.caption(resumo["situacao"])
@@ -760,5 +822,6 @@ def render():
 
         except Exception as exc:
             st.exception(exc)
-# Alias exigido pelo app.py para o carregamento dinâmico do módulo
+
+
 interface_cvp_sip = render
