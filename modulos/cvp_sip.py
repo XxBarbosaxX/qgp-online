@@ -36,10 +36,7 @@ from modulos.utils import (
 NOME_ARQUIVO_FINAL = nome_arquivo_padrao(3, "CVP-SIP-ENDERECO")
 
 USAR_EXTERNO = True
-CAMINHO_GPKG = "Faces_de_Quadra_-_Ceara_ARRUAMENTO.gpkg"
 CAMINHO_BASE_ENXUTA = "CVP_SIP_GEOCODIFICAR.parquet"
-LAYER_GPKG = "reprojetado"
-EPSG_GPKG = 31984
 
 LIMIAR_NOME = 88
 RAIO_CONFIRMA_M = 100.0
@@ -115,14 +112,7 @@ def _selecionar_aba_arquivo_02(sheet_names: list[str]) -> str:
 
 
 def _selecionar_aba_arquivo_01(sheet_names: list[str]) -> str:
-    prioridades = [
-        "CVPSIP",
-        "CVP",
-        "BASECVP",
-        "BASEHISTORICACVP",
-        "BASE",
-    ]
-
+    prioridades = ["CVPSIP", "CVP", "BASECVP", "BASEHISTORICACVP", "BASE"]
     normalizadas = {aba: _normalizar_nome_aba(aba) for aba in sheet_names}
 
     for prioridade in prioridades:
@@ -179,73 +169,64 @@ def carregar_municipios() -> dict:
         return {}
 
 
+def _montar_nome_logradouro(tipo: str, nome: str) -> str:
+    partes = []
+    tipo = str(tipo or "").strip()
+    nome = str(nome or "").strip()
+
+    if tipo and tipo.lower() != "none":
+        partes.append(tipo)
+    if nome and nome.lower() != "none":
+        partes.append(nome)
+
+    return " ".join(partes).strip()
+
+
 @st.cache_data(show_spinner=False)
 def carregar_base_geografica() -> Optional[pd.DataFrame]:
     caminho_parquet = Path(CAMINHO_BASE_ENXUTA)
-    if caminho_parquet.exists():
-        base = pd.read_parquet(caminho_parquet).reset_index(drop=True)
-        colunas_esperadas = {"cod_mun", "nome_norm", "nome_orig", "lat", "lon", "tot_geral"}
-        faltantes = colunas_esperadas - set(base.columns)
-        if faltantes:
-            raise ValueError(
-                f"O arquivo {CAMINHO_BASE_ENXUTA} nao possui as colunas esperadas: {sorted(faltantes)}"
-            )
-        return base
-
-    caminho_gpkg = Path(CAMINHO_GPKG)
-    if not caminho_gpkg.exists():
+    if not caminho_parquet.exists():
         return None
 
-    try:
-        import fiona
-        from pyproj import Transformer
-        from shapely.geometry import shape
-    except Exception as exc:
-        raise RuntimeError(
-            "Dependencias geoespaciais nao disponiveis: fiona, pyproj e shapely sao necessarias."
-        ) from exc
+    base = pd.read_parquet(caminho_parquet).reset_index(drop=True)
+    colunas_esperadas = {
+        "CD_SETOR",
+        "CD_QUADRA",
+        "CD_FACE",
+        "NM_TIP_LOG",
+        "NM_LOG",
+        "Latitude",
+        "Longitude",
+        "CD_MUN",
+        "NM_MUN",
+        "SIGLA_UF",
+    }
+    faltantes = colunas_esperadas - set(base.columns)
 
-    transformador = Transformer.from_crs(f"EPSG:{EPSG_GPKG}", "EPSG:4326", always_xy=True)
-    registros = []
+    if faltantes:
+        raise ValueError(
+            f"O arquivo {CAMINHO_BASE_ENXUTA} nao possui as colunas esperadas: {sorted(faltantes)}"
+        )
 
-    with fiona.open(caminho_gpkg, layer=LAYER_GPKG) as src:
-        for feat in src:
-            prop = feat["properties"]
+    base = base.copy()
 
-            tip = str(prop.get("NM_TIP_LOG") or "").strip()
-            tit = str(prop.get("NM_TIT_LOG") or "").strip()
-            log = str(prop.get("NM_LOG") or "").strip()
-
-            nome = " ".join(x for x in (tip, tit, log) if x and x.lower() != "none")
-            if not nome:
-                continue
-
-            try:
-                geom = shape(feat["geometry"])
-                centroide = geom.centroid
-                lon, lat = transformador.transform(centroide.x, centroide.y)
-            except Exception:
-                continue
-
-            cod = str(prop.get("CD_SETOR") or "")[:7]
-
-            try:
-                total = int(prop.get("TOT_GERAL") or 0)
-            except Exception:
-                total = 0
-
-            registros.append((cod, sem_acento(nome), nome, lat, lon, total))
-
-    if not registros:
-        return None
-
-    base = pd.DataFrame(
-        registros,
-        columns=["cod_mun", "nome_norm", "nome_orig", "lat", "lon", "tot_geral"],
+    base["cod_mun"] = base["CD_MUN"].astype(str).str[:7]
+    base["nome_orig"] = base.apply(
+        lambda linha: _montar_nome_logradouro(linha.get("NM_TIP_LOG"), linha.get("NM_LOG")),
+        axis=1,
     )
+    base["nome_norm"] = base["nome_orig"].apply(sem_acento)
+    base["lat"] = pd.to_numeric(base["Latitude"], errors="coerce")
+    base["lon"] = pd.to_numeric(base["Longitude"], errors="coerce")
+    base["tot_geral"] = 1
 
-    base.to_parquet(caminho_parquet, index=False)
-    return base.reset_index(drop=True)
+    base = base.dropna(subset=["lat", "lon"]).copy()
+    base = base[base["nome_orig"].astype(str).str.strip() != ""].copy()
+    base = base[base["cod_mun"].astype(str).str.strip() != ""].copy()
+
+    base = base.drop_duplicates(subset=["cod_mun", "nome_norm", "lat", "lon"]).reset_index(drop=True)
+
+    return base[["cod_mun", "nome_norm", "nome_orig", "lat", "lon", "tot_geral"]]
 
 
 @st.cache_resource(show_spinner=False)
@@ -502,19 +483,18 @@ class MotorGeocodificacaoSoberana:
                     None,
                 )
 
-        if tem_bairro and tem_municipio:
+        if tem_bairro and tem_municipio and self.geocode_ext is not None:
             consulta = ", ".join([bairro_limpo, municipio_limpo, "Ceara", "Brasil"])
-            if self.geocode_ext is not None:
-                loc = self.geocode_ext(consulta, out_fields="*")
-                if loc:
-                    return (
-                        float(loc.latitude),
-                        float(loc.longitude),
-                        "Centroide de Bairro",
-                        "ArcGIS Bairro",
-                        False,
-                        None,
-                    )
+            loc = self.geocode_ext(consulta, out_fields="*")
+            if loc:
+                return (
+                    float(loc.latitude),
+                    float(loc.longitude),
+                    "Centroide de Bairro",
+                    "ArcGIS Bairro",
+                    False,
+                    None,
+                )
 
         centroide = self.centroides_municipio.get(cod)
         if centroide:
@@ -845,9 +825,7 @@ def render():
         "Envie a base historica e o complemento SIP para atualizar a base com geocodificacao."
     )
 
-    st.caption(
-        f"Base geográfica esperada na raiz do projeto: {CAMINHO_BASE_ENXUTA}"
-    )
+    st.caption(f"Base geográfica esperada na raiz do projeto: {CAMINHO_BASE_ENXUTA}")
 
     try:
         base_geo = carregar_base_geografica()
@@ -857,7 +835,7 @@ def render():
             )
         else:
             st.warning(
-                f"A base geográfica não foi carregada. Verifique o arquivo {CAMINHO_BASE_ENXUTA}."
+                f"A base geográfica nao foi carregada. Verifique o arquivo {CAMINHO_BASE_ENXUTA}."
             )
     except Exception as exc:
         st.error(f"Erro ao carregar base geográfica: {exc}")
