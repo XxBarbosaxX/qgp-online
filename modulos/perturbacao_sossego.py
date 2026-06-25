@@ -11,22 +11,9 @@ import pandas as pd
 import streamlit as st
 from pyproj import Transformer
 
-from modulos.utils import (
-    criar_coluna_datahora,
-    encontrar_coluna_data,
-    encontrar_coluna_hora,
-    encontrar_coluna_por_nomes,
-    filtrar_apenas_registros_posteriores,
-    nome_arquivo_padrao,
-    normalizar_colunas,
-    obter_ultima_datahora,
-    renomear_colunas_equivalentes,
-)
+from modulos.utils import nome_arquivo_padrao
 
 NOME_ARQUIVO_FINAL = nome_arquivo_padrao(3, "PERTURBACAO-SOSSEGO-ALHEIO")
-
-EPSG_UTM_SIRGAS_24S = 31984
-EPSG_WGS84 = 4326
 
 
 def _normalizar_nome_aba(nome: str) -> str:
@@ -83,6 +70,277 @@ def _selecionar_aba_arquivo_02(sheet_names: list[str]) -> str:
     return sheet_names[0]
 
 
+def normalizar_colunas(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df.columns = [str(c).strip() for c in df.columns]
+    return df
+
+
+def encontrar_coluna_data(df: pd.DataFrame) -> str:
+    exatos = [c for c in df.columns if str(c).strip().lower() == "data"]
+    if exatos:
+        return exatos[0]
+
+    aproximados = [c for c in df.columns if "data" in str(c).strip().lower()]
+    if aproximados:
+        return aproximados[0]
+
+    raise ValueError("Nao foi encontrada a coluna 'Data'.")
+
+
+def encontrar_coluna_hora(df: pd.DataFrame) -> str:
+    exatos = [c for c in df.columns if str(c).strip().lower() == "hora"]
+    if exatos:
+        return exatos[0]
+
+    aproximados = [c for c in df.columns if "hora" in str(c).strip().lower()]
+    if aproximados:
+        return aproximados[0]
+
+    raise ValueError("Nao foi encontrada a coluna 'Hora'.")
+
+
+def encontrar_coluna_por_nomes(
+    df: pd.DataFrame,
+    nomes_possiveis: list[str],
+    obrigatoria: bool = True,
+):
+    cols_map = {str(c).strip().lower(): c for c in df.columns}
+
+    for nome in nomes_possiveis:
+        if nome.lower() in cols_map:
+            return cols_map[nome.lower()]
+
+    for c in df.columns:
+        cl = str(c).strip().lower()
+        for nome in nomes_possiveis:
+            if nome.lower() in cl:
+                return c
+
+    if obrigatoria:
+        raise ValueError(
+            f"Nao foi possivel localizar nenhuma das colunas esperadas: {nomes_possiveis}"
+        )
+    return None
+
+
+def renomear_colunas_equivalentes(df_base: pd.DataFrame, df_novo: pd.DataFrame) -> pd.DataFrame:
+    mapa_equivalencias = {
+        "AIS": ["AISNova", "AIS Nova", "AIS_NOVA", "aisnova", "ais_nova"],
+        "Território": [
+            "Regiões",
+            "Regioes",
+            "Região",
+            "Regiao",
+            "regiões",
+            "regioes",
+            "região",
+            "regiao",
+        ],
+    }
+
+    colunas_base_map = {str(c).strip().lower(): c for c in df_base.columns}
+    colunas_novo_map = {str(c).strip().lower(): c for c in df_novo.columns}
+
+    renomeacoes = {}
+
+    for coluna_base_oficial, aliases in mapa_equivalencias.items():
+        chave_base = coluna_base_oficial.strip().lower()
+
+        if chave_base not in colunas_base_map:
+            continue
+
+        nome_real_base = colunas_base_map[chave_base]
+
+        if nome_real_base in df_novo.columns:
+            continue
+
+        for alias in aliases:
+            chave_alias = alias.strip().lower()
+            if chave_alias in colunas_novo_map:
+                nome_real_novo = colunas_novo_map[chave_alias]
+                renomeacoes[nome_real_novo] = nome_real_base
+                break
+
+    if renomeacoes:
+        df_novo = df_novo.rename(columns=renomeacoes)
+
+    return df_novo
+
+
+def valor_numerico_exato(v):
+    if pd.isna(v):
+        return None
+
+    if isinstance(v, str):
+        s = v.strip()
+        if s == "":
+            return None
+        s = s.replace(".", "").replace(",", ".")
+        try:
+            return float(s)
+        except ValueError:
+            return None
+
+    try:
+        return float(v)
+    except Exception:
+        return None
+
+
+def normalizar_data_para_texto(v):
+    if pd.isna(v):
+        return None
+
+    if isinstance(v, pd.Timestamp):
+        return v.strftime("%d/%m/%Y")
+
+    try:
+        dt = pd.to_datetime(v, errors="coerce", dayfirst=True)
+        if pd.isna(dt):
+            return None
+        return dt.strftime("%d/%m/%Y")
+    except Exception:
+        return None
+
+
+def normalizar_hora_para_texto(v):
+    if pd.isna(v):
+        return None
+
+    if isinstance(v, pd.Timestamp):
+        return v.strftime("%H:%M:%S")
+
+    s = str(v).strip()
+    if s == "":
+        return None
+
+    formatos = ["%H:%M:%S", "%H:%M"]
+    for fmt in formatos:
+        dt = pd.to_datetime(s, errors="coerce", format=fmt)
+        if not pd.isna(dt):
+            return dt.strftime("%H:%M:%S")
+
+    try:
+        dt = pd.to_datetime(s, errors="coerce")
+        if not pd.isna(dt):
+            return dt.strftime("%H:%M:%S")
+    except Exception:
+        pass
+
+    return None
+
+
+def criar_coluna_datahora(
+    df: pd.DataFrame,
+    coluna_data: str,
+    coluna_hora: str,
+    nome_coluna: str = "__datahora__",
+) -> pd.DataFrame:
+    df = df.copy()
+
+    datas = df[coluna_data].apply(normalizar_data_para_texto)
+    horas = df[coluna_hora].apply(normalizar_hora_para_texto)
+
+    combinado = []
+    for d, h in zip(datas, horas):
+        if d is None or h is None:
+            combinado.append(pd.NaT)
+        else:
+            combinado.append(
+                pd.to_datetime(f"{d} {h}", errors="coerce", dayfirst=True)
+            )
+
+    df[nome_coluna] = combinado
+    return df
+
+
+def excluir_coordenadas_invalidas(
+    df: pd.DataFrame,
+    col_lat: str,
+    col_lon: str,
+) -> tuple[pd.DataFrame, int]:
+    manter = []
+
+    for lat_raw, lon_raw in zip(df[col_lat], df[col_lon]):
+        lat = valor_numerico_exato(lat_raw)
+        lon = valor_numerico_exato(lon_raw)
+
+        if lat is None or lon is None:
+            manter.append(False)
+        elif lat == 0 or lon == 0:
+            manter.append(False)
+        else:
+            manter.append(True)
+
+    df_filtrado = df.loc[manter].copy()
+    removidos = len(df) - len(df_filtrado)
+    return df_filtrado, removidos
+
+
+def reprojetar_utm_para_wgs84(
+    df: pd.DataFrame,
+    col_y: str,
+    col_x: str,
+    col_lat_destino: str,
+    col_lon_destino: str,
+) -> pd.DataFrame:
+    df = df.copy()
+
+    transformer = Transformer.from_crs("EPSG:31984", "EPSG:4326", always_xy=True)
+
+    lat_resultado = []
+    lon_resultado = []
+
+    for y_raw, x_raw in zip(df[col_y], df[col_x]):
+        y = valor_numerico_exato(y_raw)
+        x = valor_numerico_exato(x_raw)
+
+        if y is None or x is None:
+            lat_resultado.append(pd.NA)
+            lon_resultado.append(pd.NA)
+        else:
+            lon, lat = transformer.transform(x, y)
+            lat_resultado.append(lat)
+            lon_resultado.append(lon)
+
+    df[col_lat_destino] = lat_resultado
+    df[col_lon_destino] = lon_resultado
+    return df
+
+
+def alinhar_colunas_arquivo_02_com_base(
+    df_base: pd.DataFrame,
+    df_novo: pd.DataFrame,
+) -> pd.DataFrame:
+    colunas_base = list(df_base.columns)
+
+    df_novo = renomear_colunas_equivalentes(df_base, df_novo)
+
+    for col in colunas_base:
+        if col not in df_novo.columns:
+            df_novo[col] = pd.NA
+
+    return df_novo[colunas_base]
+
+
+def obter_ultimo_datahora(df: pd.DataFrame, coluna_datahora: str):
+    df_valid = df[df[coluna_datahora].notna()].copy()
+    if df_valid.empty:
+        return None
+    return df_valid[coluna_datahora].max()
+
+
+def filtrar_apenas_registros_posteriores(
+    df: pd.DataFrame,
+    coluna_datahora: str,
+    limite_datahora,
+) -> pd.DataFrame:
+    if limite_datahora is None:
+        return df.copy()
+    return df[df[coluna_datahora] > limite_datahora].copy()
+
+
 def gerar_excel_em_memoria(df: pd.DataFrame) -> bytes:
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
@@ -91,126 +349,13 @@ def gerar_excel_em_memoria(df: pd.DataFrame) -> bytes:
     return buffer.getvalue()
 
 
-def _padronizar_colunas(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    renomeacoes = {}
-
-    col_data = encontrar_coluna_por_nomes(df, ["data"], obrigatoria=False)
-    if col_data and col_data != "Data":
-        renomeacoes[col_data] = "Data"
-
-    col_hora = encontrar_coluna_por_nomes(df, ["hora"], obrigatoria=False)
-    if col_hora and col_hora != "Hora":
-        renomeacoes[col_hora] = "Hora"
-
-    col_territorio = encontrar_coluna_por_nomes(
-        df,
-        ["território", "territorio", "regiões", "regioes"],
-        obrigatoria=False,
-    )
-    if col_territorio and col_territorio != "Território":
-        renomeacoes[col_territorio] = "Território"
-
-    col_ne = encontrar_coluna_por_nomes(df, ["ne"], obrigatoria=False)
-    if col_ne and col_ne != "NE":
-        renomeacoes[col_ne] = "NE"
-
-    col_x = encontrar_coluna_por_nomes(df, ["longitude", "long", "lon"], obrigatoria=False)
-    if col_x and col_x != "Longitude":
-        renomeacoes[col_x] = "Longitude"
-
-    col_y = encontrar_coluna_por_nomes(df, ["latitude", "lat"], obrigatoria=False)
-    if col_y and col_y != "Latitude":
-        renomeacoes[col_y] = "Latitude"
-
-    if renomeacoes:
-        df = df.rename(columns=renomeacoes)
-
-    return df
-
-
-def _coordenadas_parecem_wgs84(x: pd.Series, y: pd.Series) -> pd.Series:
-    return x.between(-180, 180) & y.between(-90, 90)
-
-
-def _converter_xy(x: pd.Series, y: pd.Series, epsg_origem: int) -> tuple[pd.Series, pd.Series]:
-    transformador = Transformer.from_crs(
-        f"EPSG:{epsg_origem}",
-        f"EPSG:{EPSG_WGS84}",
-        always_xy=True,
-    )
-    longitudes, latitudes = transformador.transform(
-        x.astype(float).to_numpy(),
-        y.astype(float).to_numpy(),
-    )
-    return pd.Series(longitudes, index=x.index), pd.Series(latitudes, index=y.index)
-
-
-def _processar_coordenadas(df: pd.DataFrame, col_x: str, col_y: str) -> tuple[pd.DataFrame, int, str]:
-    df = df.copy()
-
-    x = pd.to_numeric(df[col_x], errors="coerce")
-    y = pd.to_numeric(df[col_y], errors="coerce")
-
-    mascara_preenchida = x.notna() & y.notna() & (x != 0) & (y != 0)
-    removidos_entrada = len(df) - int(mascara_preenchida.sum())
-
-    df = df.loc[mascara_preenchida].copy()
-    x = x.loc[mascara_preenchida]
-    y = y.loc[mascara_preenchida]
-
-    if df.empty:
-        return df, removidos_entrada, "Nenhuma coordenada valida encontrada na entrada."
-
-    mascara_wgs_direto = _coordenadas_parecem_wgs84(x, y)
-    if mascara_wgs_direto.all():
-        df["Long"] = x.astype(float)
-        df["Lat"] = y.astype(float)
-        return df, removidos_entrada, "Coordenadas ja estavam em WGS84."
-
-    lon_24s, lat_24s = _converter_xy(x, y, EPSG_UTM_SIRGAS_24S)
-    mascara_24s = lon_24s.between(-180, 180) & lat_24s.between(-90, 90)
-
-    lon_24s_inv, lat_24s_inv = _converter_xy(y, x, EPSG_UTM_SIRGAS_24S)
-    mascara_24s_inv = lon_24s_inv.between(-180, 180) & lat_24s_inv.between(-90, 90)
-
-    acertos_24s = int(mascara_24s.sum())
-    acertos_24s_inv = int(mascara_24s_inv.sum())
-
-    if acertos_24s_inv > acertos_24s:
-        df["Long"] = lon_24s_inv
-        df["Lat"] = lat_24s_inv
-        mascara_final = mascara_24s_inv
-        metodo = "Coordenadas convertidas de UTM SIRGAS2000 / 24S para WGS84 com eixos invertidos."
-    else:
-        df["Long"] = lon_24s
-        df["Lat"] = lat_24s
-        mascara_final = mascara_24s
-        metodo = "Coordenadas convertidas de UTM SIRGAS2000 / 24S para WGS84."
-
-    removidos_saida = len(df) - int(mascara_final.sum())
-    df = df.loc[mascara_final].copy()
-
-    removidos_total = removidos_entrada + removidos_saida
-    return df, removidos_total, metodo
-
-
-def _alinhar_com_base(base_sem_aux: pd.DataFrame, df_novo_util: pd.DataFrame) -> pd.DataFrame:
-    df_novo_util = df_novo_util.copy()
-    df_novo_util = renomear_colunas_equivalentes(base_sem_aux, df_novo_util)
-
-    for coluna in base_sem_aux.columns:
-        if coluna not in df_novo_util.columns:
-            df_novo_util[coluna] = pd.NA
-
-    return df_novo_util[base_sem_aux.columns]
-
-
 def processar_perturbacao_sossego(arquivo_01, arquivo_02):
     progresso = st.progress(0)
     status = st.empty()
-    removidos_coord_invalidas = 0
-    metodo_coordenadas = "-"
+
+    removidos_invalidos = 0
+    removidos_por_datahora = 0
+    adicionados = 0
 
     status.info("Lendo os arquivos enviados...")
     arquivo_01.seek(0)
@@ -228,46 +373,63 @@ def processar_perturbacao_sossego(arquivo_01, arquivo_02):
     df_novo = pd.read_excel(xls_novo, sheet_name=aba_novo)
     progresso.progress(20)
 
-    status.info("Normalizando e padronizando nomes de colunas...")
+    status.info("Normalizando nomes de colunas...")
     df_base = normalizar_colunas(df_base)
     df_novo = normalizar_colunas(df_novo)
-
-    df_base = _padronizar_colunas(df_base)
-    df_novo = _padronizar_colunas(df_novo)
     progresso.progress(30)
 
-    status.info("Identificando colunas de Data e Hora...")
-    col_data_base = encontrar_coluna_por_nomes(df_base, ["Data"], obrigatoria=False) or encontrar_coluna_data(df_base)
-    col_hora_base = encontrar_coluna_por_nomes(df_base, ["Hora"], obrigatoria=False) or encontrar_coluna_hora(df_base)
+    col_data_base = encontrar_coluna_data(df_base)
+    col_data_novo = encontrar_coluna_data(df_novo)
+    col_hora_base = encontrar_coluna_hora(df_base)
+    col_hora_novo = encontrar_coluna_hora(df_novo)
 
-    col_data_novo = encontrar_coluna_por_nomes(df_novo, ["Data"], obrigatoria=False) or encontrar_coluna_data(df_novo)
-    col_hora_novo = encontrar_coluna_por_nomes(df_novo, ["Hora"], obrigatoria=False) or encontrar_coluna_hora(df_novo)
+    if col_data_base != col_data_novo:
+        df_novo = df_novo.rename(columns={col_data_novo: col_data_base})
+    if col_hora_base != col_hora_novo:
+        df_novo = df_novo.rename(columns={col_hora_novo: col_hora_base})
 
-    if col_data_base is None:
-        raise ValueError("O Arquivo 01 precisa possuir uma coluna de Data valida.")
+    col_data = col_data_base
+    col_hora = col_hora_base
 
-    if col_data_novo is None:
-        raise ValueError("O Arquivo 02 precisa possuir uma coluna de Data valida.")
+    status.info("Identificando colunas de coordenadas e equivalencias...")
+    col_lat_base = encontrar_coluna_por_nomes(df_base, ["lat", "latitude"], obrigatoria=True)
+    col_lon_base = encontrar_coluna_por_nomes(df_base, ["long", "longitude", "lon"], obrigatoria=True)
 
-    df_base = criar_coluna_datahora(df_base, col_data_base, col_hora_base, "__datahora__")
-    df_novo = criar_coluna_datahora(df_novo, col_data_novo, col_hora_novo, "__datahora__")
+    col_lat_novo = encontrar_coluna_por_nomes(df_novo, ["latitude"], obrigatoria=True)
+    col_lon_novo = encontrar_coluna_por_nomes(df_novo, ["longitude"], obrigatoria=True)
+
+    df_novo = renomear_colunas_equivalentes(df_base, df_novo)
     progresso.progress(40)
 
-    status.info("Verificando a ultima Data/Hora da base...")
-    ultima_datahora_base = obter_ultima_datahora(df_base, "__datahora__")
+    status.info("Excluindo registros com coordenadas invalidas no Arquivo 02...")
+    total_lido_arquivo_02 = len(df_novo)
+    df_novo, removidos_invalidos = excluir_coordenadas_invalidas(df_novo, col_lat_novo, col_lon_novo)
 
-    total_antes_filtro = len(df_novo)
+    if df_novo.empty:
+        raise ValueError(
+            "Apos excluir coordenadas invalidas, o Arquivo 02 ficou sem registros validos."
+        )
+    progresso.progress(50)
+
+    status.info("Montando coluna Data/Hora e verificando a ultima referencia da base...")
+    df_base = criar_coluna_datahora(df_base, col_data, col_hora, "__datahora__")
+    df_novo = criar_coluna_datahora(df_novo, col_data, col_hora, "__datahora__")
+
+    ultimo_datahora_base = obter_ultimo_datahora(df_base, "__datahora__")
+    progresso.progress(60)
+
+    status.info("Filtrando apenas registros posteriores a ultima Data/Hora da base...")
+    total_antes_filtro_tempo = len(df_novo)
     df_novo_filtrado = filtrar_apenas_registros_posteriores(
         df_novo,
         "__datahora__",
-        ultima_datahora_base,
+        ultimo_datahora_base,
     )
-    removidos_por_datahora = total_antes_filtro - len(df_novo_filtrado)
-    progresso.progress(50)
+    removidos_por_datahora = total_antes_filtro_tempo - len(df_novo_filtrado)
 
     base_sem_aux = df_base.drop(columns=["__datahora__"], errors="ignore").copy()
 
-    if ultima_datahora_base is None:
+    if ultimo_datahora_base is None:
         df_novo_util = df_novo.copy()
         situacao = "Base anterior sem Data/Hora valida: Arquivo 02 foi incluido integralmente."
     elif df_novo_filtrado.empty:
@@ -282,116 +444,59 @@ def processar_perturbacao_sossego(arquivo_01, arquivo_02):
             "Base anterior localizada: somente registros posteriores a ultima "
             "Data/Hora foram adicionados."
         )
+    progresso.progress(70)
 
-    if df_novo_util.empty:
-        progresso.progress(100)
-        status.success("Nenhum novo registro foi encontrado para processamento.")
+    if not df_novo_util.empty:
+        status.info("Reprojetando coordenadas UTM (SIRGAS2000 / 24S) para WGS84...")
+        df_novo_util = reprojetar_utm_para_wgs84(
+            df_novo_util,
+            col_y=col_lat_novo,
+            col_x=col_lon_novo,
+            col_lat_destino=col_lat_base,
+            col_lon_destino=col_lon_base,
+        )
+        progresso.progress(80)
 
+        status.info("Alinhando colunas e gerando base final...")
+        df_novo_util = alinhar_colunas_arquivo_02_com_base(base_sem_aux, df_novo_util)
+        df_final = pd.concat([base_sem_aux, df_novo_util], ignore_index=True)
+        adicionados = len(df_novo_util)
+    else:
         df_final = base_sem_aux.copy()
-        df_final = criar_coluna_datahora(df_final, col_data_base, col_hora_base, "__datahora__")
-        df_final = df_final.sort_values(by="__datahora__", ascending=True, na_position="last").reset_index(drop=True)
-        df_final = df_final.drop(columns=["__datahora__"], errors="ignore")
-
-        ultima_ref = (
-            ultima_datahora_base.strftime("%d/%m/%Y %H:%M:%S")
-            if ultima_datahora_base is not None
-            else "sem referencia anterior valida"
-        )
-
-        resumo = {
-            "adicionados": 0,
-            "total_final": len(df_final),
-            "removidos_por_datahora": removidos_por_datahora,
-            "removidos_coord_invalidas": removidos_coord_invalidas,
-            "ultima_datahora_base": ultima_ref,
-            "situacao": situacao,
-            "metodo_coordenadas": metodo_coordenadas,
-            "aba_arquivo_01": aba_base,
-            "aba_arquivo_02": aba_novo,
-        }
-        return df_final, resumo
-
-    status.info("Validando e convertendo coordenadas dos novos registros...")
-    col_x_novo = encontrar_coluna_por_nomes(df_novo_util, ["Longitude"], obrigatoria=False) or encontrar_coluna_por_nomes(
-        df_novo_util, ["Long", "lon"], obrigatoria=False
-    )
-    col_y_novo = encontrar_coluna_por_nomes(df_novo_util, ["Latitude"], obrigatoria=False) or encontrar_coluna_por_nomes(
-        df_novo_util, ["Lat"], obrigatoria=False
-    )
-
-    if col_x_novo is None or col_y_novo is None:
-        raise ValueError(
-            "O Arquivo 02 precisa conter colunas de coordenadas como Longitude/Latitude."
-        )
-
-    df_novo_util, removidos_coord_invalidas, metodo_coordenadas = _processar_coordenadas(
-        df_novo_util,
-        col_x_novo,
-        col_y_novo,
-    )
-    progresso.progress(75)
-
-    if df_novo_util.empty:
-        progresso.progress(100)
-        status.warning("Todos os novos registros foram descartados por coordenadas invalidas.")
-
-        df_final = base_sem_aux.copy()
-        df_final = criar_coluna_datahora(df_final, col_data_base, col_hora_base, "__datahora__")
-        df_final = df_final.sort_values(by="__datahora__", ascending=True, na_position="last").reset_index(drop=True)
-        df_final = df_final.drop(columns=["__datahora__"], errors="ignore")
-
-        ultima_ref = (
-            ultima_datahora_base.strftime("%d/%m/%Y %H:%M:%S")
-            if ultima_datahora_base is not None
-            else "sem referencia anterior valida"
-        )
-
-        resumo = {
-            "adicionados": 0,
-            "total_final": len(df_final),
-            "removidos_por_datahora": removidos_por_datahora,
-            "removidos_coord_invalidas": removidos_coord_invalidas,
-            "ultima_datahora_base": ultima_ref,
-            "situacao": "Todos os novos registros foram descartados por coordenadas invalidas.",
-            "metodo_coordenadas": metodo_coordenadas,
-            "aba_arquivo_01": aba_base,
-            "aba_arquivo_02": aba_novo,
-        }
-        return df_final, resumo
-
-    status.info("Alinhando colunas e preparando inclusao dos novos registros...")
-    df_novo_util = df_novo_util.drop(columns=["__datahora__"], errors="ignore")
-    df_novo_util = _alinhar_com_base(base_sem_aux, df_novo_util)
+        adicionados = 0
     progresso.progress(90)
 
-    status.info("Gerando arquivo final...")
-    df_final = pd.concat([base_sem_aux, df_novo_util], ignore_index=True)
-    df_final = criar_coluna_datahora(df_final, col_data_base, col_hora_base, "__datahora__")
-    df_final = df_final.sort_values(by="__datahora__", ascending=True, na_position="last").reset_index(drop=True)
+    status.info("Ordenando arquivo final...")
+    df_final = criar_coluna_datahora(df_final, col_data, col_hora, "__datahora__")
+    df_final = df_final.sort_values(
+        by="__datahora__",
+        ascending=True,
+        na_position="last",
+    ).reset_index(drop=True)
     df_final = df_final.drop(columns=["__datahora__"], errors="ignore")
     progresso.progress(100)
 
-    adicionados = len(df_novo_util)
-
-    status.success(f"Processamento concluido. Novos registros adicionados: {adicionados}")
-
     ultima_ref = (
-        ultima_datahora_base.strftime("%d/%m/%Y %H:%M:%S")
-        if ultima_datahora_base is not None
+        ultimo_datahora_base.strftime("%d/%m/%Y %H:%M:%S")
+        if ultimo_datahora_base is not None
         else "sem referencia anterior valida"
     )
 
     resumo = {
         "adicionados": adicionados,
         "total_final": len(df_final),
+        "removidos_coord_invalidas": removidos_invalidos,
         "removidos_por_datahora": removidos_por_datahora,
-        "removidos_coord_invalidas": removidos_coord_invalidas,
         "ultima_datahora_base": ultima_ref,
         "situacao": situacao,
-        "metodo_coordenadas": metodo_coordenadas,
         "aba_arquivo_01": aba_base,
         "aba_arquivo_02": aba_novo,
+        "total_lido_arquivo_02": total_lido_arquivo_02,
     }
+
+    status.success(
+        f"Processo finalizado. {adicionados} registros novos adicionados ao arquivo final."
+    )
 
     return df_final, resumo
 
@@ -416,11 +521,11 @@ def render():
 
     st.subheader("Perturbacao ao Sossego Alheio")
     st.write(
-        "Envie a base historica e o arquivo complementar para atualizar a base com os novos registros."
+        "Envie a base historica e o arquivo complementar para atualizar a base com novos registros de Perturbacao ao Sossego Alheio."
     )
 
     st.caption(
-        "O sistema verifica a ultima Data/Hora da base historica, identifica apenas ocorrencias posteriores no arquivo complementar, elimina coordenadas invalidas, reaproveita coordenadas ja geograficas quando existirem e tenta converter UTM SIRGAS2000 / 24S para WGS84."
+        "Fluxo: identificar a ultima Data/Hora do Arquivo 01, localizar no Arquivo 02 apenas ocorrencias posteriores, excluir coordenadas invalidas, reprojetar UTM SIRGAS2000 / 24S para WGS84 e gerar a planilha final."
     )
 
     arquivo_01 = st.file_uploader(
@@ -488,7 +593,10 @@ def render():
         c1, c2, c3 = st.columns(3)
         c1.metric("Novos registros adicionados", resumo.get("adicionados", 0))
         c2.metric("Total final da base", resumo.get("total_final", 0))
-        c3.metric("Coordenadas invalidas removidas", resumo.get("removidos_coord_invalidas", 0))
+        c3.metric(
+            "Coordenadas invalidas removidas",
+            resumo.get("removidos_coord_invalidas", 0),
+        )
 
         st.info(
             f"Aba usada no Arquivo 01: {resumo.get('aba_arquivo_01', '-')} | "
@@ -499,8 +607,6 @@ def render():
             f"Ultima Data/Hora da base: {resumo.get('ultima_datahora_base', '-')} | "
             f"Removidos por filtro temporal: {resumo.get('removidos_por_datahora', 0)}"
         )
-
-        st.info(f"Metodo de coordenadas: {resumo.get('metodo_coordenadas', '-')}")
 
         st.caption(resumo.get("situacao", "Processamento concluido."))
         st.dataframe(df_final.head(50), use_container_width=True)
