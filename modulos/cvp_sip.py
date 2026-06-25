@@ -760,3 +760,5 @@ def render():
 
         except Exception as exc:
             st.exception(exc)
+# Alias exigido pelo app.py para o carregamento dinâmico do módulo
+interface_cvp_sip = render
