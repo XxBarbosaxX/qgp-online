@@ -128,8 +128,10 @@ def encontrar_coluna_por_nomes(
 
 def renomear_colunas_equivalentes(df_base: pd.DataFrame, df_novo: pd.DataFrame) -> pd.DataFrame:
     """
-    Alinha nomes de colunas entre base e complemento.
-    Inclui AIS, Territorio e possiveis variacoes de Nome/Subnome da Ocorrencia.
+    Ajusta os nomes do complemento para casar com a base.
+    Com base nos arquivos enviados:
+    - Arquivo 01: Território, AIS
+    - Arquivo 02: Regiões, AISNova
     """
     mapa_equivalencias = {
         "AIS": ["AISNova", "AIS Nova", "AIS_NOVA", "aisnova", "ais_nova"],
@@ -145,14 +147,12 @@ def renomear_colunas_equivalentes(df_base: pd.DataFrame, df_novo: pd.DataFrame) 
         ],
         "Nome da Ocorrência": [
             "Nome Ocorrencia",
-            "Nome Ocorrência",
             "Nome_Ocorrencia",
             "nome da ocorrencia",
             "nome ocorrencia",
         ],
         "Subnome da Ocorrência": [
             "Subnome Ocorrencia",
-            "Subnome Ocorrência",
             "Subnome_Ocorrencia",
             "subnome da ocorrencia",
             "subnome ocorrencia",
@@ -277,12 +277,12 @@ def criar_coluna_datahora(
 
 def excluir_coordenadas_invalidas(
     df: pd.DataFrame,
-    col_lat: str,
-    col_lon: str,
+    col_lat_utm: str,
+    col_lon_utm: str,
 ) -> tuple[pd.DataFrame, int]:
     manter = []
 
-    for lat_raw, lon_raw in zip(df[col_lat], df[col_lon]):
+    for lat_raw, lon_raw in zip(df[col_lat_utm], df[col_lon_utm]):
         lat = valor_numerico_exato(lat_raw)
         lon = valor_numerico_exato(lon_raw)
 
@@ -300,15 +300,16 @@ def excluir_coordenadas_invalidas(
 
 def reprojetar_utm_para_wgs84(
     df: pd.DataFrame,
-    col_y: str,
-    col_x: str,
-    col_lat_destino: str,
-    col_lon_destino: str,
+    col_lat_utm: str,
+    col_lon_utm: str,
 ) -> pd.DataFrame:
     """
-    col_y = Latitude UTM (Y / Northing)
-    col_x = Longitude UTM (X / Easting)
-    Resultado gravado em col_lat_destino (Lat_WGS) e col_lon_destino (Long_WGS).
+    Arquivo 02 vem com:
+    - Latitude = Northing (Y)
+    - Longitude = Easting (X)
+    O resultado final deve ficar em:
+    - Latitude = graus WGS84
+    - Longitude = graus WGS84
     """
     df = df.copy()
 
@@ -321,20 +322,20 @@ def reprojetar_utm_para_wgs84(
     lat_resultado = []
     lon_resultado = []
 
-    for y_raw, x_raw in zip(df[col_y], df[col_x]):
-        y = valor_numerico_exato(y_raw)
-        x = valor_numerico_exato(x_raw)
+    for lat_utm_raw, lon_utm_raw in zip(df[col_lat_utm], df[col_lon_utm]):
+        y = valor_numerico_exato(lat_utm_raw)   # Latitude no arquivo = Y
+        x = valor_numerico_exato(lon_utm_raw)   # Longitude no arquivo = X
 
         if y is None or x is None:
             lat_resultado.append(pd.NA)
             lon_resultado.append(pd.NA)
         else:
-            lon, lat = transformer.transform(x, y)
-            lat_resultado.append(lat)
-            lon_resultado.append(lon)
+            lon_wgs, lat_wgs = transformer.transform(x, y)
+            lat_resultado.append(lat_wgs)
+            lon_resultado.append(lon_wgs)
 
-    df[col_lat_destino] = lat_resultado
-    df[col_lon_destino] = lon_resultado
+    df["Latitude"] = lat_resultado
+    df["Longitude"] = lon_resultado
     return df
 
 
@@ -343,8 +344,8 @@ def alinhar_colunas_arquivo_02_com_base(
     df_novo: pd.DataFrame,
 ) -> pd.DataFrame:
     """
-    Garante que o complemento tenha todas as colunas da base, preservando
-    colunas como Nome da Ocorrencia e Subnome da Ocorrencia.
+    Garante que o complemento tenha exatamente as colunas da base.
+    Isso preserva Nome da Ocorrência e Subnome da Ocorrência no resultado final.
     """
     colunas_base = list(df_base.columns)
 
@@ -411,6 +412,10 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
     df_novo = normalizar_colunas(df_novo)
     progresso.progress(30)
 
+    status.info("Ajustando equivalencias de colunas...")
+    df_novo = renomear_colunas_equivalentes(df_base, df_novo)
+    progresso.progress(40)
+
     status.info("Identificando colunas de Data e Hora...")
     col_data_base = encontrar_coluna_data(df_base)
     col_data_novo = encontrar_coluna_data(df_novo)
@@ -425,23 +430,10 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
     col_data = col_data_base
     col_hora = col_hora_base
 
-    status.info("Identificando colunas de coordenadas e equivalencias...")
-    col_lat_base_utm = encontrar_coluna_por_nomes(
-        df_base, ["lat", "latitude"], obrigatoria=True
-    )
-    col_lon_base_utm = encontrar_coluna_por_nomes(
-        df_base, ["long", "longitude", "lon"], obrigatoria=True
-    )
-
-    col_lat_novo_utm = encontrar_coluna_por_nomes(
-        df_novo, ["latitude"], obrigatoria=True
-    )
-    col_lon_novo_utm = encontrar_coluna_por_nomes(
-        df_novo, ["longitude"], obrigatoria=True
-    )
-
-    df_novo = renomear_colunas_equivalentes(df_base, df_novo)
-    progresso.progress(40)
+    status.info("Identificando colunas UTM do Arquivo 02...")
+    col_lat_novo_utm = encontrar_coluna_por_nomes(df_novo, ["latitude"], obrigatoria=True)
+    col_lon_novo_utm = encontrar_coluna_por_nomes(df_novo, ["longitude"], obrigatoria=True)
+    progresso.progress(50)
 
     status.info("Excluindo registros com coordenadas invalidas no Arquivo 02...")
     total_lido_arquivo_02 = len(df_novo)
@@ -453,14 +445,14 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
         raise ValueError(
             "Apos excluir coordenadas invalidas, o Arquivo 02 ficou sem registros validos."
         )
-    progresso.progress(50)
+    progresso.progress(60)
 
     status.info("Montando coluna Data/Hora e verificando a ultima referencia da base...")
     df_base = criar_coluna_datahora(df_base, col_data, col_hora, "__datahora__")
     df_novo = criar_coluna_datahora(df_novo, col_data, col_hora, "__datahora__")
 
     ultimo_datahora_base = obter_ultimo_datahora(df_base, "__datahora__")
-    progresso.progress(60)
+    progresso.progress(70)
 
     status.info("Filtrando apenas registros posteriores a ultima Data/Hora da base...")
     total_antes_filtro_tempo = len(df_novo)
@@ -472,12 +464,6 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
     removidos_por_datahora = total_antes_filtro_tempo - len(df_novo_filtrado)
 
     base_sem_aux = df_base.drop(columns=["__datahora__"], errors="ignore").copy()
-
-    # Cria colunas WGS na base (se ainda nao existirem)
-    if "Lat_WGS" not in base_sem_aux.columns:
-        base_sem_aux["Lat_WGS"] = pd.NA
-    if "Long_WGS" not in base_sem_aux.columns:
-        base_sem_aux["Long_WGS"] = pd.NA
 
     if ultimo_datahora_base is None:
         df_novo_util = df_novo.copy()
@@ -494,18 +480,15 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
             "Base anterior localizada: somente registros posteriores a ultima "
             "Data/Hora foram adicionados."
         )
-    progresso.progress(70)
+    progresso.progress(80)
 
     if not df_novo_util.empty:
         status.info("Reprojetando coordenadas UTM (SIRGAS2000 / 24S) para WGS84...")
         df_novo_util = reprojetar_utm_para_wgs84(
             df_novo_util,
-            col_y=col_lat_novo_utm,
-            col_x=col_lon_novo_utm,
-            col_lat_destino="Lat_WGS",
-            col_lon_destino="Long_WGS",
+            col_lat_utm=col_lat_novo_utm,
+            col_lon_utm=col_lon_novo_utm,
         )
-        progresso.progress(80)
 
         status.info("Alinhando colunas e gerando base final...")
         df_novo_util = alinhar_colunas_arquivo_02_com_base(base_sem_aux, df_novo_util)
