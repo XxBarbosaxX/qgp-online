@@ -1,228 +1,318 @@
 """
-Módulo Perturbação do Sossego Alheio
-Processamento e atualização de dados de perturbação do sossego para QGP Online
+Modulo Perturbacao ao Sossego Alheio
+Versao Streamlit adaptada para o QGP Online.
 """
+
+from __future__ import annotations
+
+from io import BytesIO
 
 import pandas as pd
 import streamlit as st
-from datetime import datetime
-import io
+
+from modulos.utils import (
+    alinhar_colunas_com_base,
+    criar_coluna_datahora,
+    encontrar_coluna_data,
+    encontrar_coluna_hora,
+    encontrar_coluna_por_nomes,
+    filtrar_apenas_registros_posteriores,
+    nome_arquivo_padrao,
+    normalizar_colunas,
+    obter_ultima_datahora,
+    renomear_colunas_equivalentes,
+)
+
+NOME_ARQUIVO_FINAL = nome_arquivo_padrao(3, "PERTURBACAO-SOSSEGO-ALHEIO")
 
 
-class ProcessadorPerturbacaoSossego:
-    """Classe para processar dados de Perturbação do Sossego"""
-    
-    def __init__(self):
-        self.nome_arquivo_final = f"4-PERTURBACAO-SOSSEGO-{datetime.now().year}-QGP.xlsx"
-    
-    @staticmethod
-    def normalizar_colunas(df):
-        """Normaliza os nomes das colunas removendo espaços"""
-        df.columns = [str(c).strip() for c in df.columns]
-        return df
-    
-    @staticmethod
-    def encontrar_coluna_data(df):
-        """Encontra a coluna de data no DataFrame"""
-        exatos = [c for c in df.columns if str(c).strip().lower() == "data"]
-        if exatos:
-            return exatos[0]
-        
-        aproximados = [c for c in df.columns if "data" in str(c).strip().lower()]
-        if aproximados:
-            return aproximados[0]
-        
-        raise ValueError("Não foi encontrada a coluna 'Data'. Verifique se existe uma coluna chamada Data.")
-    
-    @staticmethod
-    def converter_coluna_data(df, coluna_data):
-        """Converte a coluna de data para datetime"""
-        df[coluna_data] = pd.to_datetime(df[coluna_data], errors='coerce', dayfirst=True)
-        return df
-    
-    @staticmethod
-    def renomear_colunas_equivalentes(df_base, df_novo):
-        """Renomeia colunas equivalentes do arquivo novo para coincidir com a base"""
-        mapa_equivalencias = {
-            "AIS": ["AIS Nova", "AIS_Nova", "AISNOVA", "ais nova", "ais_nova"]
-        }
-        
-        colunas_base_map = {str(c).strip().lower(): c for c in df_base.columns}
-        colunas_novo_map = {str(c).strip().lower(): c for c in df_novo.columns}
-        
-        renomeacoes = {}
-        for coluna_base_oficial, aliases in mapa_equivalencias.items():
-            chave_base = coluna_base_oficial.strip().lower()
-            if chave_base not in colunas_base_map:
-                continue
-            
-            nome_real_base = colunas_base_map[chave_base]
-            if nome_real_base in df_novo.columns:
-                continue
-            
-            for alias in aliases:
-                chave_alias = alias.strip().lower()
-                if chave_alias in colunas_novo_map:
-                    nome_real_novo = colunas_novo_map[chave_alias]
-                    renomeacoes[nome_real_novo] = nome_real_base
-                    break
-        
-        if renomeacoes:
-            df_novo = df_novo.rename(columns=renomeacoes)
-        
-        return df_novo
-    
-    @staticmethod
-    def filtrar_colunas_do_arquivo01(df_base, df_novo):
-        """Filtra e adiciona colunas faltantes no arquivo novo"""
-        colunas_base = list(df_base.columns)
-        faltantes = [col for col in colunas_base if col not in df_novo.columns]
-        
-        for col in faltantes:
-            df_novo[col] = pd.NA
-        
-        df_novo = df_novo[colunas_base]
-        return df_novo
-    
-    @staticmethod
-    def obter_meses_anos(df, coluna_data):
-        """Obtém pares de (ano, mês) presentes no DataFrame"""
-        base_valida = df[df[coluna_data].notna()].copy()
-        pares = set(zip(base_valida[coluna_data].dt.year, base_valida[coluna_data].dt.month))
-        return pares
-    
-    def atualizar_base(self, df_base, df_novo, coluna_data):
-        """Atualiza a base removendo dados antigos e adicionando novos"""
-        total_inicial = len(df_base)
-        
-        df_novo = self.renomear_colunas_equivalentes(df_base, df_novo)
-        df_novo = self.filtrar_colunas_do_arquivo01(df_base, df_novo)
-        
-        meses_anos_novo = self.obter_meses_anos(df_novo, coluna_data)
-        
-        if not meses_anos_novo:
-            raise ValueError("O Arquivo 02 não possui datas válidas na coluna de data.")
-        
-        mask_remover = df_base[coluna_data].notna() & df_base[coluna_data].apply(
-            lambda x: (x.year, x.month) in meses_anos_novo
+def _normalizar_nome_aba(nome: str) -> str:
+    return (
+        str(nome or "")
+        .strip()
+        .upper()
+        .replace(" ", "")
+        .replace("_", "")
+        .replace("-", "")
+    )
+
+
+def _selecionar_aba_arquivo_01(sheet_names: list[str]) -> str:
+    prioridades = [
+        "PERTURBACAOAOSOSSEGOALHEIO",
+        "PERTURBACAOAOSOSSEGO",
+        "SOSSEGOALHEIO",
+        "PERTURBACAO",
+        "BASE",
+    ]
+
+    normalizadas = {aba: _normalizar_nome_aba(aba) for aba in sheet_names}
+
+    for prioridade in prioridades:
+        for aba, nome_norm in normalizadas.items():
+            if nome_norm == prioridade:
+                return aba
+
+    for aba, nome_norm in normalizadas.items():
+        if "PERTURBACAO" in nome_norm or "SOSSEGO" in nome_norm:
+            return aba
+
+    return sheet_names[0]
+
+
+def _selecionar_aba_arquivo_02(sheet_names: list[str]) -> str:
+    prioridades = [
+        "PERTURBACAOAOSOSSEGOALHEIO",
+        "PERTURBACAOAOSOSSEGO",
+        "SOSSEGOALHEIO",
+        "PERTURBACAO",
+    ]
+
+    normalizadas = {aba: _normalizar_nome_aba(aba) for aba in sheet_names}
+
+    for prioridade in prioridades:
+        for aba, nome_norm in normalizadas.items():
+            if nome_norm == prioridade:
+                return aba
+
+    for aba, nome_norm in normalizadas.items():
+        if "PERTURBACAO" in nome_norm or "SOSSEGO" in nome_norm:
+            return aba
+
+    return sheet_names[0]
+
+
+def gerar_excel_em_memoria(df: pd.DataFrame) -> bytes:
+    buffer = BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="PERTURBACAO_SOSSEGO")
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+def processar_perturbacao_sossego(arquivo_01, arquivo_02):
+    arquivo_01.seek(0)
+    arquivo_02.seek(0)
+
+    xls_base = pd.ExcelFile(arquivo_01)
+    xls_novo = pd.ExcelFile(arquivo_02)
+
+    abas_base = xls_base.sheet_names
+    abas_novo = xls_novo.sheet_names
+
+    aba_base = _selecionar_aba_arquivo_01(abas_base)
+    aba_novo = _selecionar_aba_arquivo_02(abas_novo)
+
+    df_base = pd.read_excel(xls_base, sheet_name=aba_base)
+    df_novo = pd.read_excel(xls_novo, sheet_name=aba_novo)
+
+    df_base = normalizar_colunas(df_base)
+    df_novo = normalizar_colunas(df_novo)
+
+    col_data_base = encontrar_coluna_data(df_base)
+    col_hora_base = encontrar_coluna_hora(df_base)
+
+    col_data_novo = encontrar_coluna_data(df_novo)
+    col_hora_novo = encontrar_coluna_hora(df_novo)
+
+    if col_data_novo is None:
+        col_datahora_novo = encontrar_coluna_por_nomes(
+            df_novo,
+            ["datahora", "data_hora", "data/hora", "data hora"],
+            obrigatoria=True,
         )
-        
-        houve_substituicao = mask_remover.any()
-        
-        if houve_substituicao:
-            df_base_atualizada = df_base.loc[~mask_remover].copy()
-        else:
-            df_base_atualizada = df_base.copy()
-        
-        total_antes_add = len(df_base_atualizada)
-        df_final = pd.concat([df_base_atualizada, df_novo], ignore_index=True)
-        df_final = df_final.sort_values(by=coluna_data, ascending=True, na_position='last').reset_index(drop=True)
-        
-        adicionados = len(df_final) - total_antes_add
-        total_final = len(df_final)
-        
-        return df_final, adicionados, total_final, total_inicial, houve_substituicao
-    
-    def processar(self, arquivo01, arquivo02):
-        """Processa os arquivos de Perturbação do Sossego"""
+        df_novo["__datahora__"] = pd.to_datetime(
+            df_novo[col_datahora_novo],
+            errors="coerce",
+            dayfirst=True,
+        )
+    else:
+        df_novo = criar_coluna_datahora(df_novo, col_data_novo, col_hora_novo, "__datahora__")
+
+    df_base = criar_coluna_datahora(df_base, col_data_base, col_hora_base, "__datahora__")
+
+    ultima_datahora_base = obter_ultima_datahora(df_base, "__datahora__")
+
+    total_antes_filtro = len(df_novo)
+    df_novo_filtrado = filtrar_apenas_registros_posteriores(
+        df_novo,
+        "__datahora__",
+        ultima_datahora_base,
+    )
+    removidos_por_datahora = total_antes_filtro - len(df_novo_filtrado)
+
+    base_sem_aux = df_base.drop(columns=["__datahora__"], errors="ignore").copy()
+
+    df_novo = renomear_colunas_equivalentes(base_sem_aux, df_novo)
+    df_novo_filtrado = renomear_colunas_equivalentes(base_sem_aux, df_novo_filtrado)
+
+    if ultima_datahora_base is None:
+        df_novo_util = df_novo.copy()
+        situacao = "Base anterior sem Data/Hora valida: Arquivo 02 foi incluido integralmente."
+    elif df_novo_filtrado.empty:
+        df_novo_util = df_novo_filtrado.copy()
+        situacao = (
+            "Nenhum registro novo encontrado apos a ultima Data/Hora da base: "
+            "Arquivo 01 foi mantido sem acrescimos."
+        )
+    else:
+        df_novo_util = df_novo_filtrado.copy()
+        situacao = (
+            "Base anterior localizada: somente registros posteriores a ultima "
+            "Data/Hora foram adicionados."
+        )
+
+    if not df_novo_util.empty:
+        df_novo_util = df_novo_util.drop(columns=["__datahora__"], errors="ignore")
+        df_novo_util = alinhar_colunas_com_base(base_sem_aux, df_novo_util)
+        df_final = pd.concat([base_sem_aux, df_novo_util], ignore_index=True)
+        adicionados = len(df_novo_util)
+    else:
+        df_final = base_sem_aux.copy()
+        adicionados = 0
+
+    df_final = criar_coluna_datahora(df_final, col_data_base, col_hora_base, "__datahora__")
+    df_final = df_final.sort_values(
+        by="__datahora__",
+        ascending=True,
+        na_position="last",
+    ).reset_index(drop=True)
+    df_final = df_final.drop(columns=["__datahora__"], errors="ignore")
+
+    total_final = len(df_final)
+
+    ultima_ref = (
+        ultima_datahora_base.strftime("%d/%m/%Y %H:%M:%S")
+        if ultima_datahora_base is not None
+        else "sem referencia anterior valida"
+    )
+
+    resumo = {
+        "adicionados": adicionados,
+        "total_final": total_final,
+        "removidos_por_datahora": removidos_por_datahora,
+        "ultima_datahora_base": ultima_ref,
+        "situacao": situacao,
+        "aba_arquivo_01": aba_base,
+        "aba_arquivo_02": aba_novo,
+    }
+
+    return df_final, resumo
+
+
+def _init_state():
+    defaults = {
+        "perturbacao_arquivo_01_bytes": None,
+        "perturbacao_arquivo_01_nome": None,
+        "perturbacao_arquivo_02_bytes": None,
+        "perturbacao_arquivo_02_nome": None,
+        "perturbacao_resultado_excel": None,
+        "perturbacao_resultado_df": None,
+        "perturbacao_resumo": None,
+    }
+    for chave, valor in defaults.items():
+        if chave not in st.session_state:
+            st.session_state[chave] = valor
+
+
+def render():
+    _init_state()
+
+    st.subheader("Perturbacao ao Sossego Alheio")
+    st.write(
+        "Envie a base historica e o arquivo complementar para atualizar a base com os novos registros."
+    )
+
+    arquivo_01 = st.file_uploader(
+        "Arquivo 01 - Base historica de Perturbacao ao Sossego Alheio",
+        type=["xlsx", "xls"],
+        key="perturbacao_upload_01",
+    )
+
+    arquivo_02 = st.file_uploader(
+        "Arquivo 02 - Complemento de Perturbacao ao Sossego Alheio",
+        type=["xlsx", "xls"],
+        key="perturbacao_upload_02",
+    )
+
+    if arquivo_01 is not None:
+        arquivo_01.seek(0)
+        st.session_state.perturbacao_arquivo_01_bytes = arquivo_01.read()
+        st.session_state.perturbacao_arquivo_01_nome = arquivo_01.name
+
+    if arquivo_02 is not None:
+        arquivo_02.seek(0)
+        st.session_state.perturbacao_arquivo_02_bytes = arquivo_02.read()
+        st.session_state.perturbacao_arquivo_02_nome = arquivo_02.name
+
+    if st.session_state.perturbacao_arquivo_01_nome:
+        st.info(f"Arquivo 01 carregado: {st.session_state.perturbacao_arquivo_01_nome}")
+
+    if st.session_state.perturbacao_arquivo_02_nome:
+        st.info(f"Arquivo 02 carregado: {st.session_state.perturbacao_arquivo_02_nome}")
+
+    pode_processar = (
+        st.session_state.perturbacao_arquivo_01_bytes is not None
+        and st.session_state.perturbacao_arquivo_02_bytes is not None
+    )
+
+    if st.button(
+        "Processar Perturbacao ao Sossego Alheio",
+        type="primary",
+        disabled=not pode_processar,
+    ):
         try:
-            df_base = pd.read_excel(arquivo01)
-            df_novo = pd.read_excel(arquivo02)
-            
-            df_base = self.normalizar_colunas(df_base)
-            df_novo = self.normalizar_colunas(df_novo)
-            
-            coluna_data_base = self.encontrar_coluna_data(df_base)
-            coluna_data_novo = self.encontrar_coluna_data(df_novo)
-            
-            df_base = self.converter_coluna_data(df_base, coluna_data_base)
-            df_novo = self.converter_coluna_data(df_novo, coluna_data_novo)
-            
-            if coluna_data_base != coluna_data_novo:
-                df_novo = df_novo.rename(columns={coluna_data_novo: coluna_data_base})
-            
-            coluna_data = coluna_data_base
-            
-            df_final, adicionados, total_final, total_inicial, houve_substituicao = self.atualizar_base(
-                df_base, df_novo, coluna_data
-            )
-            
-            return {
-                'sucesso': True,
-                'df_final': df_final,
-                'adicionados': adicionados,
-                'total_final': total_final,
-                'total_inicial': total_inicial,
-                'houve_substituicao': houve_substituicao,
-                'nome_arquivo': self.nome_arquivo_final
-            }
-            
-        except Exception as e:
-            return {
-                'sucesso': False,
-                'erro': str(e)
-            }
+            arquivo_01_buffer = BytesIO(st.session_state.perturbacao_arquivo_01_bytes)
+            arquivo_02_buffer = BytesIO(st.session_state.perturbacao_arquivo_02_bytes)
 
+            with st.spinner("Processando registros de Perturbacao ao Sossego Alheio..."):
+                df_final, resumo = processar_perturbacao_sossego(
+                    arquivo_01_buffer,
+                    arquivo_02_buffer,
+                )
+                arquivo_excel_bytes = gerar_excel_em_memoria(df_final)
 
-def interface_perturbacao_sossego():
-    """Interface Streamlit para processamento de Perturbação do Sossego"""
-    st.markdown("### Processamento Perturbação do Sossego")
-    st.markdown("Atualize a base de Perturbação do Sossego Alheio")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        arquivo01 = st.file_uploader(
-            "📁 Arquivo 01 - Base de dados",
-            type=["xlsx", "xls"],
-            key="perturbacao_arquivo01"
+            st.session_state.perturbacao_resultado_df = df_final
+            st.session_state.perturbacao_resumo = resumo
+            st.session_state.perturbacao_resultado_excel = arquivo_excel_bytes
+
+            st.success("Processamento concluido com sucesso.")
+
+        except Exception as exc:
+            st.exception(exc)
+
+    if (
+        st.session_state.perturbacao_resultado_df is not None
+        and st.session_state.perturbacao_resumo is not None
+    ):
+        df_final = st.session_state.perturbacao_resultado_df
+        resumo = st.session_state.perturbacao_resumo
+
+        c1, c2 = st.columns(2)
+        c1.metric("Novos registros adicionados", resumo["adicionados"])
+        c2.metric("Total final da base", resumo["total_final"])
+
+        st.info(
+            f"Aba usada no Arquivo 01: {resumo['aba_arquivo_01']} | "
+            f"Aba usada no Arquivo 02: {resumo['aba_arquivo_02']}"
         )
-    
-    with col2:
-        arquivo02 = st.file_uploader(
-            "📁 Arquivo 02 - Dados complementares",
-            type=["xlsx", "xls"],
-            key="perturbacao_arquivo02"
+
+        st.info(
+            f"Ultima Data/Hora da base: {resumo['ultima_datahora_base']} | "
+            f"Removidos por filtro temporal: {resumo['removidos_por_datahora']}"
         )
-    
-    salvar_drive = st.checkbox("💾 Salvar no Google Drive", key="perturbacao_drive")
-    
-    if st.button("▶️ Processar Perturbação do Sossego", key="processar_perturbacao"):
-        if not arquivo01:
-            st.error("⚠️ Envie o Arquivo 01 (Base de dados)")
-            return
-        
-        if not arquivo02:
-            st.error("⚠️ Envie o Arquivo 02 (Dados complementares)")
-            return
-        
-        with st.spinner("Processando dados de Perturbação do Sossego..."):
-            processador = ProcessadorPerturbacaoSossego()
-            resultado = processador.processar(arquivo01, arquivo02)
-        
-        if resultado['sucesso']:
-            acao = "atualizado" if resultado['houve_substituicao'] else "complementado"
-            
-            st.success("✅ Processo Finalizado!")
-            st.info(f"📊 **{resultado['adicionados']}** registros novos adicionados")
-            st.info(f"📈 Total de **{resultado['total_final']}** registros na base")
-            st.info(f"🔄 Arquivo {acao} com sucesso")
-            
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                resultado['df_final'].to_excel(writer, index=False, sheet_name='Perturbacao_Sossego')
-            
-            output.seek(0)
-            
+
+        st.caption(resumo["situacao"])
+        st.dataframe(df_final.head(50), use_container_width=True)
+
+        if st.session_state.perturbacao_resultado_excel is not None:
             st.download_button(
-                label="💾 Download do arquivo processado",
-                data=output,
-                file_name=resultado['nome_arquivo'],
+                label="Baixar arquivo final",
+                data=st.session_state.perturbacao_resultado_excel,
+                file_name=NOME_ARQUIVO_FINAL,
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="download_perturbacao"
+                key="perturbacao_download_final",
             )
-            
-            if salvar_drive:
-                st.warning("🔄 Integração com Google Drive em desenvolvimento")
-        else:
-            st.error(f"❌ Erro no processamento: {resultado['erro']}")
+
+
+interface_perturbacao_sossego = render
