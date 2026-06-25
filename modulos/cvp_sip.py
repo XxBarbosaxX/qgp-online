@@ -808,10 +808,7 @@ def render():
             st.caption(resumo["situacao"])
             st.dataframe(df_final.head(50), use_container_width=True)
 
-            arquivo_excel = gerar_arquivo_excel(
-                df_final,
-                nome_aba="CVP_SIP_ENDERECO",
-            )
+            arquivo_excel = gerar_arquivo_excel(df_final)
 
             st.download_button(
                 label="Baixar arquivo final",
