@@ -832,7 +832,13 @@ def render():
 
             st.success("Processamento concluido com sucesso.")
 
-    if st.session_state.cvp_sip_resultado_df is not None and st.session_state.cvp_sip_resumo is not None:
+        except Exception as exc:
+            st.exception(exc)
+
+    if (
+        st.session_state.cvp_sip_resultado_df is not None
+        and st.session_state.cvp_sip_resumo is not None
+    ):
         df_final = st.session_state.cvp_sip_resultado_df
         resumo = st.session_state.cvp_sip_resumo
 
@@ -861,7 +867,6 @@ def render():
                 data=st.session_state.cvp_sip_resultado_excel,
                 file_name=NOME_ARQUIVO_FINAL,
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                on_click="ignore",
                 key="cvp_sip_download_final",
             )
 
