@@ -9,6 +9,7 @@ from io import BytesIO
 
 import pandas as pd
 import streamlit as st
+from pyproj import Transformer
 
 from modulos.utils import (
     alinhar_colunas_com_base,
@@ -24,6 +25,9 @@ from modulos.utils import (
 )
 
 NOME_ARQUIVO_FINAL = nome_arquivo_padrao(3, "PERTURBACAO-SOSSEGO-ALHEIO")
+
+EPSG_ORIGEM = 31984  # UTM SIRGAS2000 / 24S
+EPSG_DESTINO = 4326  # WGS84
 
 
 def _normalizar_nome_aba(nome: str) -> str:
@@ -90,12 +94,87 @@ def gerar_excel_em_memoria(df: pd.DataFrame) -> bytes:
     return buffer.getvalue()
 
 
+def _renomear_colunas_arquivo_02(df_novo: pd.DataFrame) -> pd.DataFrame:
+    df_novo = df_novo.copy()
+
+    mapa_renomeacao = {}
+
+    col_data = encontrar_coluna_por_nomes(df_novo, ["data"], obrigatoria=False)
+    if col_data and col_data != "Data":
+        mapa_renomeacao[col_data] = "Data"
+
+    col_hora = encontrar_coluna_por_nomes(df_novo, ["hora"], obrigatoria=False)
+    if col_hora and col_hora != "Hora":
+        mapa_renomeacao[col_hora] = "Hora"
+
+    col_territorio = encontrar_coluna_por_nomes(
+        df_novo,
+        ["território", "territorio", "regiões", "regioes"],
+        obrigatoria=False,
+    )
+    if col_territorio and col_territorio != "Território":
+        mapa_renomeacao[col_territorio] = "Território"
+
+    col_ne = encontrar_coluna_por_nomes(df_novo, ["ne"], obrigatoria=False)
+    if col_ne and col_ne != "NE":
+        mapa_renomeacao[col_ne] = "NE"
+
+    col_lat = encontrar_coluna_por_nomes(df_novo, ["latitude", "lat"], obrigatoria=False)
+    if col_lat and col_lat != "Latitude":
+        mapa_renomeacao[col_lat] = "Latitude"
+
+    col_lon = encontrar_coluna_por_nomes(
+        df_novo,
+        ["longitude", "long", "lon"],
+        obrigatoria=False,
+    )
+    if col_lon and col_lon != "Longitude":
+        mapa_renomeacao[col_lon] = "Longitude"
+
+    if mapa_renomeacao:
+        df_novo = df_novo.rename(columns=mapa_renomeacao)
+
+    return df_novo
+
+
+def _converter_utm_para_wgs84(df: pd.DataFrame, col_x: str, col_y: str) -> pd.DataFrame:
+    df = df.copy()
+
+    x = pd.to_numeric(df[col_x], errors="coerce")
+    y = pd.to_numeric(df[col_y], errors="coerce")
+
+    mascara = x.notna() & y.notna()
+
+    df["Long"] = pd.NA
+    df["Lat"] = pd.NA
+
+    if mascara.any():
+        transformador = Transformer.from_crs(
+            f"EPSG:{EPSG_ORIGEM}",
+            f"EPSG:{EPSG_DESTINO}",
+            always_xy=True,
+        )
+        longitudes, latitudes = transformador.transform(
+            x[mascara].astype(float).to_numpy(),
+            y[mascara].astype(float).to_numpy(),
+        )
+        df.loc[mascara, "Long"] = longitudes
+        df.loc[mascara, "Lat"] = latitudes
+
+    return df
+
+
 def processar_perturbacao_sossego(arquivo_01, arquivo_02):
+    progresso = st.progress(0)
+    status = st.empty()
+
+    status.info("Lendo os arquivos enviados...")
     arquivo_01.seek(0)
     arquivo_02.seek(0)
 
     xls_base = pd.ExcelFile(arquivo_01)
     xls_novo = pd.ExcelFile(arquivo_02)
+    progresso.progress(10)
 
     abas_base = xls_base.sheet_names
     abas_novo = xls_novo.sheet_names
@@ -103,34 +182,35 @@ def processar_perturbacao_sossego(arquivo_01, arquivo_02):
     aba_base = _selecionar_aba_arquivo_01(abas_base)
     aba_novo = _selecionar_aba_arquivo_02(abas_novo)
 
+    status.info("Carregando as abas de trabalho...")
     df_base = pd.read_excel(xls_base, sheet_name=aba_base)
     df_novo = pd.read_excel(xls_novo, sheet_name=aba_novo)
+    progresso.progress(20)
 
+    status.info("Normalizando nomes de colunas...")
     df_base = normalizar_colunas(df_base)
     df_novo = normalizar_colunas(df_novo)
+    df_novo = _renomear_colunas_arquivo_02(df_novo)
+    progresso.progress(30)
 
+    status.info("Identificando colunas de data e hora...")
     col_data_base = encontrar_coluna_data(df_base)
     col_hora_base = encontrar_coluna_hora(df_base)
 
     col_data_novo = encontrar_coluna_data(df_novo)
     col_hora_novo = encontrar_coluna_hora(df_novo)
 
+    if col_data_base is None:
+        raise ValueError("O Arquivo 01 precisa possuir uma coluna de Data valida.")
+
     if col_data_novo is None:
-        col_datahora_novo = encontrar_coluna_por_nomes(
-            df_novo,
-            ["datahora", "data_hora", "data/hora", "data hora"],
-            obrigatoria=True,
-        )
-        df_novo["__datahora__"] = pd.to_datetime(
-            df_novo[col_datahora_novo],
-            errors="coerce",
-            dayfirst=True,
-        )
-    else:
-        df_novo = criar_coluna_datahora(df_novo, col_data_novo, col_hora_novo, "__datahora__")
+        raise ValueError("O Arquivo 02 precisa possuir uma coluna de data valida.")
 
     df_base = criar_coluna_datahora(df_base, col_data_base, col_hora_base, "__datahora__")
+    df_novo = criar_coluna_datahora(df_novo, col_data_novo, col_hora_novo, "__datahora__")
+    progresso.progress(40)
 
+    status.info("Verificando a ultima Data/Hora da base...")
     ultima_datahora_base = obter_ultima_datahora(df_base, "__datahora__")
 
     total_antes_filtro = len(df_novo)
@@ -140,11 +220,9 @@ def processar_perturbacao_sossego(arquivo_01, arquivo_02):
         ultima_datahora_base,
     )
     removidos_por_datahora = total_antes_filtro - len(df_novo_filtrado)
+    progresso.progress(50)
 
     base_sem_aux = df_base.drop(columns=["__datahora__"], errors="ignore").copy()
-
-    df_novo = renomear_colunas_equivalentes(base_sem_aux, df_novo)
-    df_novo_filtrado = renomear_colunas_equivalentes(base_sem_aux, df_novo_filtrado)
 
     if ultima_datahora_base is None:
         df_novo_util = df_novo.copy()
@@ -162,14 +240,72 @@ def processar_perturbacao_sossego(arquivo_01, arquivo_02):
             "Data/Hora foram adicionados."
         )
 
-    if not df_novo_util.empty:
-        df_novo_util = df_novo_util.drop(columns=["__datahora__"], errors="ignore")
-        df_novo_util = alinhar_colunas_com_base(base_sem_aux, df_novo_util)
-        df_final = pd.concat([base_sem_aux, df_novo_util], ignore_index=True)
-        adicionados = len(df_novo_util)
-    else:
+    if df_novo_util.empty:
+        progresso.progress(100)
+        status.success("Nenhum novo registro foi encontrado para processamento.")
+
         df_final = base_sem_aux.copy()
-        adicionados = 0
+        df_final = criar_coluna_datahora(df_final, col_data_base, col_hora_base, "__datahora__")
+        df_final = df_final.sort_values(
+            by="__datahora__",
+            ascending=True,
+            na_position="last",
+        ).reset_index(drop=True)
+        df_final = df_final.drop(columns=["__datahora__"], errors="ignore")
+
+        total_final = len(df_final)
+        ultima_ref = (
+            ultima_datahora_base.strftime("%d/%m/%Y %H:%M:%S")
+            if ultima_datahora_base is not None
+            else "sem referencia anterior valida"
+        )
+
+        resumo = {
+            "adicionados": 0,
+            "total_final": total_final,
+            "removidos_por_datahora": removidos_por_datahora,
+            "ultima_datahora_base": ultima_ref,
+            "situacao": situacao,
+            "aba_arquivo_01": aba_base,
+            "aba_arquivo_02": aba_novo,
+        }
+        return df_final, resumo
+
+    status.info("Convertendo coordenadas UTM (SIRGAS2000) para WGS84 apenas nos registros novos...")
+    col_x_novo = encontrar_coluna_por_nomes(df_novo_util, ["longitude", "long", "lon"], obrigatoria=False)
+    col_y_novo = encontrar_coluna_por_nomes(df_novo_util, ["latitude", "lat"], obrigatoria=False)
+
+    if col_x_novo is None or col_y_novo is None:
+        raise ValueError(
+            "O Arquivo 02 precisa conter colunas de coordenadas UTM, como Longitude/Latitude."
+        )
+
+    df_novo_util = _converter_utm_para_wgs84(df_novo_util, col_x_novo, col_y_novo)
+    progresso.progress(70)
+
+    status.info("Alinhando colunas e preparando inclusao dos novos registros...")
+    df_novo_util = df_novo_util.drop(columns=["__datahora__"], errors="ignore")
+    df_novo_util = renomear_colunas_equivalentes(base_sem_aux, df_novo_util)
+
+    if "Regiões" in df_novo_util.columns and "Território" not in df_novo_util.columns:
+        df_novo_util = df_novo_util.rename(columns={"Regiões": "Território"})
+    if "regioes" in df_novo_util.columns and "Território" not in df_novo_util.columns:
+        df_novo_util = df_novo_util.rename(columns={"regioes": "Território"})
+
+    if "Latitude" in df_novo_util.columns and "Lat" not in df_novo_util.columns:
+        df_novo_util = df_novo_util.rename(columns={"Latitude": "Lat"})
+    if "Longitude" in df_novo_util.columns and "Long" not in df_novo_util.columns:
+        df_novo_util = df_novo_util.rename(columns={"Longitude": "Long"})
+
+    if "data" in df_novo_util.columns and "Data" not in df_novo_util.columns:
+        df_novo_util = df_novo_util.rename(columns={"data": "Data"})
+
+    df_novo_util = alinhar_colunas_com_base(base_sem_aux, df_novo_util)
+    progresso.progress(85)
+
+    status.info("Gerando arquivo final...")
+    df_final = pd.concat([base_sem_aux, df_novo_util], ignore_index=True)
+    adicionados = len(df_novo_util)
 
     df_final = criar_coluna_datahora(df_final, col_data_base, col_hora_base, "__datahora__")
     df_final = df_final.sort_values(
@@ -178,9 +314,11 @@ def processar_perturbacao_sossego(arquivo_01, arquivo_02):
         na_position="last",
     ).reset_index(drop=True)
     df_final = df_final.drop(columns=["__datahora__"], errors="ignore")
+    progresso.progress(100)
+
+    status.success(f"Processamento concluido. Novos registros adicionados: {adicionados}")
 
     total_final = len(df_final)
-
     ultima_ref = (
         ultima_datahora_base.strftime("%d/%m/%Y %H:%M:%S")
         if ultima_datahora_base is not None
@@ -221,6 +359,10 @@ def render():
     st.subheader("Perturbacao ao Sossego Alheio")
     st.write(
         "Envie a base historica e o arquivo complementar para atualizar a base com os novos registros."
+    )
+
+    st.caption(
+        "O sistema verifica a ultima Data/Hora da base historica, identifica apenas ocorrencias posteriores no arquivo complementar, converte coordenadas UTM (SIRGAS2000) para WGS84 e inclui somente os novos registros no arquivo final."
     )
 
     arquivo_01 = st.file_uploader(
@@ -265,18 +407,15 @@ def render():
             arquivo_01_buffer = BytesIO(st.session_state.perturbacao_arquivo_01_bytes)
             arquivo_02_buffer = BytesIO(st.session_state.perturbacao_arquivo_02_bytes)
 
-            with st.spinner("Processando registros de Perturbacao ao Sossego Alheio..."):
-                df_final, resumo = processar_perturbacao_sossego(
-                    arquivo_01_buffer,
-                    arquivo_02_buffer,
-                )
-                arquivo_excel_bytes = gerar_excel_em_memoria(df_final)
+            df_final, resumo = processar_perturbacao_sossego(
+                arquivo_01_buffer,
+                arquivo_02_buffer,
+            )
+            arquivo_excel_bytes = gerar_excel_em_memoria(df_final)
 
             st.session_state.perturbacao_resultado_df = df_final
             st.session_state.perturbacao_resumo = resumo
             st.session_state.perturbacao_resultado_excel = arquivo_excel_bytes
-
-            st.success("Processamento concluido com sucesso.")
 
         except Exception as exc:
             st.exception(exc)
