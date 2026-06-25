@@ -27,7 +27,6 @@ from modulos.utils import (
     encontrar_coluna_hora,
     encontrar_coluna_por_nomes,
     filtrar_apenas_registros_posteriores,
-    gerar_arquivo_excel,
     nome_arquivo_padrao,
     normalizar_colunas,
     obter_ultima_datahora,
@@ -136,6 +135,14 @@ def _selecionar_aba_arquivo_01(sheet_names: list[str]) -> str:
             return aba
 
     return sheet_names[0]
+
+
+def gerar_excel_em_memoria(df: pd.DataFrame) -> bytes:
+    buffer = BytesIO()
+    with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
+        df.to_excel(writer, index=False, sheet_name="CVP_SIP_ENDERECO")
+    buffer.seek(0)
+    return buffer.getvalue()
 
 
 @st.cache_data(show_spinner=False)
@@ -760,6 +767,9 @@ def _init_state():
         "cvp_sip_arquivo_01_nome": None,
         "cvp_sip_arquivo_02_bytes": None,
         "cvp_sip_arquivo_02_nome": None,
+        "cvp_sip_resultado_excel": None,
+        "cvp_sip_resultado_df": None,
+        "cvp_sip_resumo": None,
     }
     for chave, valor in defaults.items():
         if chave not in st.session_state:
@@ -814,39 +824,46 @@ def render():
 
             with st.spinner("Processando e geocodificando registros..."):
                 df_final, resumo = processar_cvp_sip(arquivo_01_buffer, arquivo_02_buffer)
+                arquivo_excel_bytes = gerar_excel_em_memoria(df_final)
+
+            st.session_state.cvp_sip_resultado_df = df_final
+            st.session_state.cvp_sip_resumo = resumo
+            st.session_state.cvp_sip_resultado_excel = arquivo_excel_bytes
 
             st.success("Processamento concluido com sucesso.")
 
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Novos registros adicionados", resumo["adicionados"])
-            c2.metric("Total final da base", resumo["total_final"])
-            c3.metric("Registros geocodificados", resumo["geocodificados"])
+    if st.session_state.cvp_sip_resultado_df is not None and st.session_state.cvp_sip_resumo is not None:
+        df_final = st.session_state.cvp_sip_resultado_df
+        resumo = st.session_state.cvp_sip_resumo
 
-            st.info(
-                f"Aba usada no Arquivo 01: {resumo['aba_arquivo_01']} | "
-                f"Aba usada no Arquivo 02: {resumo['aba_arquivo_02']}"
-            )
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Novos registros adicionados", resumo["adicionados"])
+        c2.metric("Total final da base", resumo["total_final"])
+        c3.metric("Registros geocodificados", resumo["geocodificados"])
 
-            st.info(
-                f"Ultima Data/Hora da base: {resumo['ultima_datahora_base']} | "
-                f"Removidos por filtro temporal: {resumo['removidos_por_datahora']} | "
-                f"Removidos sem geocodificacao: {resumo['removidos_sem_geocodificacao']}"
-            )
+        st.info(
+            f"Aba usada no Arquivo 01: {resumo['aba_arquivo_01']} | "
+            f"Aba usada no Arquivo 02: {resumo['aba_arquivo_02']}"
+        )
 
-            st.caption(resumo["situacao"])
-            st.dataframe(df_final.head(50), use_container_width=True)
+        st.info(
+            f"Ultima Data/Hora da base: {resumo['ultima_datahora_base']} | "
+            f"Removidos por filtro temporal: {resumo['removidos_por_datahora']} | "
+            f"Removidos sem geocodificacao: {resumo['removidos_sem_geocodificacao']}"
+        )
 
-            arquivo_excel = gerar_arquivo_excel(df_final)
+        st.caption(resumo["situacao"])
+        st.dataframe(df_final.head(50), use_container_width=True)
 
+        if st.session_state.cvp_sip_resultado_excel is not None:
             st.download_button(
                 label="Baixar arquivo final",
-                data=arquivo_excel,
+                data=st.session_state.cvp_sip_resultado_excel,
                 file_name=NOME_ARQUIVO_FINAL,
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                on_click="ignore",
+                key="cvp_sip_download_final",
             )
-
-        except Exception as exc:
-            st.exception(exc)
 
 
 interface_cvp_sip = render
