@@ -25,8 +25,8 @@ from modulos.utils import (
 
 NOME_ARQUIVO_FINAL = nome_arquivo_padrao(3, "PERTURBACAO-SOSSEGO-ALHEIO")
 
-EPSG_ORIGEM = 31984
-EPSG_DESTINO = 4326
+EPSG_UTM_SIRGAS_24S = 31984
+EPSG_WGS84 = 4326
 
 
 def _normalizar_nome_aba(nome: str) -> str:
@@ -129,54 +129,70 @@ def _padronizar_colunas(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _validar_e_converter_utm_para_wgs84(
-    df: pd.DataFrame,
-    col_x: str = "Longitude",
-    col_y: str = "Latitude",
-) -> tuple[pd.DataFrame, int]:
+def _coordenadas_parecem_wgs84(x: pd.Series, y: pd.Series) -> pd.Series:
+    return x.between(-180, 180) & y.between(-90, 90)
+
+
+def _converter_xy(x: pd.Series, y: pd.Series, epsg_origem: int) -> tuple[pd.Series, pd.Series]:
+    transformador = Transformer.from_crs(
+        f"EPSG:{epsg_origem}",
+        f"EPSG:{EPSG_WGS84}",
+        always_xy=True,
+    )
+    longitudes, latitudes = transformador.transform(
+        x.astype(float).to_numpy(),
+        y.astype(float).to_numpy(),
+    )
+    return pd.Series(longitudes, index=x.index), pd.Series(latitudes, index=y.index)
+
+
+def _processar_coordenadas(df: pd.DataFrame, col_x: str, col_y: str) -> tuple[pd.DataFrame, int, str]:
     df = df.copy()
 
     x = pd.to_numeric(df[col_x], errors="coerce")
     y = pd.to_numeric(df[col_y], errors="coerce")
 
-    mascara_valida = x.notna() & y.notna() & (x != 0) & (y != 0)
-    removidos_invalidos_entrada = len(df) - int(mascara_valida.sum())
+    mascara_preenchida = x.notna() & y.notna() & (x != 0) & (y != 0)
+    removidos_entrada = len(df) - int(mascara_preenchida.sum())
 
-    df = df.loc[mascara_valida].copy()
-    x = x.loc[mascara_valida]
-    y = y.loc[mascara_valida]
+    df = df.loc[mascara_preenchida].copy()
+    x = x.loc[mascara_preenchida]
+    y = y.loc[mascara_preenchida]
 
     if df.empty:
-        return df, removidos_invalidos_entrada
+        return df, removidos_entrada, "Nenhuma coordenada valida encontrada na entrada."
 
-    transformador = Transformer.from_crs(
-        f"EPSG:{EPSG_ORIGEM}",
-        f"EPSG:{EPSG_DESTINO}",
-        always_xy=True,
-    )
+    mascara_wgs_direto = _coordenadas_parecem_wgs84(x, y)
+    if mascara_wgs_direto.all():
+        df["Long"] = x.astype(float)
+        df["Lat"] = y.astype(float)
+        return df, removidos_entrada, "Coordenadas ja estavam em WGS84."
 
-    longitudes, latitudes = transformador.transform(
-        x.astype(float).to_numpy(),
-        y.astype(float).to_numpy(),
-    )
+    lon_24s, lat_24s = _converter_xy(x, y, EPSG_UTM_SIRGAS_24S)
+    mascara_24s = lon_24s.between(-180, 180) & lat_24s.between(-90, 90)
 
-    df["Long"] = pd.to_numeric(pd.Series(longitudes, index=df.index), errors="coerce")
-    df["Lat"] = pd.to_numeric(pd.Series(latitudes, index=df.index), errors="coerce")
+    lon_24s_inv, lat_24s_inv = _converter_xy(y, x, EPSG_UTM_SIRGAS_24S)
+    mascara_24s_inv = lon_24s_inv.between(-180, 180) & lat_24s_inv.between(-90, 90)
 
-    mascara_wgs84 = (
-        df["Long"].notna()
-        & df["Lat"].notna()
-        & (df["Long"] != 0)
-        & (df["Lat"] != 0)
-        & df["Long"].between(-180, 180)
-        & df["Lat"].between(-90, 90)
-    )
+    acertos_24s = int(mascara_24s.sum())
+    acertos_24s_inv = int(mascara_24s_inv.sum())
 
-    removidos_invalidos_saida = len(df) - int(mascara_wgs84.sum())
-    df = df.loc[mascara_wgs84].copy()
+    if acertos_24s_inv > acertos_24s:
+        df["Long"] = lon_24s_inv
+        df["Lat"] = lat_24s_inv
+        mascara_final = mascara_24s_inv
+        metodo = "Coordenadas convertidas de UTM SIRGAS2000 / 24S para WGS84 com eixos invertidos."
+    else:
+        df["Long"] = lon_24s
+        df["Lat"] = lat_24s
+        mascara_final = mascara_24s
+        metodo = "Coordenadas convertidas de UTM SIRGAS2000 / 24S para WGS84."
 
-    removidos_total = removidos_invalidos_entrada + removidos_invalidos_saida
-    return df, removidos_total
+    removidos_saida = len(df) - int(mascara_final.sum())
+    df = df.loc[mascara_final].copy()
+
+    removidos_total = removidos_entrada + removidos_saida
+    return df, removidos_total, metodo
 
 
 def _alinhar_com_base(base_sem_aux: pd.DataFrame, df_novo_util: pd.DataFrame) -> pd.DataFrame:
@@ -194,6 +210,7 @@ def processar_perturbacao_sossego(arquivo_01, arquivo_02):
     progresso = st.progress(0)
     status = st.empty()
     removidos_coord_invalidas = 0
+    metodo_coordenadas = "-"
 
     status.info("Lendo os arquivos enviados...")
     arquivo_01.seek(0)
@@ -272,11 +289,7 @@ def processar_perturbacao_sossego(arquivo_01, arquivo_02):
 
         df_final = base_sem_aux.copy()
         df_final = criar_coluna_datahora(df_final, col_data_base, col_hora_base, "__datahora__")
-        df_final = df_final.sort_values(
-            by="__datahora__",
-            ascending=True,
-            na_position="last",
-        ).reset_index(drop=True)
+        df_final = df_final.sort_values(by="__datahora__", ascending=True, na_position="last").reset_index(drop=True)
         df_final = df_final.drop(columns=["__datahora__"], errors="ignore")
 
         ultima_ref = (
@@ -292,12 +305,13 @@ def processar_perturbacao_sossego(arquivo_01, arquivo_02):
             "removidos_coord_invalidas": removidos_coord_invalidas,
             "ultima_datahora_base": ultima_ref,
             "situacao": situacao,
+            "metodo_coordenadas": metodo_coordenadas,
             "aba_arquivo_01": aba_base,
             "aba_arquivo_02": aba_novo,
         }
         return df_final, resumo
 
-    status.info("Removendo coordenadas invalidas e convertendo UTM (SIRGAS2000) para WGS84...")
+    status.info("Validando e convertendo coordenadas dos novos registros...")
     col_x_novo = encontrar_coluna_por_nomes(df_novo_util, ["Longitude"], obrigatoria=False) or encontrar_coluna_por_nomes(
         df_novo_util, ["Long", "lon"], obrigatoria=False
     )
@@ -307,10 +321,10 @@ def processar_perturbacao_sossego(arquivo_01, arquivo_02):
 
     if col_x_novo is None or col_y_novo is None:
         raise ValueError(
-            "O Arquivo 02 precisa conter colunas de coordenadas UTM, como Longitude/Latitude."
+            "O Arquivo 02 precisa conter colunas de coordenadas como Longitude/Latitude."
         )
 
-    df_novo_util, removidos_coord_invalidas = _validar_e_converter_utm_para_wgs84(
+    df_novo_util, removidos_coord_invalidas, metodo_coordenadas = _processar_coordenadas(
         df_novo_util,
         col_x_novo,
         col_y_novo,
@@ -323,11 +337,7 @@ def processar_perturbacao_sossego(arquivo_01, arquivo_02):
 
         df_final = base_sem_aux.copy()
         df_final = criar_coluna_datahora(df_final, col_data_base, col_hora_base, "__datahora__")
-        df_final = df_final.sort_values(
-            by="__datahora__",
-            ascending=True,
-            na_position="last",
-        ).reset_index(drop=True)
+        df_final = df_final.sort_values(by="__datahora__", ascending=True, na_position="last").reset_index(drop=True)
         df_final = df_final.drop(columns=["__datahora__"], errors="ignore")
 
         ultima_ref = (
@@ -343,6 +353,7 @@ def processar_perturbacao_sossego(arquivo_01, arquivo_02):
             "removidos_coord_invalidas": removidos_coord_invalidas,
             "ultima_datahora_base": ultima_ref,
             "situacao": "Todos os novos registros foram descartados por coordenadas invalidas.",
+            "metodo_coordenadas": metodo_coordenadas,
             "aba_arquivo_01": aba_base,
             "aba_arquivo_02": aba_novo,
         }
@@ -356,11 +367,7 @@ def processar_perturbacao_sossego(arquivo_01, arquivo_02):
     status.info("Gerando arquivo final...")
     df_final = pd.concat([base_sem_aux, df_novo_util], ignore_index=True)
     df_final = criar_coluna_datahora(df_final, col_data_base, col_hora_base, "__datahora__")
-    df_final = df_final.sort_values(
-        by="__datahora__",
-        ascending=True,
-        na_position="last",
-    ).reset_index(drop=True)
+    df_final = df_final.sort_values(by="__datahora__", ascending=True, na_position="last").reset_index(drop=True)
     df_final = df_final.drop(columns=["__datahora__"], errors="ignore")
     progresso.progress(100)
 
@@ -381,6 +388,7 @@ def processar_perturbacao_sossego(arquivo_01, arquivo_02):
         "removidos_coord_invalidas": removidos_coord_invalidas,
         "ultima_datahora_base": ultima_ref,
         "situacao": situacao,
+        "metodo_coordenadas": metodo_coordenadas,
         "aba_arquivo_01": aba_base,
         "aba_arquivo_02": aba_novo,
     }
@@ -412,7 +420,7 @@ def render():
     )
 
     st.caption(
-        "O sistema verifica a ultima Data/Hora da base historica, identifica apenas ocorrencias posteriores no arquivo complementar, elimina coordenadas invalidas, converte UTM (SIRGAS2000 / 24S) para WGS84 e inclui somente os novos registros validos no arquivo final."
+        "O sistema verifica a ultima Data/Hora da base historica, identifica apenas ocorrencias posteriores no arquivo complementar, elimina coordenadas invalidas, reaproveita coordenadas ja geograficas quando existirem e tenta converter UTM SIRGAS2000 / 24S para WGS84."
     )
 
     arquivo_01 = st.file_uploader(
@@ -491,6 +499,8 @@ def render():
             f"Ultima Data/Hora da base: {resumo.get('ultima_datahora_base', '-')} | "
             f"Removidos por filtro temporal: {resumo.get('removidos_por_datahora', 0)}"
         )
+
+        st.info(f"Metodo de coordenadas: {resumo.get('metodo_coordenadas', '-')}")
 
         st.caption(resumo.get("situacao", "Processamento concluido."))
         st.dataframe(df_final.head(50), use_container_width=True)
