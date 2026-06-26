@@ -46,17 +46,31 @@ def _selecionar_aba_arquivo_01(sheet_names: list[str]) -> str:
 
 
 def _selecionar_aba_arquivo_02(sheet_names: list[str]) -> str:
-    prioridades = ["DESLOCAMENTOFORCADO", "DESLOCAMENTO", "FORCADO", "COMPLEMENTO"]
     normalizadas = {aba: _normalizar_nome_aba(aba) for aba in sheet_names}
 
-    for prioridade in prioridades:
+    prioridades_exatas = [
+        "GRUPOCRIMINOSO",
+        "GRUPOCRIMINOSOS",
+    ]
+
+    for prioridade in prioridades_exatas:
         for aba, nome_norm in normalizadas.items():
             if nome_norm == prioridade:
                 return aba
 
-    for aba, nome_norm in normalizadas.items():
-        if "DESLOCAMENTO" in nome_norm or "FORCADO" in nome_norm:
-            return aba
+    prioridades_aproximadas = [
+        "GRUPOCRIMINOSO",
+        "GRUPOCRIMINOSOS",
+        "DESLOCAMENTOFORCADO",
+        "DESLOCAMENTO",
+        "FORCADO",
+        "COMPLEMENTO",
+    ]
+
+    for prioridade in prioridades_aproximadas:
+        for aba, nome_norm in normalizadas.items():
+            if prioridade in nome_norm:
+                return aba
 
     return sheet_names[0]
 
