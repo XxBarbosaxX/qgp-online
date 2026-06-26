@@ -180,28 +180,40 @@ def filtrar_por_natureza(df, natureza_alvo=VALOR_FILTRO_NATUREZA):
 
 def renomear_colunas_equivalentes(df_base, df_novo):
     mapa_equivalencias = {
+        "Endereço": ["Endereço", "Endereco", "endereço", "endereco"],
         "AIS": ["AISNova", "AIS Nova", "AIS_NOVA", "aisnova", "ais_nova"],
-        "Território": ["Regiões", "Regioes", "Região", "Regiao", "regiões", "regioes", "região", "regiao"],
+        "Território": [
+            "Regiões", "Regioes", "Região", "Regiao",
+            "território", "territorio", "regiões", "regioes"
+        ],
     }
+
     colunas_base_map = {_normalizar_chave_coluna(c): c for c in df_base.columns}
     colunas_novo_map = {_normalizar_chave_coluna(c): c for c in df_novo.columns}
+
     renomeacoes = {}
 
     for coluna_base_oficial, aliases in mapa_equivalencias.items():
         chave_base = _normalizar_chave_coluna(coluna_base_oficial)
+
         if chave_base not in colunas_base_map:
             continue
+
         nome_real_base = colunas_base_map[chave_base]
+
         if nome_real_base in df_novo.columns:
             continue
+
         for alias in aliases:
             chave_alias = _normalizar_chave_coluna(alias)
             if chave_alias in colunas_novo_map:
-                renomeacoes[colunas_novo_map[chave_alias]] = nome_real_base
+                nome_real_novo = colunas_novo_map[chave_alias]
+                renomeacoes[nome_real_novo] = nome_real_base
                 break
 
     if renomeacoes:
         df_novo = df_novo.rename(columns=renomeacoes)
+
     return df_novo
 
 
@@ -712,7 +724,7 @@ def processar_roubo_veiculo_sip(arquivo_01, arquivo_02):
     mostrar_amostra_segura(
         "Pré-visualização Arquivo 02 (aba CVPSIP):",
         df_novo,
-        ["Data", "Natureza", "Endereço", "Número", "Bairro", "Município"],
+        ["Data", "Natureza", "Endereço", "Número", "Bairro", "Município", "Regiões", "AISNova"],
         5,
     )
     progresso.progress(30)
@@ -725,7 +737,7 @@ def processar_roubo_veiculo_sip(arquivo_01, arquivo_02):
     mostrar_amostra_segura(
         "Arquivo 02 após filtro por Natureza:",
         df_novo,
-        ["Data", col_natureza, "Endereço", "Número", "Bairro", "Município"],
+        ["Data", col_natureza, "Endereço", "Número", "Bairro", "Município", "Regiões", "AISNova"],
         10,
     )
 
@@ -741,12 +753,13 @@ def processar_roubo_veiculo_sip(arquivo_01, arquivo_02):
     col_lat_base = encontrar_coluna_por_nomes(df_base, ["lat", "latitude"], obrigatoria=True)
     col_lon_base = encontrar_coluna_por_nomes(df_base, ["lon", "long", "longitude"], obrigatoria=True)
 
+    df_novo = renomear_colunas_equivalentes(df_base, df_novo)
+
     col_endereco = encontrar_coluna_por_nomes(df_novo, ["endereço", "endereco", "logradouro", "rua"], obrigatoria=True)
     col_numero = encontrar_coluna_por_nomes(df_novo, ["número", "numero", "localNumero", "num"], obrigatoria=True)
     col_bairro = encontrar_coluna_por_nomes(df_novo, ["bairro"], obrigatoria=True)
     col_municipio = encontrar_coluna_por_nomes(df_novo, ["município", "municipio", "cidade"], obrigatoria=True)
 
-    df_novo = renomear_colunas_equivalentes(df_base, df_novo)
     df_base = criar_datahora_base(df_base, col_data_base, col_hora_base)
     df_novo = criar_datahora_arquivo_02(df_novo, col_datahora_novo)
 
@@ -758,7 +771,7 @@ def processar_roubo_veiculo_sip(arquivo_01, arquivo_02):
     mostrar_amostra_segura(
         "Arquivo 02 após filtro por Data/Hora:",
         df_novo_filtrado,
-        ["__datahora__", col_natureza, col_endereco, col_numero, col_bairro, col_municipio],
+        ["__datahora__", col_natureza, col_endereco, col_numero, col_bairro, col_municipio, "Território", "AIS"],
         10,
     )
     progresso.progress(50)
@@ -844,6 +857,8 @@ def processar_roubo_veiculo_sip(arquivo_01, arquivo_02):
                 "Endereço",
                 "Bairro",
                 "Município",
+                "Território",
+                "AIS",
                 col_lat_base,
                 col_lon_base,
                 "Nivel_Geocodificacao",
@@ -876,7 +891,7 @@ def processar_roubo_veiculo_sip(arquivo_01, arquivo_02):
     mostrar_amostra_segura(
         "Resultado final (amostra):",
         df_final,
-        ["Data", "Hora", "Endereço", "Bairro", "Município", col_lat_base, col_lon_base, "Nivel_Geocodificacao"],
+        ["Data", "Hora", "Endereço", "Bairro", "Município", "Território", "AIS", col_lat_base, col_lon_base, "Nivel_Geocodificacao"],
         20,
     )
 
