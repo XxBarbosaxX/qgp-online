@@ -72,9 +72,93 @@ def interface_cvp_sportal():
                 df_base = pd.read_excel(arquivo_base)
                 df_novo = pd.read_excel(arquivo_novo)
 
+                # Guardar colunas originais antes da normalizacao
+                cols_orig_base = list(df_base.columns)
+                cols_orig_novo = list(df_novo.columns)
+
+                def _encontrar_col_orig(cols, termos):
+                    for col in cols:
+                        col_lower = str(col).strip().lower()
+                        if all(t in col_lower for t in termos):
+                            return col
+                    return None
+
+                # Arquivo 01
+                nome_ocorr_orig_base = _encontrar_col_orig(cols_orig_base, ["nome", "ocorr"])
+                subnome_ocorr_orig_base = _encontrar_col_orig(cols_orig_base, ["subnome", "ocorr"])
+                territorio_orig_base = _encontrar_col_orig(cols_orig_base, ["territ"])
+
+                # Arquivo 02
+                nome_ocorr_orig_novo = _encontrar_col_orig(cols_orig_novo, ["nome", "ocorr"])
+                subnome_ocorr_orig_novo = _encontrar_col_orig(cols_orig_novo, ["subnome", "ocorr"])
+                regioes_orig_novo = _encontrar_col_orig(cols_orig_novo, ["regi"])
+
                 # Normalizacao de colunas
                 df_base = normalizar_colunas(df_base)
                 df_novo = normalizar_colunas(df_novo)
+
+                cols_norm_base = list(df_base.columns)
+                cols_norm_novo = list(df_novo.columns)
+
+                def _col_norm_de_orig(cols_orig, col_orig, cols_norm):
+                    if col_orig is None:
+                        return None
+                    try:
+                        idx = cols_orig.index(col_orig)
+                        return cols_norm[idx]
+                    except (ValueError, IndexError):
+                        return None
+
+                # Nomes normalizados correspondentes
+                nome_ocorr_norm_base = _col_norm_de_orig(
+                    cols_orig_base, nome_ocorr_orig_base, cols_norm_base
+                )
+                subnome_ocorr_norm_base = _col_norm_de_orig(
+                    cols_orig_base, subnome_ocorr_orig_base, cols_norm_base
+                )
+                territorio_norm_base = _col_norm_de_orig(
+                    cols_orig_base, territorio_orig_base, cols_norm_base
+                )
+
+                nome_ocorr_norm_novo = _col_norm_de_orig(
+                    cols_orig_novo, nome_ocorr_orig_novo, cols_norm_novo
+                )
+                subnome_ocorr_norm_novo = _col_norm_de_orig(
+                    cols_orig_novo, subnome_ocorr_orig_novo, cols_norm_novo
+                )
+                regioes_norm_novo = _col_norm_de_orig(
+                    cols_orig_novo, regioes_orig_novo, cols_norm_novo
+                )
+
+                # Renomeacoes explicitas para compatibilizar Arquivo 02 com Arquivo 01
+                rename_map_especifico = {}
+
+                if (
+                    nome_ocorr_norm_base
+                    and nome_ocorr_norm_novo
+                    and nome_ocorr_norm_novo != nome_ocorr_norm_base
+                    and nome_ocorr_norm_novo in df_novo.columns
+                ):
+                    rename_map_especifico[nome_ocorr_norm_novo] = nome_ocorr_norm_base
+
+                if (
+                    subnome_ocorr_norm_base
+                    and subnome_ocorr_norm_novo
+                    and subnome_ocorr_norm_novo != subnome_ocorr_norm_base
+                    and subnome_ocorr_norm_novo in df_novo.columns
+                ):
+                    rename_map_especifico[subnome_ocorr_norm_novo] = subnome_ocorr_norm_base
+
+                if (
+                    territorio_norm_base
+                    and regioes_norm_novo
+                    and regioes_norm_novo != territorio_norm_base
+                    and regioes_norm_novo in df_novo.columns
+                ):
+                    rename_map_especifico[regioes_norm_novo] = territorio_norm_base
+
+                if rename_map_especifico:
+                    df_novo = df_novo.rename(columns=rename_map_especifico)
 
                 # Localizar colunas de data e hora
                 col_data_base = encontrar_coluna_data(df_base)
@@ -97,7 +181,7 @@ def interface_cvp_sportal():
                 col_lat_novo = encontrar_coluna_por_nomes(df_novo, ["latitude"])
                 col_lon_novo = encontrar_coluna_por_nomes(df_novo, ["longitude"])
 
-                # Renomear equivalencias
+                # Renomear equivalencias restantes
                 df_novo = renomear_colunas_equivalentes(df_base, df_novo)
 
                 total_lido_arquivo_02 = len(df_novo)
