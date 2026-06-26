@@ -129,7 +129,13 @@ def encontrar_coluna_por_nomes(
 
 def renomear_colunas_equivalentes(df_base: pd.DataFrame, df_novo: pd.DataFrame) -> pd.DataFrame:
     mapa_equivalencias = {
-        "AIS": ["AISNova", "AIS Nova", "AIS_NOVA", "aisnova", "ais_nova"],
+        "AIS": [
+            "AISNova",
+            "AIS Nova",
+            "AIS_NOVA",
+            "aisnova",
+            "ais_nova",
+        ],
         "Território": [
             "Regiões",
             "Regioes",
@@ -144,11 +150,30 @@ def renomear_colunas_equivalentes(df_base: pd.DataFrame, df_novo: pd.DataFrame) 
             "Nome da Ocorrência",
             "Nome Ocorrencia",
             "nome da ocorrencia",
+            "Natureza",
+            "Natureza da Ocorrência",
+            "Natureza da Ocorrencia",
+            "Descricao da Ocorrencia",
+            "Descrição da Ocorrência",
+            "Tipo da Ocorrência",
+            "Tipo da Ocorrencia",
+            "Ocorrência",
+            "Ocorrencia",
         ],
         "Subnome da Ocorrência": [
             "Subnome da Ocorrência",
             "Subnome Ocorrencia",
             "subnome da ocorrencia",
+            "Subnatureza",
+            "Sub Natureza",
+            "Subnatureza da Ocorrência",
+            "Subnatureza da Ocorrencia",
+            "Subtipo",
+            "Subtipo da Ocorrência",
+            "Subtipo da Ocorrencia",
+            "Complemento da Natureza",
+            "Complemento da Ocorrência",
+            "Complemento da Ocorrencia",
         ],
     }
 
@@ -177,6 +202,62 @@ def renomear_colunas_equivalentes(df_base: pd.DataFrame, df_novo: pd.DataFrame) 
 
     if renomeacoes:
         df_novo = df_novo.rename(columns=renomeacoes)
+
+    return df_novo
+
+
+def preencher_colunas_ocorrencia(df_base: pd.DataFrame, df_novo: pd.DataFrame) -> pd.DataFrame:
+    df_novo = df_novo.copy()
+
+    col_nome_base = encontrar_coluna_por_nomes(
+        df_base,
+        ["Nome da Ocorrência", "Nome Ocorrencia"],
+        obrigatoria=False,
+    )
+    col_subnome_base = encontrar_coluna_por_nomes(
+        df_base,
+        ["Subnome da Ocorrência", "Subnome Ocorrencia"],
+        obrigatoria=False,
+    )
+
+    candidatos_nome = [
+        "Nome da Ocorrência",
+        "Nome Ocorrencia",
+        "Natureza",
+        "Natureza da Ocorrência",
+        "Natureza da Ocorrencia",
+        "Descricao da Ocorrencia",
+        "Descrição da Ocorrência",
+        "Tipo da Ocorrência",
+        "Tipo da Ocorrencia",
+        "Ocorrência",
+        "Ocorrencia",
+    ]
+
+    candidatos_subnome = [
+        "Subnome da Ocorrência",
+        "Subnome Ocorrencia",
+        "Subnatureza",
+        "Sub Natureza",
+        "Subnatureza da Ocorrência",
+        "Subnatureza da Ocorrencia",
+        "Subtipo",
+        "Subtipo da Ocorrência",
+        "Subtipo da Ocorrencia",
+        "Complemento da Natureza",
+        "Complemento da Ocorrência",
+        "Complemento da Ocorrencia",
+    ]
+
+    if col_nome_base and col_nome_base not in df_novo.columns:
+        col_nome_origem = encontrar_coluna_por_nomes(df_novo, candidatos_nome, obrigatoria=False)
+        if col_nome_origem:
+            df_novo[col_nome_base] = df_novo[col_nome_origem]
+
+    if col_subnome_base and col_subnome_base not in df_novo.columns:
+        col_subnome_origem = encontrar_coluna_por_nomes(df_novo, candidatos_subnome, obrigatoria=False)
+        if col_subnome_origem:
+            df_novo[col_subnome_base] = df_novo[col_subnome_origem]
 
     return df_novo
 
@@ -385,7 +466,9 @@ def preparar_coordenadas_finais(
 
 def alinhar_colunas_arquivo_02_com_base(df_base: pd.DataFrame, df_novo: pd.DataFrame) -> pd.DataFrame:
     colunas_base = list(df_base.columns)
+
     df_novo = renomear_colunas_equivalentes(df_base, df_novo)
+    df_novo = preencher_colunas_ocorrencia(df_base, df_novo)
 
     for col in colunas_base:
         if col not in df_novo.columns:
@@ -395,8 +478,8 @@ def alinhar_colunas_arquivo_02_com_base(df_base: pd.DataFrame, df_novo: pd.DataF
 
     if df_saida.columns.duplicated().any():
         df_saida = df_saida.loc[:, ~df_saida.columns.duplicated()]
-
         colunas_faltantes = [c for c in colunas_base if c not in df_saida.columns]
+
         for col in colunas_faltantes:
             df_saida[col] = pd.NA
 
@@ -507,6 +590,8 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
             "Longitude_UTM",
             "Nome da Ocorrência",
             "Subnome da Ocorrência",
+            "Natureza",
+            "Subnatureza",
             "Regiões",
             "AISNova",
         ],
@@ -542,6 +627,7 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
     )
 
     df_novo = renomear_colunas_equivalentes(df_base, df_novo)
+    df_novo = preencher_colunas_ocorrencia(df_base, df_novo)
 
     status.info("Excluindo registros com coordenadas invalidas...")
     total_lido_arquivo_02 = len(df_novo)
@@ -550,7 +636,7 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
     mostrar_amostra_segura(
         "Arquivo 02 após filtro de coordenadas inválidas:",
         df_novo,
-        [col_lat_novo, col_lon_novo, "Nome da Ocorrência", "Subnome da Ocorrência"],
+        [col_lat_novo, col_lon_novo, "Nome da Ocorrência", "Subnome da Ocorrência", "Natureza", "Subnatureza"],
         5,
     )
 
@@ -574,7 +660,7 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
     mostrar_amostra_segura(
         "Arquivo 02 após filtro por Data/Hora:",
         df_novo_filtrado,
-        ["__datahora__", col_lat_novo, col_lon_novo, "Nome da Ocorrência", "Subnome da Ocorrência"],
+        ["__datahora__", col_lat_novo, col_lon_novo, "Nome da Ocorrência", "Subnome da Ocorrência", "Natureza", "Subnatureza"],
         5,
     )
     progresso.progress(70)
@@ -609,10 +695,21 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
         else:
             st.info("Arquivo 02 aparenta estar em UTM. Coordenadas reprojetadas para WGS84.")
 
+        df_novo_util = preencher_colunas_ocorrencia(df_base, df_novo_util)
+
         mostrar_amostra_segura(
             "Complemento após preparação das coordenadas:",
             df_novo_util,
-            [col_lat_novo, col_lon_novo, col_lat_base, col_lon_base, "Nome da Ocorrência", "Subnome da Ocorrência"],
+            [
+                col_lat_novo,
+                col_lon_novo,
+                col_lat_base,
+                col_lon_base,
+                "Nome da Ocorrência",
+                "Subnome da Ocorrência",
+                "Natureza",
+                "Subnatureza",
+            ],
             10,
         )
 
