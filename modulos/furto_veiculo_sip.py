@@ -85,6 +85,10 @@ TIPOS = ("Rua", "Avenida", "Travessa", "Praca", "Rodovia", "Alameda", "Passeio")
 ROOFTOP = ("pointaddress", "streetaddress", "subaddress", "pointaddressvd")
 
 
+class ProcessamentoCancelado(Exception):
+    pass
+
+
 def sem_acento(texto: str) -> str:
     normalizado = unicodedata.normalize("NFKD", str(texto or ""))
     return "".join(c for c in normalizado if not unicodedata.combining(c)).upper().strip()
@@ -590,6 +594,10 @@ def geocodificar_linhas_novas(
     status = st.empty()
 
     for indice, (_, linha) in enumerate(df.iterrows(), start=1):
+        if st.session_state.get("furto_veiculo_sip_cancelar", False):
+            status.warning("Processamento cancelado pelo usuario.")
+            raise ProcessamentoCancelado("Processamento cancelado pelo usuario.")
+
         resultado = motor.geocodificar(
             linha.get("logradouro_busca", ""),
             linha.get("numero_busca", ""),
@@ -807,6 +815,9 @@ def processar_furto_veiculo_sip(arquivo_01, arquivo_02):
     removidos_sem_geocodificacao = 0
 
     if not df_novo_util.empty:
+        if st.session_state.get("furto_veiculo_sip_cancelar", False):
+            raise ProcessamentoCancelado("Processamento cancelado pelo usuario.")
+
         df_novo_util = preparar_campos_geocodificacao(
             df_novo_util,
             col_endereco,
@@ -814,6 +825,9 @@ def processar_furto_veiculo_sip(arquivo_01, arquivo_02):
             col_bairro,
             col_municipio,
         )
+
+        if st.session_state.get("furto_veiculo_sip_cancelar", False):
+            raise ProcessamentoCancelado("Processamento cancelado pelo usuario.")
 
         df_novo_util, geocodificados = geocodificar_linhas_novas(
             df_novo_util,
@@ -907,6 +921,8 @@ def _init_state():
         "furto_veiculo_sip_resultado_excel": None,
         "furto_veiculo_sip_resultado_df": None,
         "furto_veiculo_sip_resumo": None,
+        "furto_veiculo_sip_processando": False,
+        "furto_veiculo_sip_cancelar": False,
     }
     for chave, valor in defaults.items():
         if chave not in st.session_state:
@@ -967,9 +983,33 @@ def render():
     pode_processar = (
         st.session_state.furto_veiculo_sip_arquivo_01_bytes is not None
         and st.session_state.furto_veiculo_sip_arquivo_02_bytes is not None
+        and not st.session_state.furto_veiculo_sip_processando
     )
 
-    if st.button("Processar Furto de Veiculo (SIP)", type="primary", disabled=not pode_processar):
+    col_btn_1, col_btn_2 = st.columns(2)
+
+    with col_btn_1:
+        iniciar = st.button(
+            "Processar Furto de Veiculo (SIP)",
+            type="primary",
+            disabled=not pode_processar,
+        )
+
+    with col_btn_2:
+        parar = st.button(
+            "PARAR PROCESSO",
+            type="secondary",
+            disabled=not st.session_state.furto_veiculo_sip_processando,
+        )
+
+    if parar:
+        st.session_state.furto_veiculo_sip_cancelar = True
+        st.warning("Solicitacao de parada registrada. O processo sera interrompido na proxima etapa.")
+
+    if iniciar:
+        st.session_state.furto_veiculo_sip_processando = True
+        st.session_state.furto_veiculo_sip_cancelar = False
+
         try:
             arquivo_01_buffer = BytesIO(st.session_state.furto_veiculo_sip_arquivo_01_bytes)
             arquivo_02_buffer = BytesIO(st.session_state.furto_veiculo_sip_arquivo_02_bytes)
@@ -984,8 +1024,13 @@ def render():
 
             st.success("Processamento concluido com sucesso.")
 
+        except ProcessamentoCancelado as exc:
+            st.warning(str(exc))
         except Exception as exc:
             st.exception(exc)
+        finally:
+            st.session_state.furto_veiculo_sip_processando = False
+            st.session_state.furto_veiculo_sip_cancelar = False
 
     if (
         st.session_state.furto_veiculo_sip_resultado_df is not None
