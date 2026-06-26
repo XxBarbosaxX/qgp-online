@@ -720,6 +720,37 @@ def processar_furto_veiculo_sip(arquivo_01, arquivo_02):
     if col_regioes_base and col_regioes_novo and col_regioes_base != col_regioes_novo:
         df_novo = df_novo.rename(columns={col_regioes_novo: col_regioes_base})
 
+    col_complemento_base = encontrar_coluna_por_nomes(
+        df_base,
+        [
+            "Complemento do Endereço",
+            "Complemento do Endereco",
+            "Complemento Endereço",
+            "Complemento Endereco",
+            "Complemento",
+        ],
+        obrigatoria=False,
+    )
+
+    col_complemento_novo = encontrar_coluna_por_nomes(
+        df_novo,
+        [
+            "Complemento do Endereço",
+            "Complemento do Endereco",
+            "Complemento Endereço",
+            "Complemento Endereco",
+            "Complemento",
+        ],
+        obrigatoria=False,
+    )
+
+    if (
+        col_complemento_base
+        and col_complemento_novo
+        and col_complemento_base != col_complemento_novo
+    ):
+        df_novo = df_novo.rename(columns={col_complemento_novo: col_complemento_base})
+
     df_novo = renomear_colunas_equivalentes(df_base, df_novo)
 
     df_base = criar_coluna_datahora(df_base, col_data_base, col_hora_base, "__datahora__")
@@ -920,7 +951,6 @@ def render():
     if arquivo_01 is not None:
         arquivo_01.seek(0)
         st.session_state.furto_veiculo_sip_arquivo_01_bytes = arquivo_01.read()
-
         st.session_state.furto_veiculo_sip_arquivo_01_nome = arquivo_01.name
 
     if arquivo_02 is not None:
