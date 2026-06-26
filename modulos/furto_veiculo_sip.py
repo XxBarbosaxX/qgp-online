@@ -33,7 +33,7 @@ from modulos.utils import (
     renomear_colunas_equivalentes,
 )
 
-NOME_ARQUIVO_FINAL = nome_arquivo_padrao(6, "FURTO-DE-VEICULO-SIP-ENDERECO")
+NOME_ARQUIVO_FINAL = nome_arquivo_padrao(7, "FURTO-DE-VEICULO-SIP-ENDERECO")
 
 USAR_EXTERNO = True
 CAMINHO_BASE_ENXUTA = "CVP_SIP_GEOCODIFICAR.parquet"
@@ -661,11 +661,18 @@ def processar_furto_veiculo_sip(arquivo_01, arquivo_02):
     col_data_base = encontrar_coluna_data(df_base)
     col_hora_base = encontrar_coluna_hora(df_base)
 
+    col_data_novo = encontrar_coluna_data(df_novo)
     col_datahora_novo = encontrar_coluna_por_nomes(
         df_novo,
-        ["data", "datahora", "data/hora", "data hora"],
-        obrigatoria=True,
+        ["datahora", "data/hora", "data hora"],
+        obrigatoria=False,
     )
+
+    if col_data_novo and col_data_base and col_data_novo != col_data_base:
+        df_novo = df_novo.rename(columns={col_data_novo: col_data_base})
+
+    if col_datahora_novo is None:
+        col_datahora_novo = col_data_base
 
     col_lat_base = encontrar_coluna_por_nomes(df_base, ["lat", "latitude"], obrigatoria=True)
     col_lon_base = encontrar_coluna_por_nomes(df_base, ["lon", "long", "longitude"], obrigatoria=True)
@@ -687,35 +694,44 @@ def processar_furto_veiculo_sip(arquivo_01, arquivo_02):
         obrigatoria=True,
     )
 
+    col_ais_base = encontrar_coluna_por_nomes(
+        df_base,
+        ["AISNova", "AIS Nova", "AIS_NOVA", "AIS"],
+        obrigatoria=False,
+    )
     col_ais_novo = encontrar_coluna_por_nomes(
         df_novo,
         ["AISNova", "AIS Nova", "AIS_NOVA", "AIS"],
         obrigatoria=False,
     )
-    if col_ais_novo and col_ais_novo != "AIS":
-        df_novo = df_novo.rename(columns={col_ais_novo: "AIS"})
+    if col_ais_base and col_ais_novo and col_ais_base != col_ais_novo:
+        df_novo = df_novo.rename(columns={col_ais_novo: col_ais_base})
 
-    col_territorio_novo = encontrar_coluna_por_nomes(
+    col_regioes_base = encontrar_coluna_por_nomes(
+        df_base,
+        ["Regiões", "Regioes", "Região", "Regiao", "Território", "Territorio"],
+        obrigatoria=False,
+    )
+    col_regioes_novo = encontrar_coluna_por_nomes(
         df_novo,
         ["Regiões", "Regioes", "Região", "Regiao", "Território", "Territorio"],
         obrigatoria=False,
     )
-    if col_territorio_novo and col_territorio_novo != "Território":
-        df_novo = df_novo.rename(columns={col_territorio_novo: "Território"})
-
-    if "Latitude" in df_base.columns and "lat" in df_novo.columns:
-        df_novo = df_novo.rename(columns={"lat": "Latitude"})
-    if "Longitude" in df_base.columns and "lon" in df_novo.columns:
-        df_novo = df_novo.rename(columns={"lon": "Longitude"})
+    if col_regioes_base and col_regioes_novo and col_regioes_base != col_regioes_novo:
+        df_novo = df_novo.rename(columns={col_regioes_novo: col_regioes_base})
 
     df_novo = renomear_colunas_equivalentes(df_base, df_novo)
 
     df_base = criar_coluna_datahora(df_base, col_data_base, col_hora_base, "__datahora__")
-    df_novo["__datahora__"] = pd.to_datetime(
-        df_novo[col_datahora_novo],
-        errors="coerce",
-        dayfirst=True,
-    )
+
+    if col_hora_base in df_novo.columns:
+        df_novo = criar_coluna_datahora(df_novo, col_data_base, col_hora_base, "__datahora__")
+    else:
+        df_novo["__datahora__"] = pd.to_datetime(
+            df_novo[col_datahora_novo],
+            errors="coerce",
+            dayfirst=True,
+        )
 
     ultima_datahora_base = obter_ultima_datahora(df_base, "__datahora__")
 
@@ -904,6 +920,7 @@ def render():
     if arquivo_01 is not None:
         arquivo_01.seek(0)
         st.session_state.furto_veiculo_sip_arquivo_01_bytes = arquivo_01.read()
+
         st.session_state.furto_veiculo_sip_arquivo_01_nome = arquivo_01.name
 
     if arquivo_02 is not None:
