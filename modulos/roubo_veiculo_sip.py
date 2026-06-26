@@ -77,12 +77,7 @@ def sem_acento(s):
 
 
 def _selecionar_aba_arquivo_01(sheet_names: list[str]) -> str:
-    prioridades = [
-        "ROUBODEVEICULO",
-        "ROUBOVEICULO",
-        "SIP",
-        "BASE",
-    ]
+    prioridades = ["ROUBODEVEICULO", "ROUBOVEICULO", "SIP", "BASE"]
     normalizadas = {aba: _normalizar_nome_aba(aba) for aba in sheet_names}
 
     for prioridade in prioridades:
@@ -101,14 +96,12 @@ def _selecionar_aba_arquivo_02(sheet_names: list[str]) -> str:
     normalizadas = {aba: _normalizar_nome_aba(aba) for aba in sheet_names}
 
     prioridades_exatas = ["CVPSIP"]
-
     for prioridade in prioridades_exatas:
         for aba, nome_norm in normalizadas.items():
             if nome_norm == prioridade:
                 return aba
 
     prioridades_aproximadas = ["CVPSIP", "CVP", "SIP"]
-
     for prioridade in prioridades_aproximadas:
         for aba, nome_norm in normalizadas.items():
             if prioridade in nome_norm:
@@ -182,10 +175,7 @@ def renomear_colunas_equivalentes(df_base, df_novo):
     mapa_equivalencias = {
         "Endereço": ["Endereço", "Endereco", "endereço", "endereco"],
         "AIS": ["AISNova", "AIS Nova", "AIS_NOVA", "aisnova", "ais_nova"],
-        "Território": [
-            "Regiões", "Regioes", "Região", "Regiao",
-            "território", "territorio", "regiões", "regioes"
-        ],
+        "Território": ["Regiões", "Regioes", "Região", "Regiao", "território", "territorio", "regiões", "regioes"],
     }
 
     colunas_base_map = {_normalizar_chave_coluna(c): c for c in df_base.columns}
@@ -367,33 +357,29 @@ def normalizar_colunas_base_geografica(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df.columns = [str(c).strip() for c in df.columns]
 
-    col_lat = encontrar_coluna_por_nomes(
-        df,
-        ["lat", "latitude", "y", "latitud"],
-        obrigatoria=True,
-    )
-    col_lon = encontrar_coluna_por_nomes(
-        df,
-        ["lon", "long", "longitude", "x", "longitud"],
-        obrigatoria=True,
-    )
+    col_lat = encontrar_coluna_por_nomes(df, ["lat", "latitude", "y", "latitud"], obrigatoria=True)
+    col_lon = encontrar_coluna_por_nomes(df, ["lon", "long", "longitude", "x", "longitud"], obrigatoria=True)
+
     col_nome = encontrar_coluna_por_nomes(
         df,
         ["nome_norm", "logradouro_norm", "nome", "logradouro", "rua"],
-        obrigatoria=True,
+        obrigatoria=False,
     )
     col_cod = encontrar_coluna_por_nomes(
         df,
         ["cod_mun", "codigo_municipio", "municipio_cod", "cod municipio", "ibge"],
-        obrigatoria=True,
+        obrigatoria=False,
     )
 
     ren = {
         col_lat: "lat",
         col_lon: "lon",
-        col_nome: "nome_norm",
-        col_cod: "cod_mun",
     }
+
+    if col_nome:
+        ren[col_nome] = "nome_norm"
+    if col_cod:
+        ren[col_cod] = "cod_mun"
 
     if "nome_orig" not in df.columns:
         col_nome_orig = encontrar_coluna_por_nomes(
@@ -415,7 +401,7 @@ def normalizar_colunas_base_geografica(df: pd.DataFrame) -> pd.DataFrame:
 
     df = df.rename(columns=ren)
 
-    colunas_minimas = ["lat", "lon", "nome_norm", "cod_mun"]
+    colunas_minimas = ["lat", "lon"]
     faltantes = [c for c in colunas_minimas if c not in df.columns]
     if faltantes:
         raise ValueError(
@@ -425,11 +411,15 @@ def normalizar_colunas_base_geografica(df: pd.DataFrame) -> pd.DataFrame:
 
     df["lat"] = pd.to_numeric(df["lat"], errors="coerce")
     df["lon"] = pd.to_numeric(df["lon"], errors="coerce")
-    df["nome_norm"] = df["nome_norm"].astype(str).fillna("").map(sem_acento)
-    df["cod_mun"] = df["cod_mun"].astype(str).str[:7]
+
+    if "nome_norm" in df.columns:
+        df["nome_norm"] = df["nome_norm"].astype(str).fillna("").map(sem_acento)
+
+    if "cod_mun" in df.columns:
+        df["cod_mun"] = df["cod_mun"].astype(str).str[:7]
 
     if "nome_orig" not in df.columns:
-        df["nome_orig"] = df["nome_norm"]
+        df["nome_orig"] = pd.NA
 
     if "tot_geral" not in df.columns:
         df["tot_geral"] = 0
@@ -487,16 +477,27 @@ class MotorGeocodificacaoSoberana:
         self.mun = carregar_municipios()
         self.tree = None
         self.cent_mun = {}
+        self.tem_rua_base = False
+        self.tem_cod_municipio_base = False
 
         if self.base is not None and len(self.base):
             self.glat = self.base["lat"].astype(float).values
             self.glon = self.base["lon"].astype(float).values
-            self.gnome = self.base["nome_norm"].astype(str).values
-            self.gcod = self.base["cod_mun"].astype(str).values
             self.tree = cKDTree(np.c_[self.glat, self.glon])
 
-            cm = self.base.groupby("cod_mun")[["lat", "lon"]].mean(numeric_only=True)
-            self.cent_mun = {k: (v["lat"], v["lon"]) for k, v in cm.iterrows()}
+            if "nome_norm" in self.base.columns:
+                self.gnome = self.base["nome_norm"].astype(str).values
+                self.tem_rua_base = True
+            else:
+                self.gnome = np.array([], dtype=str)
+
+            if "cod_mun" in self.base.columns:
+                self.gcod = self.base["cod_mun"].astype(str).values
+                self.tem_cod_municipio_base = True
+                cm = self.base.groupby("cod_mun")[["lat", "lon"]].mean(numeric_only=True)
+                self.cent_mun = {k: (v["lat"], v["lon"]) for k, v in cm.iterrows()}
+            else:
+                self.gcod = np.array([], dtype=str)
 
         self.geocode_ext = None
         if USAR_EXTERNO:
@@ -512,36 +513,52 @@ class MotorGeocodificacaoSoberana:
         return self.mun.get(sem_acento(municipio), "")
 
     def _idx_municipio(self, cod, ancora):
-        if cod and self.tree is not None:
+        if self.tree is None:
+            return np.array([], dtype=int)
+
+        if cod and self.tem_cod_municipio_base:
             ix = np.where(self.gcod == cod)[0]
             if len(ix):
                 return ix
-        if ancora is not None and self.tree is not None:
+
+        if ancora is not None:
             ix = self.tree.query_ball_point([ancora[0], ancora[1]], r=RAIO_MUNICIPIO_KM / 111.0)
             return np.array(ix, dtype=int)
+
         return np.array([], dtype=int)
 
     def casar_rua(self, rua_norm, cod, ancora):
+        if not self.tem_rua_base:
+            return None
+
         ix = self._idx_municipio(cod, ancora)
         if not len(ix):
             return None
+
         melhor, mscore = None, 0
         for j in ix:
             s = fuzz.token_set_ratio(rua_norm, self.gnome[j])
             if s > mscore:
                 mscore, melhor = s, j
+
         if melhor is not None and mscore >= LIMIAR_NOME:
-            return float(self.glat[melhor]), float(self.glon[melhor]), mscore
+            return float(self.glat[melhor]), float(self.glon[melhor]), mscore)
+
         return None
 
     def validar(self, lat, lon, rua_norm, cod, ancora):
+        if not self.tem_rua_base:
+            return False, None
+
         ix = self._idx_municipio(cod, ancora or (lat, lon))
         if not len(ix):
             return False, None
+
         nomes = self.gnome[ix]
         msk = np.array([fuzz.token_set_ratio(rua_norm, n) >= LIMIAR_NOME for n in nomes])
         if not msk.any():
             return False, None
+
         mi = ix[msk]
         d = _hav(lat, lon, self.glat[mi], self.glon[mi])
         best = float(d.min())
@@ -574,7 +591,7 @@ class MotorGeocodificacaoSoberana:
 
         ancora = (ext[0], ext[1]) if ext else None
 
-        if ext and ext[2] in ROOFTOP and num:
+        if ext and ext[2] in ROOFTOP and num and self.tem_rua_base:
             ok, dist = self.validar(ext[0], ext[1], rua_n, cod, ancora)
             if ok:
                 return (ext[0], ext[1], "Exato (Numero)", "ArcGIS+Parquet", True, dist)
@@ -584,17 +601,25 @@ class MotorGeocodificacaoSoberana:
             return (g[0], g[1], "Centroide de Rua", "Parquet (CVP SIP)", True, 0.0)
 
         if ext:
-            if ext[2] in ("streetname", "streetmidblock", "streetint") or num:
+            if ext[2] in ("pointaddress", "streetaddress", "subaddress", "pointaddressvd"):
+                nivel = "Exato (Numero)" if num else "Centroide de Rua"
+            elif ext[2] in ("streetname", "streetmidblock", "streetint"):
                 nivel = "Centroide de Rua"
             elif ext[2] in ("locality", "neighborhood", "district"):
                 nivel = "Centroide de Bairro"
             else:
                 nivel = "Centroide de Cidade"
-            return (ext[0], ext[1], nivel, "ArcGIS (nao confirmado)", False, None)
+
+            fonte = "ArcGIS"
+            if self.tem_rua_base:
+                fonte = "ArcGIS (nao confirmado)"
+
+            return (ext[0], ext[1], nivel, fonte, False, None)
 
         c = self.cent_mun.get(cod)
         if c:
             return (c[0], c[1], "Centroide de Cidade", "Centroide Municipio", False, None)
+
         return (None, None, "Nao Encontrado", "-", False, None)
 
 
