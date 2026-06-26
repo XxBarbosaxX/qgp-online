@@ -50,6 +50,7 @@ def _selecionar_aba_arquivo_02(sheet_names: list[str]) -> str:
 
     prioridades_exatas = [
         "GRUPOCRIMINOSO",
+        "GRUPOCRIMINO",
         "GRUPOCRIMINOSOS",
     ]
 
@@ -60,6 +61,7 @@ def _selecionar_aba_arquivo_02(sheet_names: list[str]) -> str:
 
     prioridades_aproximadas = [
         "GRUPOCRIMINOSO",
+        "GRUPOCRIMINO",
         "GRUPOCRIMINOSOS",
         "DESLOCAMENTOFORCADO",
         "DESLOCAMENTO",
@@ -160,35 +162,6 @@ def renomear_colunas_equivalentes(df_base: pd.DataFrame, df_novo: pd.DataFrame) 
             "regiões",
             "regioes",
         ],
-        "Nome da Ocorrência": [
-            "Nome da Ocorrência",
-            "Nome Ocorrencia",
-            "nome da ocorrencia",
-            "Natureza",
-            "Natureza da Ocorrência",
-            "Natureza da Ocorrencia",
-            "Descricao da Ocorrencia",
-            "Descrição da Ocorrência",
-            "Tipo da Ocorrência",
-            "Tipo da Ocorrencia",
-            "Ocorrência",
-            "Ocorrencia",
-        ],
-        "Subnome da Ocorrência": [
-            "Subnome da Ocorrência",
-            "Subnome Ocorrencia",
-            "subnome da ocorrencia",
-            "Subnatureza",
-            "Sub Natureza",
-            "Subnatureza da Ocorrência",
-            "Subnatureza da Ocorrencia",
-            "Subtipo",
-            "Subtipo da Ocorrência",
-            "Subtipo da Ocorrencia",
-            "Complemento da Natureza",
-            "Complemento da Ocorrência",
-            "Complemento da Ocorrencia",
-        ],
     }
 
     colunas_base_map = {_normalizar_chave_coluna(c): c for c in df_base.columns}
@@ -220,7 +193,10 @@ def renomear_colunas_equivalentes(df_base: pd.DataFrame, df_novo: pd.DataFrame) 
     return df_novo
 
 
-def preencher_colunas_ocorrencia(df_base: pd.DataFrame, df_novo: pd.DataFrame) -> pd.DataFrame:
+def preencher_colunas_ocorrencia_grupo_criminoso(
+    df_base: pd.DataFrame,
+    df_novo: pd.DataFrame,
+) -> pd.DataFrame:
     df_novo = df_novo.copy()
 
     col_nome_base = encontrar_coluna_por_nomes(
@@ -234,21 +210,19 @@ def preencher_colunas_ocorrencia(df_base: pd.DataFrame, df_novo: pd.DataFrame) -
         obrigatoria=False,
     )
 
-    candidatos_nome = [
+    candidatos_nome_gc = [
         "Nome da Ocorrência",
         "Nome Ocorrencia",
         "Natureza",
         "Natureza da Ocorrência",
         "Natureza da Ocorrencia",
-        "Descricao da Ocorrencia",
-        "Descrição da Ocorrência",
-        "Tipo da Ocorrência",
-        "Tipo da Ocorrencia",
         "Ocorrência",
         "Ocorrencia",
+        "Tipo da Ocorrência",
+        "Tipo da Ocorrencia",
     ]
 
-    candidatos_subnome = [
+    candidatos_subnome_gc = [
         "Subnome da Ocorrência",
         "Subnome Ocorrencia",
         "Subnatureza",
@@ -258,18 +232,26 @@ def preencher_colunas_ocorrencia(df_base: pd.DataFrame, df_novo: pd.DataFrame) -
         "Subtipo",
         "Subtipo da Ocorrência",
         "Subtipo da Ocorrencia",
-        "Complemento da Natureza",
         "Complemento da Ocorrência",
         "Complemento da Ocorrencia",
+        "Complemento da Natureza",
     ]
 
-    if col_nome_base and col_nome_base not in df_novo.columns:
-        col_nome_origem = encontrar_coluna_por_nomes(df_novo, candidatos_nome, obrigatoria=False)
+    if col_nome_base:
+        col_nome_origem = encontrar_coluna_por_nomes(
+            df_novo,
+            candidatos_nome_gc,
+            obrigatoria=False,
+        )
         if col_nome_origem:
             df_novo[col_nome_base] = df_novo[col_nome_origem]
 
-    if col_subnome_base and col_subnome_base not in df_novo.columns:
-        col_subnome_origem = encontrar_coluna_por_nomes(df_novo, candidatos_subnome, obrigatoria=False)
+    if col_subnome_base:
+        col_subnome_origem = encontrar_coluna_por_nomes(
+            df_novo,
+            candidatos_subnome_gc,
+            obrigatoria=False,
+        )
         if col_subnome_origem:
             df_novo[col_subnome_base] = df_novo[col_subnome_origem]
 
@@ -482,7 +464,7 @@ def alinhar_colunas_arquivo_02_com_base(df_base: pd.DataFrame, df_novo: pd.DataF
     colunas_base = list(df_base.columns)
 
     df_novo = renomear_colunas_equivalentes(df_base, df_novo)
-    df_novo = preencher_colunas_ocorrencia(df_base, df_novo)
+    df_novo = preencher_colunas_ocorrencia_grupo_criminoso(df_base, df_novo)
 
     for col in colunas_base:
         if col not in df_novo.columns:
@@ -594,7 +576,7 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
         5,
     )
     mostrar_amostra_segura(
-        "Pré-visualização Arquivo 02 (complemento):",
+        "Pré-visualização Arquivo 02 (aba Grupo Criminoso):",
         df_novo,
         [
             "Endereço",
@@ -641,7 +623,7 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
     )
 
     df_novo = renomear_colunas_equivalentes(df_base, df_novo)
-    df_novo = preencher_colunas_ocorrencia(df_base, df_novo)
+    df_novo = preencher_colunas_ocorrencia_grupo_criminoso(df_base, df_novo)
 
     status.info("Excluindo registros com coordenadas invalidas...")
     total_lido_arquivo_02 = len(df_novo)
@@ -709,7 +691,7 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
         else:
             st.info("Arquivo 02 aparenta estar em UTM. Coordenadas reprojetadas para WGS84.")
 
-        df_novo_util = preencher_colunas_ocorrencia(df_base, df_novo_util)
+        df_novo_util = preencher_colunas_ocorrencia_grupo_criminoso(df_base, df_novo_util)
 
         mostrar_amostra_segura(
             "Complemento após preparação das coordenadas:",
