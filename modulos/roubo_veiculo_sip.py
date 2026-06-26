@@ -351,9 +351,86 @@ def localizar_parquet_geocodificacao() -> Path:
     )
 
 
+def normalizar_colunas_base_geografica(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df.columns = [str(c).strip() for c in df.columns]
+
+    col_lat = encontrar_coluna_por_nomes(
+        df,
+        ["lat", "latitude", "y", "latitud"],
+        obrigatoria=True,
+    )
+    col_lon = encontrar_coluna_por_nomes(
+        df,
+        ["lon", "long", "longitude", "x", "longitud"],
+        obrigatoria=True,
+    )
+    col_nome = encontrar_coluna_por_nomes(
+        df,
+        ["nome_norm", "logradouro_norm", "nome", "logradouro", "rua"],
+        obrigatoria=True,
+    )
+    col_cod = encontrar_coluna_por_nomes(
+        df,
+        ["cod_mun", "codigo_municipio", "municipio_cod", "cod municipio", "ibge"],
+        obrigatoria=True,
+    )
+
+    ren = {
+        col_lat: "lat",
+        col_lon: "lon",
+        col_nome: "nome_norm",
+        col_cod: "cod_mun",
+    }
+
+    if "nome_orig" not in df.columns:
+        col_nome_orig = encontrar_coluna_por_nomes(
+            df,
+            ["nome_orig", "nome original", "logradouro_orig", "logradouro original", "nome", "logradouro", "rua"],
+            obrigatoria=False,
+        )
+        if col_nome_orig:
+            ren[col_nome_orig] = "nome_orig"
+
+    if "tot_geral" not in df.columns:
+        col_tot = encontrar_coluna_por_nomes(
+            df,
+            ["tot_geral", "total", "qtd", "quantidade"],
+            obrigatoria=False,
+        )
+        if col_tot:
+            ren[col_tot] = "tot_geral"
+
+    df = df.rename(columns=ren)
+
+    colunas_minimas = ["lat", "lon", "nome_norm", "cod_mun"]
+    faltantes = [c for c in colunas_minimas if c not in df.columns]
+    if faltantes:
+        raise ValueError(
+            f"A base parquet foi carregada, mas nao possui as colunas minimas esperadas apos normalizacao: {faltantes}. "
+            f"Colunas encontradas: {list(df.columns)}"
+        )
+
+    df["lat"] = pd.to_numeric(df["lat"], errors="coerce")
+    df["lon"] = pd.to_numeric(df["lon"], errors="coerce")
+    df["nome_norm"] = df["nome_norm"].astype(str).fillna("").map(sem_acento)
+    df["cod_mun"] = df["cod_mun"].astype(str).str[:7]
+
+    if "nome_orig" not in df.columns:
+        df["nome_orig"] = df["nome_norm"]
+
+    if "tot_geral" not in df.columns:
+        df["tot_geral"] = 0
+
+    df = df.dropna(subset=["lat", "lon"]).copy()
+    return df.reset_index(drop=True)
+
+
 def carregar_base_geografica():
     caminho = localizar_parquet_geocodificacao()
-    return pd.read_parquet(caminho).reset_index(drop=True), caminho
+    df = pd.read_parquet(caminho).reset_index(drop=True)
+    df = normalizar_colunas_base_geografica(df)
+    return df, caminho
 
 
 def carregar_municipios():
@@ -400,12 +477,13 @@ class MotorGeocodificacaoSoberana:
         self.cent_mun = {}
 
         if self.base is not None and len(self.base):
-            self.glat = self.base["lat"].values.astype(float)
-            self.glon = self.base["lon"].values.astype(float)
+            self.glat = self.base["lat"].astype(float).values
+            self.glon = self.base["lon"].astype(float).values
             self.gnome = self.base["nome_norm"].astype(str).values
             self.gcod = self.base["cod_mun"].astype(str).values
             self.tree = cKDTree(np.c_[self.glat, self.glon])
-            cm = self.base.groupby("cod_mun")[["lat", "lon"]].mean()
+
+            cm = self.base.groupby("cod_mun")[["lat", "lon"]].mean(numeric_only=True)
             self.cent_mun = {k: (v["lat"], v["lon"]) for k, v in cm.iterrows()}
 
         self.geocode_ext = None
