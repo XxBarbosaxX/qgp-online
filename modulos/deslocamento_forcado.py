@@ -283,14 +283,79 @@ def excluir_coordenadas_invalidas(df: pd.DataFrame, col_lat: str, col_lon: str):
     return df_filtrado, removidos
 
 
-def reprojetar_utm_para_wgs84(
+def coordenadas_parecem_wgs84(df: pd.DataFrame, col_lat: str, col_lon: str, amostra: int = 30) -> bool:
+    coords_validas = []
+
+    for lat_raw, lon_raw in zip(df[col_lat], df[col_lon]):
+        lat = valor_numerico_exato(lat_raw)
+        lon = valor_numerico_exato(lon_raw)
+
+        if lat is None or lon is None:
+            continue
+
+        coords_validas.append((lat, lon))
+        if len(coords_validas) >= amostra:
+            break
+
+    if not coords_validas:
+        return False
+
+    qtd_wgs84 = sum(-90 <= lat <= 90 and -180 <= lon <= 180 for lat, lon in coords_validas)
+    proporcao = qtd_wgs84 / len(coords_validas)
+
+    return proporcao >= 0.8
+
+
+def coordenadas_parecem_utm(df: pd.DataFrame, col_y: str, col_x: str, amostra: int = 30) -> bool:
+    coords_validas = []
+
+    for y_raw, x_raw in zip(df[col_y], df[col_x]):
+        y = valor_numerico_exato(y_raw)
+        x = valor_numerico_exato(x_raw)
+
+        if y is None or x is None:
+            continue
+
+        coords_validas.append((y, x))
+        if len(coords_validas) >= amostra:
+            break
+
+    if not coords_validas:
+        return False
+
+    qtd_utm = sum(100000 <= x <= 900000 and 1000000 <= y <= 10000000 for y, x in coords_validas)
+    proporcao = qtd_utm / len(coords_validas)
+
+    return proporcao >= 0.8
+
+
+def preparar_coordenadas_finais(
     df: pd.DataFrame,
-    col_y: str,
-    col_x: str,
+    col_origem_y: str,
+    col_origem_x: str,
     col_lat_destino: str,
     col_lon_destino: str,
-) -> pd.DataFrame:
+):
     df = df.copy()
+
+    colunas_para_remover = []
+    if col_lat_destino in df.columns and col_lat_destino not in {col_origem_y, col_origem_x}:
+        colunas_para_remover.append(col_lat_destino)
+    if col_lon_destino in df.columns and col_lon_destino not in {col_origem_y, col_origem_x}:
+        colunas_para_remover.append(col_lon_destino)
+
+    if colunas_para_remover:
+        df = df.drop(columns=colunas_para_remover, errors="ignore")
+
+    origem_wgs84 = coordenadas_parecem_wgs84(df, col_origem_y, col_origem_x)
+    origem_utm = coordenadas_parecem_utm(df, col_origem_y, col_origem_x)
+
+    if origem_wgs84 and not origem_utm:
+        df[col_lat_destino] = df[col_origem_y].apply(valor_numerico_exato)
+        df[col_lon_destino] = df[col_origem_x].apply(valor_numerico_exato)
+        modo = "wgs84_direto"
+        return df, modo
+
     transformer = Transformer.from_crs(
         f"EPSG:{EPSG_UTM_SIRGAS_24S}",
         f"EPSG:{EPSG_WGS84}",
@@ -300,7 +365,7 @@ def reprojetar_utm_para_wgs84(
     lat_resultado = []
     lon_resultado = []
 
-    for y_raw, x_raw in zip(df[col_y], df[col_x]):
+    for y_raw, x_raw in zip(df[col_origem_y], df[col_origem_x]):
         y = valor_numerico_exato(y_raw)
         x = valor_numerico_exato(x_raw)
 
@@ -314,7 +379,8 @@ def reprojetar_utm_para_wgs84(
 
     df[col_lat_destino] = lat_resultado
     df[col_lon_destino] = lon_resultado
-    return df
+    modo = "utm_reprojetado"
+    return df, modo
 
 
 def alinhar_colunas_arquivo_02_com_base(df_base: pd.DataFrame, df_novo: pd.DataFrame) -> pd.DataFrame:
@@ -325,7 +391,18 @@ def alinhar_colunas_arquivo_02_com_base(df_base: pd.DataFrame, df_novo: pd.DataF
         if col not in df_novo.columns:
             df_novo[col] = pd.NA
 
-    return df_novo[colunas_base].copy()
+    df_saida = df_novo.loc[:, colunas_base].copy()
+
+    if df_saida.columns.duplicated().any():
+        df_saida = df_saida.loc[:, ~df_saida.columns.duplicated()]
+
+        colunas_faltantes = [c for c in colunas_base if c not in df_saida.columns]
+        for col in colunas_faltantes:
+            df_saida[col] = pd.NA
+
+        df_saida = df_saida.loc[:, colunas_base].copy()
+
+    return df_saida
 
 
 def obter_ultimo_datahora(df: pd.DataFrame, coluna_datahora: str):
@@ -346,7 +423,15 @@ def filtrar_apenas_registros_posteriores(
 
 
 def colunas_existentes(df: pd.DataFrame, colunas_desejadas: list[str]) -> list[str]:
-    return [c for c in colunas_desejadas if c in df.columns]
+    cols = []
+    vistos = set()
+
+    for c in colunas_desejadas:
+        if c in df.columns and c not in vistos:
+            cols.append(c)
+            vistos.add(c)
+
+    return cols
 
 
 def mostrar_amostra_segura(
@@ -356,13 +441,21 @@ def mostrar_amostra_segura(
     n: int = 10,
 ):
     st.write(titulo)
+
     cols = colunas_existentes(df, colunas_desejadas)
-    if cols:
-        st.dataframe(df[cols].head(n))
-    else:
+
+    if not cols:
         st.warning("Nenhuma das colunas solicitadas existe nesta etapa.")
         st.write("Colunas disponiveis:")
         st.write(list(df.columns))
+        return
+
+    df_preview = df.loc[:, cols].copy()
+
+    if df_preview.columns.duplicated().any():
+        df_preview = df_preview.loc[:, ~df_preview.columns.duplicated()]
+
+    st.dataframe(df_preview.head(n))
 
 
 def gerar_excel_em_memoria(df: pd.DataFrame) -> bytes:
@@ -498,19 +591,26 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
         df_novo_util = df_novo_filtrado.copy()
         situacao = "Somente registros posteriores a ultima Data/Hora da base foram adicionados."
 
-    if not df_novo_util.empty:
-        status.info("Reprojetando coordenadas...")
+    modo_coordenadas = "sem_novos_registros"
 
-        df_novo_util = reprojetar_utm_para_wgs84(
+    if not df_novo_util.empty:
+        status.info("Preparando coordenadas finais...")
+
+        df_novo_util, modo_coordenadas = preparar_coordenadas_finais(
             df_novo_util,
-            col_y=col_lat_novo,
-            col_x=col_lon_novo,
+            col_origem_y=col_lat_novo,
+            col_origem_x=col_lon_novo,
             col_lat_destino=col_lat_base,
             col_lon_destino=col_lon_base,
         )
 
+        if modo_coordenadas == "wgs84_direto":
+            st.info("Arquivo 02 aparenta já estar em WGS84 decimal. A reprojeção foi ignorada.")
+        else:
+            st.info("Arquivo 02 aparenta estar em UTM. Coordenadas reprojetadas para WGS84.")
+
         mostrar_amostra_segura(
-            "Complemento após reprojeção UTM -> WGS84:",
+            "Complemento após preparação das coordenadas:",
             df_novo_util,
             [col_lat_novo, col_lon_novo, col_lat_base, col_lon_base, "Nome da Ocorrência", "Subnome da Ocorrência"],
             10,
@@ -552,6 +652,10 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
         .reset_index(drop=True)
     )
     df_final = df_final.drop(columns=["__datahora__"], errors="ignore")
+
+    if df_final.columns.duplicated().any():
+        df_final = df_final.loc[:, ~df_final.columns.duplicated()].copy()
+
     progresso.progress(100)
 
     mostrar_amostra_segura(
@@ -587,6 +691,7 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
         "aba_arquivo_01": aba_base,
         "aba_arquivo_02": aba_novo,
         "total_lido_arquivo_02": total_lido_arquivo_02,
+        "modo_coordenadas": modo_coordenadas,
     }
 
     status.success(f"Processo finalizado. {adicionados} registros novos adicionados.")
@@ -676,6 +781,8 @@ def render():
             f"Ultima Data/Hora da base: {resumo.get('ultima_datahora_base', '-')} | "
             f"Removidos por filtro temporal: {resumo.get('removidos_por_datahora', 0)}"
         )
+
+        st.info(f"Modo de tratamento das coordenadas: {resumo.get('modo_coordenadas', '-')}")
 
         st.caption(resumo.get("situacao", "Processamento concluido."))
 
