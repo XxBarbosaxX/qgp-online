@@ -1,14 +1,16 @@
-"""Modulo Roubo de Veiculo (SIP)"""
+"""
+Modulo Roubo de Veiculo (SIP) - Geocodificacao por endereco
+Versao Streamlit adaptada para o QGP Online.
+"""
 
 from __future__ import annotations
 
-from io import BytesIO
-from pathlib import Path
-import gzip
 import json
 import re
 import unicodedata
-import urllib.request
+from io import BytesIO
+from pathlib import Path
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -18,66 +20,106 @@ from geopy.geocoders import ArcGIS
 from rapidfuzz import fuzz
 from scipy.spatial import cKDTree
 
-from modulos.utils import nome_arquivo_padrao
-
-
-BASE_DIR = Path(__file__).resolve().parent.parent
+from modulos.utils import (
+    alinhar_colunas_com_base,
+    criar_coluna_datahora,
+    encontrar_coluna_data,
+    encontrar_coluna_hora,
+    encontrar_coluna_por_nomes,
+    filtrar_apenas_registros_posteriores,
+    nome_arquivo_padrao,
+    normalizar_colunas,
+    obter_ultima_datahora,
+    renomear_colunas_equivalentes,
+)
 
 NOME_ARQUIVO_FINAL = nome_arquivo_padrao(7, "ROUBO-DE-VEICULO-SIP-ENDERECO")
+
 USAR_EXTERNO = True
+CAMINHO_BASE_ENXUTA = "CVP_SIP_GEOCODIFICAR.parquet"
+VALOR_FILTRO_NATUREZA = "ROUBO DE VEICULO"
+
 LIMIAR_NOME = 88
 RAIO_CONFIRMA_M = 100.0
 RAIO_MUNICIPIO_KM = 8.0
 LIMIAR_SUSPEITO = 5
+
 UF_CODIGO = "23"
-VALOR_FILTRO_NATUREZA = "ROUBO DE VEICULO"
-ARQ_CACHE_MUN = BASE_DIR / "municipios_ce.json"
+ARQ_CACHE_MUN = "municipios_ce.json"
 
 SUBST = {
-    "AV": "Avenida", "AVD": "Avenida", "AVENIDA": "Avenida",
-    "R": "Rua", "RUA": "Rua", "TV": "Travessa", "TRV": "Travessa",
-    "TRAV": "Travessa", "TRAVESSA": "Travessa", "PC": "Praca", "PCA": "Praca",
-    "PRACA": "Praca", "ROD": "Rodovia", "AL": "Alameda", "PSO": "Passeio",
-    "GRJ": "", "DR": "Doutor", "DRA": "Doutora", "PE": "Padre",
-    "PRES": "Presidente", "CEL": "Coronel", "GEN": "General",
-    "PROF": "Professor", "MAE": "Maestro",
+    "AV": "Avenida",
+    "AVD": "Avenida",
+    "AVENIDA": "Avenida",
+    "R": "Rua",
+    "RUA": "Rua",
+    "TV": "Travessa",
+    "TRV": "Travessa",
+    "TRAV": "Travessa",
+    "TRAVESSA": "Travessa",
+    "PC": "Praca",
+    "PCA": "Praca",
+    "PRACA": "Praca",
+    "ROD": "Rodovia",
+    "AL": "Alameda",
+    "PSO": "Passeio",
+    "GRJ": "",
+    "DR": "Doutor",
+    "DRA": "Doutora",
+    "PE": "Padre",
+    "PRES": "Presidente",
+    "CEL": "Coronel",
+    "GEN": "General",
+    "PROF": "Professor",
+    "MAE": "Maestro",
 }
+
 CORR = {"RAIMUINDO": "RAIMUNDO", "OSWALDO": "OSVALDO"}
+
 RUIDO = ["LADO PAR", "LADO IMPAR", "- P", "FORTALEZA, CE", ", CE"]
-RE_BNI = re.compile(r"\(?\s*bairro\s+n[aã]o\s+identificad[oa]\s*\)?", flags=re.IGNORECASE)
+
+RE_BNI = re.compile(
+    r"\(?\s*bairro\s+n[aã]o\s+identificad[oa]\s*\)?",
+    flags=re.IGNORECASE,
+)
+
 TIPOS = ("Rua", "Avenida", "Travessa", "Praca", "Rodovia", "Alameda", "Passeio")
 ROOFTOP = ("pointaddress", "streetaddress", "subaddress", "pointaddressvd")
 
 
+def sem_acento(texto: str) -> str:
+    normalizado = unicodedata.normalize("NFKD", str(texto or ""))
+    return "".join(c for c in normalizado if not unicodedata.combining(c)).upper().strip()
+
+
 def _normalizar_nome_aba(nome: str) -> str:
-    return (
-        str(nome or "")
-        .strip()
-        .upper()
-        .replace(" ", "")
-        .replace("_", "")
-        .replace("-", "")
+    return sem_acento(nome).replace(" ", "").replace("_", "").replace("-", "")
+
+
+def _selecionar_aba_arquivo_02(sheet_names: list[str]) -> str:
+    alvo = "CVPSIP"
+    for aba in sheet_names:
+        if _normalizar_nome_aba(aba) == alvo:
+            return aba
+
+    for aba in sheet_names:
+        nome = _normalizar_nome_aba(aba)
+        if "CVP" in nome and "SIP" in nome:
+            return aba
+
+    raise ValueError(
+        f"Aba 'CVPSIP' nao encontrada no Arquivo 02. Abas disponiveis: {sheet_names}"
     )
 
 
-def _normalizar_chave_coluna(nome: str) -> str:
-    nome = str(nome or "").strip()
-    nome = re.sub(r"\.\d+$", "", nome)
-    nome = unicodedata.normalize("NFKD", nome)
-    nome = "".join(ch for ch in nome if not unicodedata.combining(ch))
-    nome = nome.lower().strip()
-    nome = nome.replace("_", " ").replace("-", " ")
-    nome = re.sub(r"\s+", " ", nome)
-    return nome
-
-
-def sem_acento(s):
-    n = unicodedata.normalize("NFKD", str(s or ""))
-    return "".join(c for c in n if not unicodedata.combining(c)).upper().strip()
-
-
 def _selecionar_aba_arquivo_01(sheet_names: list[str]) -> str:
-    prioridades = ["ROUBODEVEICULO", "ROUBOVEICULO", "SIP", "BASE"]
+    prioridades = [
+        "ROUBOVEICULOSIP",
+        "ROUBODEVEICULO",
+        "ROUBOVEICULO",
+        "BASE",
+        "BASEROUBO",
+    ]
     normalizadas = {aba: _normalizar_nome_aba(aba) for aba in sheet_names}
 
     for prioridade in prioridades:
@@ -92,575 +134,485 @@ def _selecionar_aba_arquivo_01(sheet_names: list[str]) -> str:
     return sheet_names[0]
 
 
-def _selecionar_aba_arquivo_02(sheet_names: list[str]) -> str:
-    normalizadas = {aba: _normalizar_nome_aba(aba) for aba in sheet_names}
-
-    prioridades_exatas = ["CVPSIP"]
-    for prioridade in prioridades_exatas:
-        for aba, nome_norm in normalizadas.items():
-            if nome_norm == prioridade:
-                return aba
-
-    prioridades_aproximadas = ["CVPSIP", "CVP", "SIP"]
-    for prioridade in prioridades_aproximadas:
-        for aba, nome_norm in normalizadas.items():
-            if prioridade in nome_norm:
-                return aba
-
-    return sheet_names[0]
-
-
-def normalizar_colunas(df):
-    df = df.copy()
-    df.columns = [str(c).strip() for c in df.columns]
-    return df
-
-
-def encontrar_coluna_por_nomes(df, nomes_possiveis, obrigatoria=True):
-    cols_map = {_normalizar_chave_coluna(c): c for c in df.columns}
-
-    for nome in nomes_possiveis:
-        chave = _normalizar_chave_coluna(nome)
-        if chave in cols_map:
-            return cols_map[chave]
-
-    for c in df.columns:
-        cl = _normalizar_chave_coluna(c)
-        for nome in nomes_possiveis:
-            if _normalizar_chave_coluna(nome) in cl:
-                return c
-
-    if obrigatoria:
-        raise ValueError(f"Nao foi possivel localizar nenhuma das colunas esperadas: {nomes_possiveis}")
-    return None
-
-
-def encontrar_coluna_data_base(df):
-    exatos = [c for c in df.columns if _normalizar_chave_coluna(c) == "data"]
-    if exatos:
-        return exatos[0]
-    aproximados = [c for c in df.columns if "data" in _normalizar_chave_coluna(c)]
-    if aproximados:
-        return aproximados[0]
-    raise ValueError("Nao foi encontrada a coluna 'Data' no Arquivo 01.")
-
-
-def encontrar_coluna_hora_base(df):
-    exatos = [c for c in df.columns if _normalizar_chave_coluna(c) == "hora"]
-    if exatos:
-        return exatos[0]
-    aproximados = [c for c in df.columns if "hora" in _normalizar_chave_coluna(c)]
-    if aproximados:
-        return aproximados[0]
-    raise ValueError("Nao foi encontrada a coluna 'Hora' no Arquivo 01.")
-
-
-def encontrar_coluna_datahora_arquivo_02(df):
-    exatos = [c for c in df.columns if _normalizar_chave_coluna(c) == "data"]
-    if exatos:
-        return exatos[0]
-    aproximados = [c for c in df.columns if "data" in _normalizar_chave_coluna(c)]
-    if aproximados:
-        return aproximados[0]
-    raise ValueError("Nao foi encontrada a coluna 'Data' no Arquivo 02.")
-
-
-def filtrar_por_natureza(df, natureza_alvo=VALOR_FILTRO_NATUREZA):
-    col_natureza = encontrar_coluna_por_nomes(df, ["Natureza"], obrigatoria=True)
-    alvo = sem_acento(natureza_alvo)
-    return df[df[col_natureza].apply(sem_acento) == alvo].copy(), col_natureza
-
-
-def renomear_colunas_equivalentes(df_base, df_novo):
-    mapa_equivalencias = {
-        "Endereço": ["Endereço", "Endereco", "endereço", "endereco"],
-        "AIS": ["AISNova", "AIS Nova", "AIS_NOVA", "aisnova", "ais_nova"],
-        "Território": ["Regiões", "Regioes", "Região", "Regiao", "território", "territorio", "regiões", "regioes"],
-    }
-
-    colunas_base_map = {_normalizar_chave_coluna(c): c for c in df_base.columns}
-    colunas_novo_map = {_normalizar_chave_coluna(c): c for c in df_novo.columns}
-
-    renomeacoes = {}
-
-    for coluna_base_oficial, aliases in mapa_equivalencias.items():
-        chave_base = _normalizar_chave_coluna(coluna_base_oficial)
-
-        if chave_base not in colunas_base_map:
-            continue
-
-        nome_real_base = colunas_base_map[chave_base]
-
-        if nome_real_base in df_novo.columns:
-            continue
-
-        for alias in aliases:
-            chave_alias = _normalizar_chave_coluna(alias)
-            if chave_alias in colunas_novo_map:
-                nome_real_novo = colunas_novo_map[chave_alias]
-                renomeacoes[nome_real_novo] = nome_real_base
-                break
-
-    if renomeacoes:
-        df_novo = df_novo.rename(columns=renomeacoes)
-
-    return df_novo
-
-
-def normalizar_data_para_texto(v):
-    if pd.isna(v):
-        return None
-    if isinstance(v, pd.Timestamp):
-        return v.strftime("%d/%m/%Y")
-    try:
-        dt = pd.to_datetime(v, errors="coerce", dayfirst=True)
-        if pd.isna(dt):
-            return None
-        return dt.strftime("%d/%m/%Y")
-    except Exception:
-        return None
-
-
-def normalizar_hora_para_texto(v):
-    if pd.isna(v):
-        return None
-    if isinstance(v, pd.Timestamp):
-        return v.strftime("%H:%M:%S")
-    s = str(v).strip()
-    if s == "":
-        return None
-    for fmt in ["%H:%M:%S", "%H:%M"]:
-        dt = pd.to_datetime(s, errors="coerce", format=fmt)
-        if not pd.isna(dt):
-            return dt.strftime("%H:%M:%S")
-    try:
-        dt = pd.to_datetime(s, errors="coerce")
-        if not pd.isna(dt):
-            return dt.strftime("%H:%M:%S")
-    except Exception:
-        pass
-    return None
-
-
-def criar_datahora_base(df, coluna_data, coluna_hora, nome_coluna="__datahora__"):
-    df = df.copy()
-    datas = df[coluna_data].apply(normalizar_data_para_texto)
-    horas = df[coluna_hora].apply(normalizar_hora_para_texto)
-    combinado = []
-    for d, h in zip(datas, horas):
-        if d is None or h is None:
-            combinado.append(pd.NaT)
-        else:
-            combinado.append(pd.to_datetime(f"{d} {h}", errors="coerce", dayfirst=True))
-    df[nome_coluna] = combinado
-    return df
-
-
-def criar_datahora_arquivo_02(df, coluna_datahora, nome_coluna="__datahora__"):
-    df = df.copy()
-    df[nome_coluna] = pd.to_datetime(df[coluna_datahora], errors="coerce", dayfirst=True)
-    return df
-
-
-def obter_ultimo_datahora(df, coluna_datahora):
-    df_valid = df[df[coluna_datahora].notna()].copy()
-    if df_valid.empty:
-        return None
-    return df_valid[coluna_datahora].max()
-
-
-def filtrar_apenas_registros_posteriores(df, coluna_datahora, limite_datahora):
-    if limite_datahora is None:
-        return df.copy()
-    return df[df[coluna_datahora] > limite_datahora].copy()
-
-
-def alinhar_colunas_arquivo_02_com_base(df_base, df_novo):
-    colunas_base = list(df_base.columns)
-    df_novo = renomear_colunas_equivalentes(df_base, df_novo)
-
-    for col in colunas_base:
-        if col not in df_novo.columns:
-            df_novo[col] = pd.NA
-
-    df_saida = df_novo.loc[:, colunas_base].copy()
-
-    if df_saida.columns.duplicated().any():
-        df_saida = df_saida.loc[:, ~df_saida.columns.duplicated()]
-        for col in colunas_base:
-            if col not in df_saida.columns:
-                df_saida[col] = pd.NA
-        df_saida = df_saida.loc[:, colunas_base].copy()
-
-    return df_saida
-
-
-def limpar_logradouro(texto):
-    t = str(texto or "").upper().strip()
-    if t in ("NAN", "NONE", ""):
-        return ""
-    for a, b in CORR.items():
-        t = t.replace(a, b)
-    for r in RUIDO:
-        t = t.replace(r.upper(), " ")
-    t = re.sub(r"\d{4,}", " ", t)
-    t = re.sub(r"[.\,/\\-]", " ", t)
-    toks = [SUBST.get(tok, tok) for tok in t.split()]
-    toks = [x for x in toks if x != ""]
-    while len(toks) > 1 and toks[0] in TIPOS and toks[1] in TIPOS:
-        toks.pop(0)
-    return " ".join(" ".join(toks).split()).title()
-
-
-def limpar_bairro(b, municipio):
-    v = str(b or "").strip()
-    if v.lower() in ("nan", "none", ""):
-        return ""
-    v = RE_BNI.sub("", v)
-    v = re.sub(r"\(.*?\)", "", v)
-    v = " ".join(v.strip(" ()-").split())
-    if v == "" or sem_acento(v) == sem_acento(municipio):
-        return ""
-    return v
-
-
-def limpar_numero(n):
-    s = str(n or "").strip()
-    if s.lower() in ("nan", "none", "", "0", "0.0", "s/n", "sn"):
-        return ""
-    try:
-        return str(int(float(s)))
-    except Exception:
-        return re.sub(r"\D", "", s)
-
-
-def localizar_parquet_geocodificacao() -> Path:
-    candidatos = [
-        BASE_DIR / "CVP_SIP_GEOCODIFICAR.parquet",
-        BASE_DIR / "modulos" / "CVP_SIP_GEOCODIFICAR.parquet",
-        Path(__file__).resolve().parent / "CVP_SIP_GEOCODIFICAR.parquet",
-        Path("CVP_SIP_GEOCODIFICAR.parquet"),
-        Path("modulos") / "CVP_SIP_GEOCODIFICAR.parquet",
-    ]
-
-    for caminho in candidatos:
-        if caminho.exists():
-            return caminho
-
-    raise FileNotFoundError(
-        "Base parquet nao encontrada. Caminhos testados: "
-        + " | ".join(str(c) for c in candidatos)
-    )
-
-
-def normalizar_colunas_base_geografica(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    df.columns = [str(c).strip() for c in df.columns]
-
-    col_lat = encontrar_coluna_por_nomes(df, ["lat", "latitude", "y", "latitud"], obrigatoria=True)
-    col_lon = encontrar_coluna_por_nomes(df, ["lon", "long", "longitude", "x", "longitud"], obrigatoria=True)
-
-    col_nome = encontrar_coluna_por_nomes(
-        df,
-        ["nome_norm", "logradouro_norm", "nome", "logradouro", "rua"],
-        obrigatoria=False,
-    )
-    col_cod = encontrar_coluna_por_nomes(
-        df,
-        ["cod_mun", "codigo_municipio", "municipio_cod", "cod municipio", "ibge"],
-        obrigatoria=False,
-    )
-
-    ren = {
-        col_lat: "lat",
-        col_lon: "lon",
-    }
-
-    if col_nome:
-        ren[col_nome] = "nome_norm"
-    if col_cod:
-        ren[col_cod] = "cod_mun"
-
-    if "nome_orig" not in df.columns:
-        col_nome_orig = encontrar_coluna_por_nomes(
-            df,
-            ["nome_orig", "nome original", "logradouro_orig", "logradouro original", "nome", "logradouro", "rua"],
-            obrigatoria=False,
-        )
-        if col_nome_orig:
-            ren[col_nome_orig] = "nome_orig"
-
-    if "tot_geral" not in df.columns:
-        col_tot = encontrar_coluna_por_nomes(
-            df,
-            ["tot_geral", "total", "qtd", "quantidade"],
-            obrigatoria=False,
-        )
-        if col_tot:
-            ren[col_tot] = "tot_geral"
-
-    df = df.rename(columns=ren)
-
-    colunas_minimas = ["lat", "lon"]
-    faltantes = [c for c in colunas_minimas if c not in df.columns]
-    if faltantes:
-        raise ValueError(
-            f"A base parquet foi carregada, mas nao possui as colunas minimas esperadas apos normalizacao: {faltantes}. "
-            f"Colunas encontradas: {list(df.columns)}"
-        )
-
-    df["lat"] = pd.to_numeric(df["lat"], errors="coerce")
-    df["lon"] = pd.to_numeric(df["lon"], errors="coerce")
-
-    if "nome_norm" in df.columns:
-        df["nome_norm"] = df["nome_norm"].astype(str).fillna("").map(sem_acento)
-
-    if "cod_mun" in df.columns:
-        df["cod_mun"] = df["cod_mun"].astype(str).str[:7]
-
-    if "nome_orig" not in df.columns:
-        df["nome_orig"] = pd.NA
-
-    if "tot_geral" not in df.columns:
-        df["tot_geral"] = 0
-
-    df = df.dropna(subset=["lat", "lon"]).copy()
-    return df.reset_index(drop=True)
-
-
-def carregar_base_geografica():
-    caminho = localizar_parquet_geocodificacao()
-    df = pd.read_parquet(caminho).reset_index(drop=True)
-    df = normalizar_colunas_base_geografica(df)
-    return df, caminho
-
-
-def carregar_municipios():
-    caminho_cache = Path(ARQ_CACHE_MUN)
-
-    if caminho_cache.exists():
+def gerar_excel_em_memoria(df: pd.DataFrame) -> bytes:
+    buffer = BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="ROUBO_VEICULO_SIP_ENDERECO")
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+@st.cache_data(show_spinner=False)
+def carregar_municipios() -> dict:
+    caminho = Path(ARQ_CACHE_MUN)
+
+    if caminho.exists():
         try:
-            with open(caminho_cache, encoding="utf-8") as f:
-                return json.load(f)
+            with open(caminho, encoding="utf-8") as arquivo:
+                return json.load(arquivo)
         except Exception:
             pass
 
     url = f"https://servicodados.ibge.gov.br/api/v1/localidades/estados/{UF_CODIGO}/municipios"
-    try:
-        req = urllib.request.Request(url, headers={"Accept-Encoding": "gzip"})
-        with urllib.request.urlopen(req, timeout=30) as r:
-            dados = r.read()
-            if r.info().get("Content-Encoding") == "gzip":
-                dados = gzip.decompress(dados)
-            lista = json.loads(dados.decode("utf-8"))
 
+    try:
+        import gzip
+        import urllib.request
+
+        requisicao = urllib.request.Request(url, headers={"Accept-Encoding": "gzip"})
+        with urllib.request.urlopen(requisicao, timeout=30) as resposta:
+            dados = resposta.read()
+            if resposta.info().get("Content-Encoding") == "gzip":
+                dados = gzip.decompress(dados)
+
+        lista = json.loads(dados.decode("utf-8"))
         mapa = {sem_acento(m["nome"]): str(m["id"])[:7] for m in lista}
 
-        with open(caminho_cache, "w", encoding="utf-8") as f:
-            json.dump(mapa, f, ensure_ascii=False)
+        with open(caminho, "w", encoding="utf-8") as arquivo:
+            json.dump(mapa, arquivo, ensure_ascii=False)
 
         return mapa
     except Exception:
         return {}
 
 
+def _montar_nome_logradouro(tipo: str, nome: str) -> str:
+    partes = []
+    tipo = str(tipo or "").strip()
+    nome = str(nome or "").strip()
+
+    if tipo and tipo.lower() != "none":
+        partes.append(tipo)
+    if nome and nome.lower() != "none":
+        partes.append(nome)
+
+    return " ".join(partes).strip()
+
+
+@st.cache_data(show_spinner=False)
+def carregar_base_geografica() -> Optional[pd.DataFrame]:
+    caminho_parquet = Path(CAMINHO_BASE_ENXUTA)
+    if not caminho_parquet.exists():
+        return None
+
+    base = pd.read_parquet(caminho_parquet).reset_index(drop=True)
+    colunas_esperadas = {
+        "CD_SETOR",
+        "CD_QUADRA",
+        "CD_FACE",
+        "NM_TIP_LOG",
+        "NM_LOG",
+        "Latitude",
+        "Longitude",
+        "CD_MUN",
+        "NM_MUN",
+        "SIGLA_UF",
+    }
+    faltantes = colunas_esperadas - set(base.columns)
+
+    if faltantes:
+        raise ValueError(
+            f"O arquivo {CAMINHO_BASE_ENXUTA} nao possui as colunas esperadas: {sorted(faltantes)}"
+        )
+
+    base = base.copy()
+    base["cod_mun"] = (
+        base["CD_MUN"]
+        .fillna(base["CD_SETOR"])
+        .astype(str)
+        .str.extract(r"(\d+)", expand=False)
+        .fillna("")
+        .str[:7]
+    )
+    base["nome_orig"] = base.apply(
+        lambda linha: _montar_nome_logradouro(linha.get("NM_TIP_LOG"), linha.get("NM_LOG")),
+        axis=1,
+    )
+    base["nome_norm"] = base["nome_orig"].apply(sem_acento)
+    base["lat"] = pd.to_numeric(base["Latitude"], errors="coerce")
+    base["lon"] = pd.to_numeric(base["Longitude"], errors="coerce")
+    base["tot_geral"] = 1
+
+    base = base.dropna(subset=["lat", "lon"]).copy()
+    base = base[base["nome_orig"].astype(str).str.strip() != ""].copy()
+    base = base[base["cod_mun"].astype(str).str.strip() != ""].copy()
+
+    base = base.drop_duplicates(
+        subset=["cod_mun", "nome_norm", "lat", "lon"]
+    ).reset_index(drop=True)
+
+    return base[["cod_mun", "nome_norm", "nome_orig", "lat", "lon", "tot_geral"]]
+
+
+@st.cache_resource(show_spinner=False)
+def obter_geocoder_arcgis():
+    if not USAR_EXTERNO:
+        return None
+    arc = ArcGIS(timeout=15)
+    return RateLimiter(
+        arc.geocode,
+        min_delay_seconds=0.4,
+        max_retries=2,
+        swallow_exceptions=True,
+    )
+
+
+def limpar_logradouro(texto: str) -> str:
+    valor = str(texto or "").upper().strip()
+
+    if valor in ("NAN", "NONE", ""):
+        return ""
+
+    for origem, destino in CORR.items():
+        valor = valor.replace(origem, destino)
+
+    for ruido in RUIDO:
+        valor = valor.replace(ruido.upper(), " ")
+
+    valor = re.sub(r"\d{4,}", " ", valor)
+    valor = re.sub(r"[.\,/\\-]", " ", valor)
+
+    tokens = [SUBST.get(token, token) for token in valor.split()]
+    tokens = [token for token in tokens if token != ""]
+
+    while len(tokens) > 1 and tokens[0] in TIPOS and tokens[1] in TIPOS:
+        tokens.pop(0)
+
+    return " ".join(" ".join(tokens).split()).title()
+
+
+def limpar_bairro(bairro: str, municipio: str) -> str:
+    valor = str(bairro or "").strip()
+
+    if valor.lower() in ("nan", "none", ""):
+        return ""
+
+    valor = RE_BNI.sub("", valor)
+    valor = re.sub(r"\(.*?\)", "", valor)
+    valor = " ".join(valor.strip(" ()-").split())
+
+    if valor == "" or sem_acento(valor) == sem_acento(municipio):
+        return ""
+
+    return valor
+
+
+def limpar_numero(numero: str) -> str:
+    valor = str(numero or "").strip()
+
+    if valor.lower() in ("nan", "none", "", "0", "0.0", "s/n", "sn"):
+        return ""
+
+    try:
+        return str(int(float(valor)))
+    except Exception:
+        return re.sub(r"\D", "", valor)
+
+
 def _hav(lat1, lon1, lat2, lon2):
     dlat = np.radians(lat2 - lat1)
     dlon = np.radians(lon2 - lon1)
-    a = np.sin(dlat / 2) ** 2 + np.cos(np.radians(lat1)) * np.cos(np.radians(lat2)) * np.sin(dlon / 2) ** 2
+    a = (
+        np.sin(dlat / 2) ** 2
+        + np.cos(np.radians(lat1))
+        * np.cos(np.radians(lat2))
+        * np.sin(dlon / 2) ** 2
+    )
     return 2 * 6371000.0 * np.arcsin(np.sqrt(a))
 
 
 class MotorGeocodificacaoSoberana:
     def __init__(self):
-        self.base, self.caminho_base = carregar_base_geografica()
-        self.mun = carregar_municipios()
+        self.base = carregar_base_geografica()
+        self.municipios = carregar_municipios()
         self.tree = None
-        self.cent_mun = {}
-        self.tem_rua_base = False
-        self.tem_cod_municipio_base = False
+        self.centroides_municipio = {}
 
         if self.base is not None and len(self.base):
-            self.glat = self.base["lat"].astype(float).values
-            self.glon = self.base["lon"].astype(float).values
+            self.glat = self.base["lat"].values.astype(float)
+            self.glon = self.base["lon"].values.astype(float)
+            self.gnome = self.base["nome_norm"].astype(str).values
+            self.gcod = self.base["cod_mun"].astype(str).values
             self.tree = cKDTree(np.c_[self.glat, self.glon])
 
-            if "nome_norm" in self.base.columns:
-                self.gnome = self.base["nome_norm"].astype(str).values
-                self.tem_rua_base = True
-            else:
-                self.gnome = np.array([], dtype=str)
+            centroides = self.base.groupby("cod_mun")[["lat", "lon"]].mean()
+            self.centroides_municipio = {
+                codigo: (linha["lat"], linha["lon"])
+                for codigo, linha in centroides.iterrows()
+            }
 
-            if "cod_mun" in self.base.columns:
-                self.gcod = self.base["cod_mun"].astype(str).values
-                self.tem_cod_municipio_base = True
-                cm = self.base.groupby("cod_mun")[["lat", "lon"]].mean(numeric_only=True)
-                self.cent_mun = {k: (v["lat"], v["lon"]) for k, v in cm.iterrows()}
-            else:
-                self.gcod = np.array([], dtype=str)
+        self.geocode_ext = obter_geocoder_arcgis()
 
-        self.geocode_ext = None
-        if USAR_EXTERNO:
-            arc = ArcGIS(timeout=15)
-            self.geocode_ext = RateLimiter(
-                arc.geocode,
-                min_delay_seconds=0.4,
-                max_retries=2,
-                swallow_exceptions=True
+    def cod_municipio(self, municipio: str) -> str:
+        return self.municipios.get(sem_acento(municipio), "")
+
+    def _idx_municipio(self, cod: str, ancora):
+        if cod and self.tree is not None:
+            indices = np.where(self.gcod == cod)[0]
+            if len(indices):
+                return indices
+
+        if ancora is not None and self.tree is not None:
+            indices = self.tree.query_ball_point(
+                [ancora[0], ancora[1]],
+                r=RAIO_MUNICIPIO_KM / 111.0,
             )
-
-    def cod_municipio(self, municipio):
-        return self.mun.get(sem_acento(municipio), "")
-
-    def _idx_municipio(self, cod, ancora):
-        if self.tree is None:
-            return np.array([], dtype=int)
-
-        if cod and self.tem_cod_municipio_base:
-            ix = np.where(self.gcod == cod)[0]
-            if len(ix):
-                return ix
-
-        if ancora is not None:
-            ix = self.tree.query_ball_point([ancora[0], ancora[1]], r=RAIO_MUNICIPIO_KM / 111.0)
-            return np.array(ix, dtype=int)
+            return np.array(indices, dtype=int)
 
         return np.array([], dtype=int)
 
-    def casar_rua(self, rua_norm, cod, ancora):
-        if not self.tem_rua_base:
+    def casar_rua(self, rua_norm: str, cod: str, ancora):
+        indices = self._idx_municipio(cod, ancora)
+        if not len(indices):
             return None
 
-        ix = self._idx_municipio(cod, ancora)
-        if not len(ix):
-            return None
+        melhor_indice = None
+        melhor_score = 0
 
-        melhor, mscore = None, 0
-        for j in ix:
-            s = fuzz.token_set_ratio(rua_norm, self.gnome[j])
-            if s > mscore:
-                mscore, melhor = s, j
+        for indice in indices:
+            score = fuzz.token_set_ratio(rua_norm, self.gnome[indice])
+            if score > melhor_score:
+                melhor_score = score
+                melhor_indice = indice
 
-        if melhor is not None and mscore >= LIMIAR_NOME:
-            return float(self.glat[melhor]), float(self.glon[melhor]), mscore)
+        if melhor_indice is not None and melhor_score >= LIMIAR_NOME:
+            return (
+                float(self.glat[melhor_indice]),
+                float(self.glon[melhor_indice]),
+                melhor_score,
+            )
 
         return None
 
-    def validar(self, lat, lon, rua_norm, cod, ancora):
-        if not self.tem_rua_base:
+    def validar(self, lat: float, lon: float, rua_norm: str, cod: str, ancora):
+        indices = self._idx_municipio(cod, ancora or (lat, lon))
+        if not len(indices):
             return False, None
 
-        ix = self._idx_municipio(cod, ancora or (lat, lon))
-        if not len(ix):
+        nomes = self.gnome[indices]
+        mascara = np.array(
+            [fuzz.token_set_ratio(rua_norm, nome) >= LIMIAR_NOME for nome in nomes]
+        )
+
+        if not mascara.any():
             return False, None
 
-        nomes = self.gnome[ix]
-        msk = np.array([fuzz.token_set_ratio(rua_norm, n) >= LIMIAR_NOME for n in nomes])
-        if not msk.any():
-            return False, None
+        indices_filtrados = indices[mascara]
+        distancias = _hav(lat, lon, self.glat[indices_filtrados], self.glon[indices_filtrados])
+        melhor = float(distancias.min())
 
-        mi = ix[msk]
-        d = _hav(lat, lon, self.glat[mi], self.glon[mi])
-        best = float(d.min())
-        return best <= RAIO_CONFIRMA_M, best
+        return melhor <= RAIO_CONFIRMA_M, melhor
 
-    def geocodificar(self, rua, num, bairro, municipio):
-        rua_l = limpar_logradouro(rua)
-        bai_l = limpar_bairro(bairro, municipio)
-        rua_n = sem_acento(rua_l)
-        cod = self.cod_municipio(municipio)
+    def geocodificar(self, rua: str, numero: str, bairro: str, municipio: str):
+        rua_limpa = limpar_logradouro(rua)
+        bairro_limpo = limpar_bairro(bairro, municipio)
+        numero_limpo = limpar_numero(numero)
+        municipio_limpo = str(municipio or "").strip()
+        rua_norm = sem_acento(rua_limpa)
+        cod = self.cod_municipio(municipio_limpo)
 
-        if not rua_l:
-            c = self.cent_mun.get(cod)
-            if c:
-                return (c[0], c[1], "Centroide de Cidade", "Centroide Municipio", False, None)
-            return (None, None, "Nao Encontrado", "-", False, None)
+        tem_rua = rua_limpa != ""
+        tem_numero = numero_limpo != ""
+        tem_bairro = bairro_limpo != ""
+        tem_municipio = municipio_limpo != ""
 
-        partes = [f"{rua_l}, {num}" if num else rua_l]
-        if bai_l:
-            partes.append(bai_l)
-        partes += [str(municipio).strip(), "Ceara", "Brasil"]
-        consulta = ", ".join(p for p in partes if p)
+        if tem_rua and tem_numero and tem_bairro and tem_municipio:
+            partes = [
+                f"{rua_limpa}, {numero_limpo}",
+                bairro_limpo,
+                municipio_limpo,
+                "Ceara",
+                "Brasil",
+            ]
+            consulta = ", ".join([p for p in partes if p])
 
-        ext = None
-        if self.geocode_ext is not None:
+            externo = None
+            if self.geocode_ext is not None:
+                loc = self.geocode_ext(consulta, out_fields="*")
+                if loc:
+                    addr_type = ((loc.raw or {}).get("attributes", {}) or {}).get("Addr_type", "")
+                    externo = (float(loc.latitude), float(loc.longitude), str(addr_type).lower())
+
+            ancora = (externo[0], externo[1]) if externo else None
+
+            if externo:
+                ok, distancia = self.validar(externo[0], externo[1], rua_norm, cod, ancora)
+                if ok:
+                    return (
+                        externo[0],
+                        externo[1],
+                        "Exato (Numero)",
+                        "ArcGIS+Parquet",
+                        True,
+                        distancia,
+                    )
+
+                if externo[2] in ROOFTOP:
+                    return (
+                        externo[0],
+                        externo[1],
+                        "Exato (Numero)",
+                        "ArcGIS Rooftop",
+                        False,
+                        distancia,
+                    )
+
+            geobase = self.casar_rua(rua_norm, cod, ancora)
+            if geobase:
+                return (
+                    geobase[0],
+                    geobase[1],
+                    "Centroide de Rua",
+                    "Parquet (Base Enxuta)",
+                    True,
+                    0.0,
+                )
+
+            if externo:
+                return (
+                    externo[0],
+                    externo[1],
+                    "Centroide de Rua",
+                    "ArcGIS (nao confirmado)",
+                    False,
+                    None,
+                )
+
+        if tem_rua:
+            partes = [rua_limpa]
+            if tem_bairro:
+                partes.append(bairro_limpo)
+            if tem_municipio:
+                partes.extend([municipio_limpo, "Ceara", "Brasil"])
+            consulta = ", ".join([p for p in partes if p])
+
+            externo = None
+            if self.geocode_ext is not None:
+                loc = self.geocode_ext(consulta, out_fields="*")
+                if loc:
+                    externo = (float(loc.latitude), float(loc.longitude))
+
+            ancora = externo if externo else None
+            geobase = self.casar_rua(rua_norm, cod, ancora)
+            if geobase:
+                return (
+                    geobase[0],
+                    geobase[1],
+                    "Centroide de Rua",
+                    "Parquet (Base Enxuta)",
+                    True,
+                    0.0,
+                )
+
+            if externo:
+                return (
+                    externo[0],
+                    externo[1],
+                    "Centroide de Rua",
+                    "ArcGIS (nao confirmado)",
+                    False,
+                    None,
+                )
+
+        if tem_bairro and tem_municipio and self.geocode_ext is not None:
+            consulta = ", ".join([bairro_limpo, municipio_limpo, "Ceara", "Brasil"])
             loc = self.geocode_ext(consulta, out_fields="*")
             if loc:
-                at = ((loc.raw or {}).get("attributes", {}) or {}).get("Addr_type", "")
-                ext = (float(loc.latitude), float(loc.longitude), str(at).lower())
+                return (
+                    float(loc.latitude),
+                    float(loc.longitude),
+                    "Centroide de Bairro",
+                    "ArcGIS Bairro",
+                    False,
+                    None,
+                )
 
-        ancora = (ext[0], ext[1]) if ext else None
+        centroide = self.centroides_municipio.get(cod)
+        if centroide:
+            return (
+                centroide[0],
+                centroide[1],
+                "Centroide de Cidade",
+                "Centroide Municipio",
+                False,
+                None,
+            )
 
-        if ext and ext[2] in ROOFTOP and num and self.tem_rua_base:
-            ok, dist = self.validar(ext[0], ext[1], rua_n, cod, ancora)
-            if ok:
-                return (ext[0], ext[1], "Exato (Numero)", "ArcGIS+Parquet", True, dist)
-
-        g = self.casar_rua(rua_n, cod, ancora)
-        if g:
-            return (g[0], g[1], "Centroide de Rua", "Parquet (CVP SIP)", True, 0.0)
-
-        if ext:
-            if ext[2] in ("pointaddress", "streetaddress", "subaddress", "pointaddressvd"):
-                nivel = "Exato (Numero)" if num else "Centroide de Rua"
-            elif ext[2] in ("streetname", "streetmidblock", "streetint"):
-                nivel = "Centroide de Rua"
-            elif ext[2] in ("locality", "neighborhood", "district"):
-                nivel = "Centroide de Bairro"
-            else:
-                nivel = "Centroide de Cidade"
-
-            fonte = "ArcGIS"
-            if self.tem_rua_base:
-                fonte = "ArcGIS (nao confirmado)"
-
-            return (ext[0], ext[1], nivel, fonte, False, None)
-
-        c = self.cent_mun.get(cod)
-        if c:
-            return (c[0], c[1], "Centroide de Cidade", "Centroide Municipio", False, None)
+        if tem_municipio and self.geocode_ext is not None:
+            loc = self.geocode_ext(f"{municipio_limpo}, Ceara, Brasil", out_fields="*")
+            if loc:
+                return (
+                    float(loc.latitude),
+                    float(loc.longitude),
+                    "Centroide de Cidade",
+                    "ArcGIS Cidade",
+                    False,
+                    None,
+                )
 
         return (None, None, "Nao Encontrado", "-", False, None)
 
 
-def preparar_campos_geocodificacao(df, col_endereco, col_numero, col_bairro, col_municipio):
+def preparar_campos_geocodificacao(
+    df: pd.DataFrame,
+    col_endereco: str,
+    col_numero: str,
+    col_bairro: str,
+    col_municipio: str,
+) -> pd.DataFrame:
     df = df.copy()
     df["logradouro_busca"] = df[col_endereco].apply(limpar_logradouro)
     df["numero_busca"] = df[col_numero].apply(limpar_numero)
-    df["bairro_busca"] = df.apply(lambda r: limpar_bairro(r[col_bairro], r[col_municipio]), axis=1)
+    df["bairro_busca"] = df.apply(
+        lambda linha: limpar_bairro(linha[col_bairro], linha[col_municipio]),
+        axis=1,
+    )
     df["municipio_busca"] = df[col_municipio].fillna("").astype(str).str.strip()
     return df
 
 
-def geocodificar_linhas_novas(df, col_lat_destino, col_lon_destino):
+def geocodificar_linhas_novas(
+    df: pd.DataFrame,
+    col_lat_destino: str,
+    col_lon_destino: str,
+) -> tuple[pd.DataFrame, int]:
     motor = MotorGeocodificacaoSoberana()
 
-    lats, lons, niveis, fontes, confirmados, distancias = [], [], [], [], [], []
-    geocodificados = 0
+    lats = []
+    lons = []
+    niveis = []
+    fontes = []
+    confirmados = []
+    distancias = []
+
     total = len(df)
-    barra = st.progress(0)
+    geocodificados = 0
+    progresso = st.progress(0)
     status = st.empty()
 
-    for i, (_, row) in enumerate(df.iterrows(), start=1):
-        num = limpar_numero(row.get("numero_busca", ""))
-        r = motor.geocodificar(
-            row.get("logradouro_busca", ""),
-            num,
-            row.get("bairro_busca", ""),
-            row.get("municipio_busca", "")
+    for indice, (_, linha) in enumerate(df.iterrows(), start=1):
+        resultado = motor.geocodificar(
+            linha.get("logradouro_busca", ""),
+            linha.get("numero_busca", ""),
+            linha.get("bairro_busca", ""),
+            linha.get("municipio_busca", ""),
         )
-        lats.append(r[0])
-        lons.append(r[1])
-        niveis.append(r[2])
-        fontes.append(r[3])
-        confirmados.append(r[4])
-        distancias.append(r[5])
 
-        if r[0] is not None and r[1] is not None:
+        lats.append(resultado[0])
+        lons.append(resultado[1])
+        niveis.append(resultado[2])
+        fontes.append(resultado[3])
+        confirmados.append(resultado[4])
+        distancias.append(resultado[5])
+
+        if resultado[0] is not None and resultado[1] is not None:
             geocodificados += 1
 
-        barra.progress(int(i / max(total, 1) * 100))
-        status.info(f"Geocodificando linhas novas... {i}/{total}")
+        progresso.progress(indice / max(total, 1))
+        status.info(
+            f"Geocodificando linhas novas... {indice}/{total} | "
+            f"Geocodificados: {geocodificados}"
+        )
 
     df = df.copy()
     df[col_lat_destino] = lats
@@ -670,140 +622,123 @@ def geocodificar_linhas_novas(df, col_lat_destino, col_lon_destino):
     df["_confirmado_base"] = confirmados
     df["_dist_validacao_m"] = distancias
 
-    chave = df[col_lat_destino].round(6).astype(str) + "," + df[col_lon_destino].round(6).astype(str)
-    cont = chave.value_counts()
-    df["Ocorrencias_Mesmo_Ponto"] = chave.map(cont).fillna(1).astype(int)
+    lat_series = pd.to_numeric(df[col_lat_destino], errors="coerce")
+    lon_series = pd.to_numeric(df[col_lon_destino], errors="coerce")
+    chave = lat_series.round(6).astype(str) + "," + lon_series.round(6).astype(str)
+    contagem = chave.value_counts()
+    df["Ocorrencias_Mesmo_Ponto"] = chave.map(contagem).fillna(1).astype(int)
     df["_loc_aproximada"] = (
         (df["Ocorrencias_Mesmo_Ponto"] >= LIMIAR_SUSPEITO)
         & (df["numero_busca"].fillna("").astype(str).str.strip() == "")
     )
 
-    return df, geocodificados, str(motor.caminho_base)
+    status.success(f"Geocodificacao concluida. Registros geocodificados: {geocodificados}")
+    return df, geocodificados
 
 
-def colunas_existentes(df: pd.DataFrame, colunas_desejadas: list[str]) -> list[str]:
-    cols = []
-    vistos = set()
-    for c in colunas_desejadas:
-        if c in df.columns and c not in vistos:
-            cols.append(c)
-            vistos.add(c)
-    return cols
-
-
-def mostrar_amostra_segura(titulo: str, df: pd.DataFrame, colunas_desejadas: list[str], n: int = 10):
-    st.write(titulo)
-    cols = colunas_existentes(df, colunas_desejadas)
-
-    if not cols:
-        st.warning("Nenhuma das colunas solicitadas existe nesta etapa.")
-        st.write("Colunas disponiveis:")
-        st.write(list(df.columns))
-        return
-
-    df_preview = df.loc[:, cols].copy()
-    if df_preview.columns.duplicated().any():
-        df_preview = df_preview.loc[:, ~df_preview.columns.duplicated()]
-
-    st.dataframe(df_preview.head(n), use_container_width=True)
-
-
-def gerar_excel_em_memoria(df: pd.DataFrame) -> bytes:
-    buffer = BytesIO()
-    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, sheet_name="CVP_SIP_ENDERECO")
-    buffer.seek(0)
-    return buffer.getvalue()
+def filtrar_por_natureza(
+    df: pd.DataFrame,
+    natureza_alvo: str = VALOR_FILTRO_NATUREZA,
+) -> tuple[pd.DataFrame, str]:
+    col_natureza = encontrar_coluna_por_nomes(
+        df,
+        ["natureza"],
+        obrigatoria=True,
+    )
+    alvo = sem_acento(natureza_alvo)
+    df_filtrado = df[df[col_natureza].apply(sem_acento) == alvo].copy()
+    return df_filtrado, col_natureza
 
 
 def processar_roubo_veiculo_sip(arquivo_01, arquivo_02):
-    progresso = st.progress(0)
-    status = st.empty()
-
     arquivo_01.seek(0)
     arquivo_02.seek(0)
 
-    status.info("Lendo os arquivos enviados...")
     xls_base = pd.ExcelFile(arquivo_01)
     xls_novo = pd.ExcelFile(arquivo_02)
-    progresso.progress(10)
 
-    aba_base = _selecionar_aba_arquivo_01(xls_base.sheet_names)
-    aba_novo = _selecionar_aba_arquivo_02(xls_novo.sheet_names)
+    abas_base = xls_base.sheet_names
+    abas_novo = xls_novo.sheet_names
 
-    status.info(f"Usando aba '{aba_base}' no Arquivo 01 e '{aba_novo}' no Arquivo 02.")
+    aba_base = _selecionar_aba_arquivo_01(abas_base)
+    aba_novo = _selecionar_aba_arquivo_02(abas_novo)
 
     df_base = pd.read_excel(xls_base, sheet_name=aba_base)
     df_novo = pd.read_excel(xls_novo, sheet_name=aba_novo)
-    progresso.progress(20)
 
     df_base = normalizar_colunas(df_base)
     df_novo = normalizar_colunas(df_novo)
 
-    mostrar_amostra_segura(
-        "Pré-visualização Arquivo 01 (base):",
-        df_base,
-        ["Data", "Hora", "Endereço", "Bairro", "Município", "Latitude", "Longitude"],
-        5,
-    )
-    mostrar_amostra_segura(
-        "Pré-visualização Arquivo 02 (aba CVPSIP):",
-        df_novo,
-        ["Data", "Natureza", "Endereço", "Número", "Bairro", "Município", "Regiões", "AISNova"],
-        5,
-    )
-    progresso.progress(30)
-
     total_lido_arquivo_02 = len(df_novo)
-    status.info("Filtrando apenas Natureza = ROUBO DE VEICULO...")
     df_novo, col_natureza = filtrar_por_natureza(df_novo, VALOR_FILTRO_NATUREZA)
     removidos_por_tipo = total_lido_arquivo_02 - len(df_novo)
 
-    mostrar_amostra_segura(
-        "Arquivo 02 após filtro por Natureza:",
-        df_novo,
-        ["Data", col_natureza, "Endereço", "Número", "Bairro", "Município", "Regiões", "AISNova"],
-        10,
-    )
-
-    if df_base.empty:
-        raise ValueError("O Arquivo 01 foi carregado, mas esta sem registros.")
     if df_novo.empty:
-        raise ValueError("Apos filtrar a coluna 'Natureza' por 'ROUBO DE VEICULO', o Arquivo 02 ficou sem registros.")
+        raise ValueError(
+            "Apos filtrar a coluna 'Natureza' por 'ROUBO DE VEICULO', "
+            "o Arquivo 02 ficou sem registros."
+        )
 
-    col_data_base = encontrar_coluna_data_base(df_base)
-    col_hora_base = encontrar_coluna_hora_base(df_base)
-    col_datahora_novo = encontrar_coluna_datahora_arquivo_02(df_novo)
+    col_data_base = encontrar_coluna_data(df_base)
+    col_hora_base = encontrar_coluna_hora(df_base)
+
+    col_datahora_novo = encontrar_coluna_por_nomes(
+        df_novo,
+        ["data", "datahora", "data/hora", "data hora"],
+        obrigatoria=True,
+    )
 
     col_lat_base = encontrar_coluna_por_nomes(df_base, ["lat", "latitude"], obrigatoria=True)
     col_lon_base = encontrar_coluna_por_nomes(df_base, ["lon", "long", "longitude"], obrigatoria=True)
 
+    col_endereco = encontrar_coluna_por_nomes(
+        df_novo,
+        ["endereço", "endereco", "logradouro", "rua"],
+        obrigatoria=True,
+    )
+    col_numero = encontrar_coluna_por_nomes(
+        df_novo,
+        ["número", "numero", "localNumero", "num"],
+        obrigatoria=True,
+    )
+    col_bairro = encontrar_coluna_por_nomes(df_novo, ["bairro"], obrigatoria=True)
+    col_municipio = encontrar_coluna_por_nomes(
+        df_novo,
+        ["município", "municipio", "cidade"],
+        obrigatoria=True,
+    )
+
+    col_territorio_novo = encontrar_coluna_por_nomes(
+        df_novo,
+        ["regiões", "regioes"],
+        obrigatoria=False,
+    )
+
+    if col_territorio_novo and col_territorio_novo != "Território":
+        df_novo = df_novo.rename(columns={col_territorio_novo: "Território"})
+
     df_novo = renomear_colunas_equivalentes(df_base, df_novo)
 
-    col_endereco = encontrar_coluna_por_nomes(df_novo, ["endereço", "endereco", "logradouro", "rua"], obrigatoria=True)
-    col_numero = encontrar_coluna_por_nomes(df_novo, ["número", "numero", "localNumero", "num"], obrigatoria=True)
-    col_bairro = encontrar_coluna_por_nomes(df_novo, ["bairro"], obrigatoria=True)
-    col_municipio = encontrar_coluna_por_nomes(df_novo, ["município", "municipio", "cidade"], obrigatoria=True)
-
-    df_base = criar_datahora_base(df_base, col_data_base, col_hora_base)
-    df_novo = criar_datahora_arquivo_02(df_novo, col_datahora_novo)
-
-    ultimo_datahora_base = obter_ultimo_datahora(df_base, "__datahora__")
-    total_antes_filtro_tempo = len(df_novo)
-    df_novo_filtrado = filtrar_apenas_registros_posteriores(df_novo, "__datahora__", ultimo_datahora_base)
-    removidos_por_datahora = total_antes_filtro_tempo - len(df_novo_filtrado)
-
-    mostrar_amostra_segura(
-        "Arquivo 02 após filtro por Data/Hora:",
-        df_novo_filtrado,
-        ["__datahora__", col_natureza, col_endereco, col_numero, col_bairro, col_municipio, "Território", "AIS"],
-        10,
+    df_base = criar_coluna_datahora(df_base, col_data_base, col_hora_base, "__datahora__")
+    df_novo["__datahora__"] = pd.to_datetime(
+        df_novo[col_datahora_novo],
+        errors="coerce",
+        dayfirst=True,
     )
-    progresso.progress(50)
 
-    base_sem_aux = df_base.drop(columns=["__datahora__"], errors="ignore").copy()
+    ultima_datahora_base = obter_ultima_datahora(df_base, "__datahora__")
 
-    for col_extra in [
+    total_antes_filtro = len(df_novo)
+    df_novo_filtrado = filtrar_apenas_registros_posteriores(
+        df_novo,
+        "__datahora__",
+        ultima_datahora_base,
+    )
+    removidos_por_datahora = total_antes_filtro - len(df_novo_filtrado)
+
+    base_sem_aux = df_base.drop(columns=["__datahora__"]).copy()
+
+    for coluna_extra in [
         "Nivel_Geocodificacao",
         "Fonte",
         "_confirmado_base",
@@ -811,25 +746,29 @@ def processar_roubo_veiculo_sip(arquivo_01, arquivo_02):
         "Ocorrencias_Mesmo_Ponto",
         "_loc_aproximada",
     ]:
-        if col_extra not in base_sem_aux.columns:
-            base_sem_aux[col_extra] = pd.NA
+        if coluna_extra not in base_sem_aux.columns:
+            base_sem_aux[coluna_extra] = pd.NA
 
-    if ultimo_datahora_base is None:
+    if ultima_datahora_base is None:
         df_novo_util = df_novo.copy()
         situacao = "Base anterior sem Data/Hora valida: Arquivo 02 foi incluido integralmente."
     elif df_novo_filtrado.empty:
         df_novo_util = df_novo_filtrado.copy()
-        situacao = "Nenhum registro novo encontrado apos a ultima Data/Hora da base: Arquivo 01 foi mantido sem acrescimos."
+        situacao = (
+            "Nenhum registro novo encontrado apos a ultima Data/Hora da base: "
+            "Arquivo 01 foi mantido sem acrescimos."
+        )
     else:
         df_novo_util = df_novo_filtrado.copy()
-        situacao = "Base anterior localizada: somente registros posteriores a ultima Data/Hora foram adicionados."
+        situacao = (
+            "Base anterior localizada: somente registros posteriores a ultima "
+            "Data/Hora foram adicionados."
+        )
 
-    adicionados = len(df_novo_util)
     geocodificados = 0
-    caminho_base_geocodificacao = "-"
+    removidos_sem_geocodificacao = 0
 
     if not df_novo_util.empty:
-        status.info("Preparando campos de geocodificação...")
         df_novo_util = preparar_campos_geocodificacao(
             df_novo_util,
             col_endereco,
@@ -838,108 +777,85 @@ def processar_roubo_veiculo_sip(arquivo_01, arquivo_02):
             col_municipio,
         )
 
-        mostrar_amostra_segura(
-            "Campos preparados para geocodificação:",
-            df_novo_util,
-            ["logradouro_busca", "numero_busca", "bairro_busca", "municipio_busca"],
-            10,
-        )
-
-        progresso.progress(70)
-        status.info("Geocodificando linhas novas com a base parquet...")
-        df_novo_util, geocodificados, caminho_base_geocodificacao = geocodificar_linhas_novas(
+        df_novo_util, geocodificados = geocodificar_linhas_novas(
             df_novo_util,
             col_lat_base,
             col_lon_base,
         )
 
-        mostrar_amostra_segura(
-            "Resultado da geocodificação:",
-            df_novo_util,
-            [col_lat_base, col_lon_base, "Nivel_Geocodificacao", "Fonte", "_dist_validacao_m"],
-            10,
-        )
+        antes_exclusao_sem_geo = len(df_novo_util)
+        df_novo_util = df_novo_util.dropna(subset=[col_lat_base, col_lon_base]).copy()
+        removidos_sem_geocodificacao = antes_exclusao_sem_geo - len(df_novo_util)
 
         df_novo_util = df_novo_util.drop(
             columns=[
-                c for c in [
-                    "logradouro_busca",
-                    "numero_busca",
-                    "bairro_busca",
-                    "municipio_busca",
-                    "__datahora__",
-                ] if c in df_novo_util.columns
+                "__datahora__",
+                "logradouro_busca",
+                "numero_busca",
+                "bairro_busca",
+                "municipio_busca",
             ],
             errors="ignore",
         )
 
-        df_novo_util = alinhar_colunas_arquivo_02_com_base(base_sem_aux, df_novo_util)
-
-        mostrar_amostra_segura(
-            "Complemento final no esquema da base:",
-            df_novo_util,
-            [
-                "Endereço",
-                "Bairro",
-                "Município",
-                "Território",
-                "AIS",
-                col_lat_base,
-                col_lon_base,
-                "Nivel_Geocodificacao",
-            ],
-            10,
-        )
-
+        df_novo_util = alinhar_colunas_com_base(base_sem_aux, df_novo_util)
         df_final = pd.concat([base_sem_aux, df_novo_util], ignore_index=True)
+        adicionados = len(df_novo_util)
     else:
         df_final = base_sem_aux.copy()
+        adicionados = 0
 
-    colunas_excluir_saida = [
-        "Fonte",
-        "_confirmado_base",
-        "_dist_validacao_m",
-        "Ocorrencias_Mesmo_Ponto",
-        "_loc_aproximada",
-    ]
-    df_final = df_final.drop(columns=[c for c in colunas_excluir_saida if c in df_final.columns], errors="ignore")
-
-    df_final = criar_datahora_base(df_final, col_data_base, col_hora_base)
-    df_final = df_final.sort_values(by="__datahora__", ascending=True, na_position="last").reset_index(drop=True)
+    df_final = criar_coluna_datahora(df_final, col_data_base, col_hora_base, "__datahora__")
+    df_final = df_final.sort_values(
+        by="__datahora__",
+        ascending=True,
+        na_position="last",
+    ).reset_index(drop=True)
     df_final = df_final.drop(columns=["__datahora__"], errors="ignore")
 
-    if df_final.columns.duplicated().any():
-        df_final = df_final.loc[:, ~df_final.columns.duplicated()].copy()
+    contagens_nivel = {}
+    if "Nivel_Geocodificacao" in df_final.columns:
+        contagens_nivel = (
+            df_final["Nivel_Geocodificacao"]
+            .fillna("Nao Informado")
+            .value_counts(dropna=False)
+            .to_dict()
+        )
 
-    progresso.progress(100)
-
-    mostrar_amostra_segura(
-        "Resultado final (amostra):",
-        df_final,
-        ["Data", "Hora", "Endereço", "Bairro", "Município", "Território", "AIS", col_lat_base, col_lon_base, "Nivel_Geocodificacao"],
-        20,
+    df_final = df_final.drop(
+        columns=[
+            "Fonte",
+            "_confirmado_base",
+            "_dist_validacao_m",
+            "Ocorrencias_Mesmo_Ponto",
+            "_loc_aproximada",
+        ],
+        errors="ignore",
     )
 
+    total_final = len(df_final)
+
     ultima_ref = (
-        ultimo_datahora_base.strftime("%d/%m/%Y %H:%M:%S")
-        if ultimo_datahora_base is not None else "sem referencia anterior valida"
+        ultima_datahora_base.strftime("%d/%m/%Y %H:%M:%S")
+        if ultima_datahora_base is not None
+        else "sem referencia anterior valida"
     )
 
     resumo = {
         "adicionados": adicionados,
-        "total_final": len(df_final),
+        "total_final": total_final,
+        "geocodificados": geocodificados,
         "removidos_por_tipo": removidos_por_tipo,
         "removidos_por_datahora": removidos_por_datahora,
-        "geocodificados": geocodificados,
+        "removidos_sem_geocodificacao": removidos_sem_geocodificacao,
         "ultima_datahora_base": ultima_ref,
         "situacao": situacao,
         "aba_arquivo_01": aba_base,
         "aba_arquivo_02": aba_novo,
-        "total_lido_arquivo_02": total_lido_arquivo_02,
-        "base_geocodificacao": caminho_base_geocodificacao,
+        "coluna_natureza": col_natureza,
+        "contagens_nivel": contagens_nivel,
     }
 
-    status.success(f"Processo finalizado. {adicionados} registros novos adicionados.")
     return df_final, resumo
 
 
@@ -953,7 +869,6 @@ def _init_state():
         "roubo_veiculo_sip_resultado_df": None,
         "roubo_veiculo_sip_resumo": None,
     }
-
     for chave, valor in defaults.items():
         if chave not in st.session_state:
             st.session_state[chave] = valor
@@ -962,11 +877,28 @@ def _init_state():
 def render():
     _init_state()
 
-    st.subheader("Roubo de Veículo (SIP)")
-    st.write("Envie a base histórica e o arquivo complementar SIP para atualizar a base com novos registros geocodificados.")
+    st.subheader("Roubo de Veiculo (SIP) - Geocodificacao por Endereco")
+    st.write(
+        "Envie a base historica e o complemento SIP para atualizar a base com geocodificacao."
+    )
+
+    st.caption(f"Base geográfica utilizada na raiz do projeto: {CAMINHO_BASE_ENXUTA}")
+
+    try:
+        base_geo = carregar_base_geografica()
+        if base_geo is not None and not base_geo.empty:
+            st.success(
+                f"Base geográfica carregada com sucesso: {len(base_geo):,} registros em {CAMINHO_BASE_ENXUTA}"
+            )
+        else:
+            st.warning(
+                f"A base geográfica nao foi carregada. Verifique o arquivo {CAMINHO_BASE_ENXUTA}."
+            )
+    except Exception as exc:
+        st.error(f"Erro ao carregar base geográfica: {exc}")
 
     arquivo_01 = st.file_uploader(
-        "Arquivo 01 - Base histórica de Roubo de Veículo",
+        "Arquivo 01 - Base historica de Roubo de Veiculo",
         type=["xlsx", "xls"],
         key="roubo_veiculo_sip_upload_01",
     )
@@ -987,22 +919,32 @@ def render():
         st.session_state.roubo_veiculo_sip_arquivo_02_bytes = arquivo_02.read()
         st.session_state.roubo_veiculo_sip_arquivo_02_nome = arquivo_02.name
 
+    if st.session_state.roubo_veiculo_sip_arquivo_01_nome:
+        st.info(f"Arquivo 01 carregado: {st.session_state.roubo_veiculo_sip_arquivo_01_nome}")
+
+    if st.session_state.roubo_veiculo_sip_arquivo_02_nome:
+        st.info(f"Arquivo 02 carregado: {st.session_state.roubo_veiculo_sip_arquivo_02_nome}")
+
     pode_processar = (
         st.session_state.roubo_veiculo_sip_arquivo_01_bytes is not None
         and st.session_state.roubo_veiculo_sip_arquivo_02_bytes is not None
     )
 
-    if st.button("Processar Roubo de Veículo (SIP)", type="primary", disabled=not pode_processar):
+    if st.button("Processar Roubo de Veiculo (SIP)", type="primary", disabled=not pode_processar):
         try:
             arquivo_01_buffer = BytesIO(st.session_state.roubo_veiculo_sip_arquivo_01_bytes)
             arquivo_02_buffer = BytesIO(st.session_state.roubo_veiculo_sip_arquivo_02_bytes)
 
-            df_final, resumo = processar_roubo_veiculo_sip(arquivo_01_buffer, arquivo_02_buffer)
-            arquivo_excel_bytes = gerar_excel_em_memoria(df_final)
+            with st.spinner("Processando e geocodificando registros..."):
+                df_final, resumo = processar_roubo_veiculo_sip(arquivo_01_buffer, arquivo_02_buffer)
+                arquivo_excel_bytes = gerar_excel_em_memoria(df_final)
 
             st.session_state.roubo_veiculo_sip_resultado_df = df_final
             st.session_state.roubo_veiculo_sip_resumo = resumo
             st.session_state.roubo_veiculo_sip_resultado_excel = arquivo_excel_bytes
+
+            st.success("Processamento concluido com sucesso.")
+
         except Exception as exc:
             st.exception(exc)
 
@@ -1010,26 +952,55 @@ def render():
         st.session_state.roubo_veiculo_sip_resultado_df is not None
         and st.session_state.roubo_veiculo_sip_resumo is not None
     ):
+        df_final = st.session_state.roubo_veiculo_sip_resultado_df
         resumo = st.session_state.roubo_veiculo_sip_resumo
 
         c1, c2, c3 = st.columns(3)
-        c1.metric("Novos registros adicionados", resumo.get("adicionados", 0))
-        c2.metric("Total final da base", resumo.get("total_final", 0))
-        c3.metric("Geocodificados", resumo.get("geocodificados", 0))
+        c1.metric("Novos registros adicionados", resumo["adicionados"])
+        c2.metric("Total final da base", resumo["total_final"])
+        c3.metric("Registros geocodificados", resumo["geocodificados"])
+
+        contagens_nivel = resumo.get("contagens_nivel", {})
+        if contagens_nivel:
+            st.subheader("Resumo dos niveis de geocodificacao")
+
+            exato_numero = contagens_nivel.get("Exato (Numero)", 0)
+            centroide_rua = contagens_nivel.get("Centroide de Rua", 0)
+            centroide_bairro = contagens_nivel.get("Centroide de Bairro", 0)
+            centroide_cidade = contagens_nivel.get("Centroide de Cidade", 0)
+            nao_encontrado = contagens_nivel.get("Nao Encontrado", 0)
+
+            n1, n2, n3 = st.columns(3)
+            n1.metric("Exato (Numero)", exato_numero)
+            n2.metric("Centroide de Rua", centroide_rua)
+            n3.metric("Centroide de Bairro", centroide_bairro)
+
+            n4, n5 = st.columns(2)
+            n4.metric("Centroide de Cidade", centroide_cidade)
+            n5.metric("Nao Encontrado", nao_encontrado)
+
+            st.caption(
+                "Os valores acima mostram quantos registros cairam em cada nivel de geocodificacao."
+            )
 
         st.info(
-            f"Aba Arquivo 01: {resumo.get('aba_arquivo_01', '-')} | "
-            f"Aba Arquivo 02: {resumo.get('aba_arquivo_02', '-')}"
+            f"Aba usada no Arquivo 01: {resumo['aba_arquivo_01']} | "
+            f"Aba usada no Arquivo 02: {resumo['aba_arquivo_02']}"
         )
 
         st.info(
-            f"Última Data/Hora da base: {resumo.get('ultima_datahora_base', '-')} | "
-            f"Removidos por Natureza: {resumo.get('removidos_por_tipo', 0)} | "
-            f"Removidos por filtro temporal: {resumo.get('removidos_por_datahora', 0)}"
+            f"Coluna Natureza utilizada: {resumo['coluna_natureza']} | "
+            f"Ultima Data/Hora da base: {resumo['ultima_datahora_base']}"
         )
 
-        st.info(f"Base de geocodificação: {resumo.get('base_geocodificacao', '-')}")
-        st.caption(resumo.get("situacao", "Processamento concluído."))
+        st.info(
+            f"Removidos por Natureza: {resumo['removidos_por_tipo']} | "
+            f"Removidos por filtro temporal: {resumo['removidos_por_datahora']} | "
+            f"Removidos sem geocodificacao: {resumo['removidos_sem_geocodificacao']}"
+        )
+
+        st.caption(resumo["situacao"])
+        st.dataframe(df_final.head(50), use_container_width=True)
 
         if st.session_state.roubo_veiculo_sip_resultado_excel is not None:
             st.download_button(
