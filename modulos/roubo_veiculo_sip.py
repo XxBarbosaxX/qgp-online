@@ -1,78 +1,93 @@
-"""Módulo Roubo de Veículo (SIP)"""
+"""Modulo Roubo de Veiculo (SIP)"""
+
+from __future__ import annotations
+
+from io import BytesIO
+import json
+import os
+import re
+import unicodedata
+import urllib.request
+import gzip
+
+import numpy as np
 import pandas as pd
 import streamlit as st
-from datetime import datetime
-import io
+from rapidfuzz import fuzz
+from scipy.spatial import cKDTree
+from geopy.geocoders import ArcGIS
+from geopy.extra.rate_limiter import RateLimiter
 
-class ProcessadorRouboVeiculoSip:
-    def __init__(self):
-        self.nome_arquivo_final = f"5-ROUBO-VEICULO-SIP-{datetime.now().year}-QGP.xlsx"
-    
-    @staticmethod
-    def normalizar_colunas(df):
-        df.columns = [str(c).strip() for c in df.columns]
-        return df
-    
-    @staticmethod
-    def encontrar_coluna_data(df):
-        exatos = [c for c in df.columns if str(c).strip().lower() == "data"]
-        if exatos:
-            return exatos[0]
-        aproximados = [c for c in df.columns if "data" in str(c).strip().lower()]
-        if aproximados:
-            return aproximados[0]
-        return None
-    
-    def processar_dados(self, df, data_inicio, data_fim):
-        try:
-            df = self.normalizar_colunas(df)
-            coluna_data = self.encontrar_coluna_data(df)
-            if not coluna_data:
-                st.error("❌ Não foi possível encontrar a coluna de data.")
-                return None
-            df[coluna_data] = pd.to_datetime(df[coluna_data], errors='coerce')
-            df = df.dropna(subset=[coluna_data])
-            mascara = (df[coluna_data] >= pd.to_datetime(data_inicio)) & (df[coluna_data] <= pd.to_datetime(data_fim))
-            df_filtrado = df[mascara].copy()
-            if df_filtrado.empty:
-                st.warning("⚠️ Nenhum registro encontrado.")
-                return None
-            return df_filtrado
-        except Exception as e:
-            st.error(f"❌ Erro: {str(e)}")
-            return None
-    
-    def gerar_arquivo_excel(self, df):
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False, sheet_name='ROUBO_VEICULO_SIP')
-        return output.getvalue()
+from modulos.utils import nome_arquivo_padrao
 
-def interface_roubo_veiculo_sip():
-    st.title("🚙 Roubo de Veículo (SIP)")
-    st.markdown("### 🔍 Processamento de dados SIP")
-    st.divider()
-    processador = ProcessadorRouboVeiculoSip()
-    st.subheader("📁 Upload do Arquivo")
-    arquivo = st.file_uploader("Selecione o arquivo (Excel/CSV)", type=['xlsx', 'xls', 'csv'])
-    if arquivo:
-        try:
-            df = pd.read_csv(arquivo) if arquivo.name.endswith('.csv') else pd.read_excel(arquivo)
-            st.success(f"✅ Arquivo carregado! ({len(df)} registros)")
-            col1, col2 = st.columns(2)
-            with col1:
-                data_inicio = st.date_input("📅 Data Início", value=datetime(datetime.now().year, 1, 1))
-            with col2:
-                data_fim = st.date_input("📅 Data Fim", value=datetime.now())
-            if st.button("🔄 Processar Dados", type="primary", use_container_width=True):
-                with st.spinner("Processando..."):
-                    df_proc = processador.processar_dados(df, data_inicio, data_fim)
-                    if df_proc is not None:
-                        st.success(f"✅ Processado! {len(df_proc)} registros.")
-                        st.dataframe(df_proc.head(10), use_container_width=True)
-                        arquivo_excel = processador.gerar_arquivo_excel(df_proc)
-                        st.download_button("📥 Download Excel", arquivo_excel, processador.nome_arquivo_final, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
-        except Exception as e:
-            st.error(f"❌ Erro: {str(e)}")
-    else:
-        st.info("👆 Faça upload de um arquivo.")
+
+NOME_ARQUIVO_FINAL = nome_arquivo_padrao(7, "ROUBO-DE-VEICULO-SIP-ENDERECO")
+USAR_EXTERNO = True
+CAMINHO_BASE_ENXUTA = os.path.join("modulos", "CVP_SIP_GEOCODIFICAR.parquet")
+LIMIAR_NOME = 88
+RAIO_CONFIRMA_M = 100.0
+RAIO_MUNICIPIO_KM = 8.0
+LIMIAR_SUSPEITO = 5
+UF_CODIGO = "23"
+ARQ_CACHE_MUN = os.path.join("modulos", "municipios_ce.json")
+VALOR_FILTRO_NATUREZA = "ROUBO DE VEICULO"
+
+SUBST = {
+    "AV": "Avenida", "AVD": "Avenida", "AVENIDA": "Avenida",
+    "R": "Rua", "RUA": "Rua", "TV": "Travessa", "TRV": "Travessa",
+    "TRAV": "Travessa", "TRAVESSA": "Travessa", "PC": "Praca", "PCA": "Praca",
+    "PRACA": "Praca", "ROD": "Rodovia", "AL": "Alameda", "PSO": "Passeio",
+    "GRJ": "", "DR": "Doutor", "DRA": "Doutora", "PE": "Padre",
+    "PRES": "Presidente", "CEL": "Coronel", "GEN": "General",
+    "PROF": "Professor", "MAE": "Maestro",
+}
+CORR = {"RAIMUINDO": "RAIMUNDO", "OSWALDO": "OSVALDO"}
+RUIDO = ["LADO PAR", "LADO IMPAR", "- P", "FORTALEZA, CE", ", CE"]
+RE_BNI = re.compile(r"\(?\s*bairro\s+n[aã]o\s+identificad[oa]\s*\)?", flags=re.IGNORECASE)
+TIPOS = ("Rua", "Avenida", "Travessa", "Praca", "Rodovia", "Alameda", "Passeio")
+ROOFTOP = ("pointaddress", "streetaddress", "subaddress", "pointaddressvd")
+
+
+def _normalizar_nome_aba(nome: str) -> str:
+    return (
+        str(nome or "")
+        .strip()
+        .upper()
+        .replace(" ", "")
+        .replace("_", "")
+        .replace("-", "")
+    )
+
+
+def _normalizar_chave_coluna(nome: str) -> str:
+    nome = str(nome or "").strip()
+    nome = re.sub(r"\.\d+$", "", nome)
+    nome = unicodedata.normalize("NFKD", nome)
+    nome = "".join(ch for ch in nome if not unicodedata.combining(ch))
+    nome = nome.lower().strip()
+    nome = nome.replace("_", " ").replace("-", " ")
+    nome = re.sub(r"\s+", " ", nome)
+    return nome
+
+
+def sem_acento(s):
+    n = unicodedata.normalize("NFKD", str(s or ""))
+    return "".join(c for c in n if not unicodedata.combining(c)).upper().strip()
+
+
+def _selecionar_aba_arquivo_01(sheet_names: list[str]) -> str:
+    prioridades = [
+        "ROUBODEVEICULO",
+        "ROUBOVEICULO",
+        "SIP",
+        "BASE",
+    ]
+    normalizadas = {aba: _normalizar_nome_aba(aba) for aba in sheet_names}
+
+    for prioridade in prioridades:
+        for aba, nome_norm in normalizadas.items():
+            if nome_norm == prioridade:
+                return aba
+
+    for aba, nome_norm in normalizadas.items():
+        if "ROUBO" 
