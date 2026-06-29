@@ -1,6 +1,6 @@
 """
-Modulo Roubo de Veiculo (SIP) - Geocodificacao por endereco
-Versao Streamlit adaptada para o QGP Online.
+Módulo Roubo de Veículo (SIP) - Geocodificação por endereço
+Versão Streamlit adaptada para o QGP Online.
 """
 
 from __future__ import annotations
@@ -76,7 +76,7 @@ SUBST = {
 
 CORR = {"RAIMUINDO": "RAIMUNDO", "OSWALDO": "OSVALDO"}
 
-RUIDO = ["LADO PAR", "LADO IMPAR", "- P", "FORTALEZA, CE", ", CE"]
+RUIDO = ["LADO PAR", "LADO ÍMPAR", "- P", "FORTALEZA, CE", ", CE"]
 
 RE_BNI = re.compile(
     r"\(?\s*bairro\s+n[aã]o\s+identificad[oa]\s*\)?",
@@ -108,7 +108,7 @@ def _selecionar_aba_arquivo_02(sheet_names: list[str]) -> str:
             return aba
 
     raise ValueError(
-        f"Aba 'CVPSIP' nao encontrada no Arquivo 02. Abas disponiveis: {sheet_names}"
+        f"Aba 'CVPSIP' não encontrada no Arquivo 02. Abas disponíveis: {sheet_names}"
     )
 
 
@@ -212,7 +212,7 @@ def carregar_base_geografica() -> Optional[pd.DataFrame]:
 
     if faltantes:
         raise ValueError(
-            f"O arquivo {CAMINHO_BASE_ENXUTA} nao possui as colunas esperadas: {sorted(faltantes)}"
+            f"O arquivo {CAMINHO_BASE_ENXUTA} não possui as colunas esperadas: {sorted(faltantes)}"
         )
 
     base = base.copy()
@@ -632,7 +632,7 @@ def geocodificar_linhas_novas(
         & (df["numero_busca"].fillna("").astype(str).str.strip() == "")
     )
 
-    status.success(f"Geocodificacao concluida. Registros geocodificados: {geocodificados}")
+    status.success(f"Geocodificação concluída. Registros geocodificados: {geocodificados}")
     return df, geocodificados
 
 
@@ -675,7 +675,7 @@ def processar_roubo_veiculo_sip(arquivo_01, arquivo_02):
 
     if df_novo.empty:
         raise ValueError(
-            "Apos filtrar a coluna 'Natureza' por 'ROUBO DE VEICULO', "
+            "Após filtrar a coluna 'Natureza' por 'ROUBO DE VEICULO', "
             "o Arquivo 02 ficou sem registros."
         )
 
@@ -751,17 +751,17 @@ def processar_roubo_veiculo_sip(arquivo_01, arquivo_02):
 
     if ultima_datahora_base is None:
         df_novo_util = df_novo.copy()
-        situacao = "Base anterior sem Data/Hora valida: Arquivo 02 foi incluido integralmente."
+        situacao = "Base anterior sem Data/Hora válida: Arquivo 02 foi incluído integralmente."
     elif df_novo_filtrado.empty:
         df_novo_util = df_novo_filtrado.copy()
         situacao = (
-            "Nenhum registro novo encontrado apos a ultima Data/Hora da base: "
-            "Arquivo 01 foi mantido sem acrescimos."
+            "Nenhum registro novo encontrado após a última Data/Hora da base: "
+            "Arquivo 01 foi mantido sem acréscimos."
         )
     else:
         df_novo_util = df_novo_filtrado.copy()
         situacao = (
-            "Base anterior localizada: somente registros posteriores a ultima "
+            "Base anterior localizada: somente registros posteriores à última "
             "Data/Hora foram adicionados."
         )
 
@@ -877,9 +877,9 @@ def _init_state():
 def render():
     _init_state()
 
-    st.subheader("Roubo de Veiculo (SIP) - Geocodificacao por Endereco")
+    st.subheader("Roubo de Veículo (SIP) - Geocodificação por Endereço")
     st.write(
-        "Envie a base historica e o complemento SIP para atualizar a base com geocodificacao."
+        "Envie a base histórica e o complemento SIP para atualizar a base com geocodificação."
     )
 
     st.caption(f"Base geográfica utilizada na raiz do projeto: {CAMINHO_BASE_ENXUTA}")
@@ -892,13 +892,13 @@ def render():
             )
         else:
             st.warning(
-                f"A base geográfica nao foi carregada. Verifique o arquivo {CAMINHO_BASE_ENXUTA}."
+                f"A base geográfica não foi carregada. Verifique o arquivo {CAMINHO_BASE_ENXUTA}."
             )
     except Exception as exc:
         st.error(f"Erro ao carregar base geográfica: {exc}")
 
     arquivo_01 = st.file_uploader(
-        "Arquivo 01 - Base historica de Roubo de Veiculo",
+        "Arquivo 01 - Base histórica de Roubo de Veículo",
         type=["xlsx", "xls"],
         key="roubo_veiculo_sip_upload_01",
     )
@@ -930,7 +930,7 @@ def render():
         and st.session_state.roubo_veiculo_sip_arquivo_02_bytes is not None
     )
 
-    if st.button("Processar Roubo de Veiculo (SIP)", type="primary", disabled=not pode_processar):
+    if st.button("Processar Roubo de Veículo (SIP)", type="primary", disabled=not pode_processar):
         try:
             arquivo_01_buffer = BytesIO(st.session_state.roubo_veiculo_sip_arquivo_01_bytes)
             arquivo_02_buffer = BytesIO(st.session_state.roubo_veiculo_sip_arquivo_02_bytes)
@@ -943,7 +943,7 @@ def render():
             st.session_state.roubo_veiculo_sip_resumo = resumo
             st.session_state.roubo_veiculo_sip_resultado_excel = arquivo_excel_bytes
 
-            st.success("Processamento concluido com sucesso.")
+            st.success("Processamento concluído com sucesso.")
 
         except Exception as exc:
             st.exception(exc)
@@ -962,7 +962,7 @@ def render():
 
         contagens_nivel = resumo.get("contagens_nivel", {})
         if contagens_nivel:
-            st.subheader("Resumo dos niveis de geocodificacao")
+            st.subheader("Resumo dos níveis de geocodificação")
 
             exato_numero = contagens_nivel.get("Exato (Numero)", 0)
             centroide_rua = contagens_nivel.get("Centroide de Rua", 0)
@@ -980,7 +980,7 @@ def render():
             n5.metric("Nao Encontrado", nao_encontrado)
 
             st.caption(
-                "Os valores acima mostram quantos registros cairam em cada nivel de geocodificacao."
+                "Os valores acima mostram quantos registros caíram em cada nível de geocodificação."
             )
 
         st.info(
@@ -990,13 +990,13 @@ def render():
 
         st.info(
             f"Coluna Natureza utilizada: {resumo['coluna_natureza']} | "
-            f"Ultima Data/Hora da base: {resumo['ultima_datahora_base']}"
+            f"Última Data/Hora da base: {resumo['ultima_datahora_base']}"
         )
 
         st.info(
             f"Removidos por Natureza: {resumo['removidos_por_tipo']} | "
             f"Removidos por filtro temporal: {resumo['removidos_por_datahora']} | "
-            f"Removidos sem geocodificacao: {resumo['removidos_sem_geocodificacao']}"
+            f"Removidos sem geocodificação: {resumo['removidos_sem_geocodificacao']}"
         )
 
         st.caption(resumo["situacao"])
