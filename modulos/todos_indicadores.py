@@ -10,6 +10,7 @@ import zipfile
 import unicodedata
 from io import BytesIO
 from datetime import datetime
+from contextlib import contextmanager
 
 import pandas as pd
 import streamlit as st
@@ -202,16 +203,9 @@ def _identificar_por_nome(nome_arquivo: str) -> str | None:
 
 
 def _identificar_por_conteudo(arquivo) -> str | None:
-    """
-    Tenta identificar o indicador analisando o conteúdo da planilha.
-    Estratégia:
-    - Normaliza nomes de colunas
-    - Procura padrões de colunas típicas de cada indicador
-    - Usa heurísticas simples, mantendo robustez.
-    """
     try:
         arquivo.seek(0)
-        df = pd.read_excel(arquivo, nrows=200)  # amostra inicial
+        df = pd.read_excel(arquivo, nrows=200)
     except Exception:
         return None
 
@@ -224,44 +218,31 @@ def _identificar_por_conteudo(arquivo) -> str | None:
     def tem_algum(*cols):
         return any(c in colunas for c in cols)
 
-    # Heurísticas específicas (ajuste conforme seu contexto real)
-    # CVLI – geralmente possui campos de vítima, CFP e natureza letal
     if tem_algum("natureza", "tipo_crime", "tipo_ocorrencia") and tem_algum("vitima", "nome_vitima"):
         if tem_algum("cvli", "homicidio", "latrocini"):
             return "CVLI"
 
-    # CVP (SIP) – costuma ter campos de endereço completo para geocodificação
     if tem_algum("logradouro", "endereco") and tem_algum("bairro", "municipio"):
         if tem_algum("tipo_crime", "natureza") and tem_algum("cvp", "crime_contra_patrimonio"):
             return "CVP (SIP)"
 
-    # CVP (SPORTAL) – mais focado em lat/long já presentes
     if tem_algum("latitude", "lat") and tem_algum("longitude", "long", "lon"):
         if tem_algum("cvp", "crime_contra_patrimonio"):
             return "CVP (SPORTAL)"
 
-    # PERTURBAÇÃO AO SOSSEGO ALHEIO – campos frequentemente ligados a som, barulho
     if tem_algum("natureza") and any(
         "PERTURBACAO" in _normalizar_texto(str(v)) or "SOSSEGO" in _normalizar_texto(str(v))
         for v in df_norm["natureza"].astype(str).unique()
     ):
         return "PERTURBAÇÃO AO SOSSEGO ALHEIO"
 
-    # DESLOCAMENTO FORÇADO – palavras-chave em natureza ou tipo
-    if tem_algum("natureza", "tipo_crime"):
-        valores = set(
-            _normalizar_texto(str(v))
-            for v in df_norm[tem_algum("natureza") and "natureza" or "tipo_crime"].astype(str).unique()
-        )
-        if any("DESLOCAMENTO-FORCADO" in v or "DESLOCAMENTO" in v for v in valores):
+    if tem_algum("natureza"):
+        valores_nat = set(_normalizar_texto(str(v)) for v in df_norm["natureza"].astype(str).unique())
+        if any("DESLOCAMENTO-FORCADO" in v or "DESLOCAMENTO" in v for v in valores_nat):
             return "DESLOCAMENTO FORÇADO"
 
-    # ROUBO / FURTO DE VEÍCULO – presença de placa, chassi, modelo, etc.
     if tem_algum("placa", "chassi", "modelo", "veiculo", "categoria_veiculo"):
-        # SIP x SPORTAL pela presença ou não de endereço
         if tem_algum("logradouro", "endereco", "bairro", "municipio"):
-            # SIP
-            # se natureza contém 'ROUBO' → Roubo SIP; se 'FURTO' → Furto SIP
             if tem_algum("natureza"):
                 valores_nat = set(_normalizar_texto(str(v)) for v in df_norm["natureza"].astype(str).unique())
                 if any("ROUBO" in v for v in valores_nat):
@@ -269,7 +250,6 @@ def _identificar_por_conteudo(arquivo) -> str | None:
                 if any("FURTO" in v for v in valores_nat):
                     return "FURTO DE VEÍCULO (SIP)"
         else:
-            # SPORTAL
             if tem_algum("latitude", "lat") and tem_algum("longitude", "long", "lon"):
                 if tem_algum("natureza"):
                     valores_nat = set(_normalizar_texto(str(v)) for v in df_norm["natureza"].astype(str).unique())
@@ -278,12 +258,14 @@ def _identificar_por_conteudo(arquivo) -> str | None:
                     if any("FURTO" in v for v in valores_nat):
                         return "FURTO DE VEÍCULO (SPORTAL)"
 
-    # ACIDENTE DE TRÂNSITO – termos como acidente, colisão, sinistro
     if tem_algum("natureza", "tipo_acidente", "tipo_crime"):
-        valores_nat = set(
-            _normalizar_texto(str(v))
-            for v in df_norm[tem_algum("natureza") and "natureza" or "tipo_acidente"].astype(str).unique()
-        )
+        if "natureza" in df_norm.columns:
+            valores_nat = set(_normalizar_texto(str(v)) for v in df_norm["natureza"].astype(str).unique())
+        elif "tipo_acidente" in df_norm.columns:
+            valores_nat = set(_normalizar_texto(str(v)) for v in df_norm["tipo_acidente"].astype(str).unique())
+        else:
+            valores_nat = set(_normalizar_texto(str(v)) for v in df_norm["tipo_crime"].astype(str).unique())
+
         if any("ACIDENTE" in v or "COLISAO" in v or "TRANSITO" in v for v in valores_nat):
             return "ACIDENTE DE TRÂNSITO"
 
@@ -291,11 +273,6 @@ def _identificar_por_conteudo(arquivo) -> str | None:
 
 
 def _identificar_indicador(arquivo) -> tuple[str | None, str]:
-    """
-    Retorna:
-      - nome do indicador (ou None se não conseguir)
-      - mensagem explicando se foi por nome ou por conteúdo.
-    """
     nome_arq = arquivo.name
     ind_nome = _identificar_por_nome(nome_arq)
     if ind_nome:
@@ -334,6 +311,72 @@ def _registrar_arquivos_base(arquivos_upload) -> tuple[list[str], list[str]]:
         reconhecidos.append(indicador)
 
     return reconhecidos, nao_reconhecidos
+
+
+# ── Silenciador de visualizações de validação ────────────────────────────────
+
+@contextmanager
+def _silenciar_streamlit_temporariamente():
+    """
+    Suprime saídas visuais temporárias de debug/validação geradas pelos módulos
+    individuais durante o processamento consolidado.
+    """
+    funcoes_silenciadas = [
+        "write",
+        "dataframe",
+        "table",
+        "caption",
+        "info",
+        "success",
+        "warning",
+        "error",
+        "markdown",
+        "text",
+        "subheader",
+        "header",
+        "divider",
+        "code",
+    ]
+
+    originais = {}
+
+    def _noop(*args, **kwargs):
+        return None
+
+    class _DummyContext:
+        def __enter__(self):
+            return self
+        def __exit__(self, exc_type, exc, tb):
+            return False
+        def write(self, *args, **kwargs):
+            return None
+        def dataframe(self, *args, **kwargs):
+            return None
+        def table(self, *args, **kwargs):
+            return None
+        def caption(self, *args, **kwargs):
+            return None
+        def markdown(self, *args, **kwargs):
+            return None
+        def code(self, *args, **kwargs):
+            return None
+
+    originais["expander"] = getattr(st, "expander", None)
+    originais["empty"] = getattr(st, "empty", None)
+
+    for nome in funcoes_silenciadas:
+        if hasattr(st, nome):
+            originais[nome] = getattr(st, nome)
+            setattr(st, nome, _noop)
+
+    st.expander = lambda *args, **kwargs: _DummyContext()
+    st.empty = lambda *args, **kwargs: _DummyContext()
+
+    try:
+        yield
+    finally:
+        for nome, func in originais.items():
+            setattr(st, nome, func)
 
 
 # ── Wrapper CVP SPORTAL ───────────────────────────────────────────────────────
@@ -436,47 +479,48 @@ def _chamar_processador(nome_indicador: str, buf_01: BytesIO, buf_02: BytesIO):
     buf_01.seek(0)
     buf_02.seek(0)
 
-    if nome_indicador == "CVLI":
-        proc = ProcessadorCVLI()
-        res = proc.processar(buf_01, buf_02)
-        if not res["sucesso"]:
-            raise ValueError(res["erro"])
+    with _silenciar_streamlit_temporariamente():
+        if nome_indicador == "CVLI":
+            proc = ProcessadorCVLI()
+            res = proc.processar(buf_01, buf_02)
+            if not res["sucesso"]:
+                raise ValueError(res["erro"])
 
-        df = res["df_final"]
-        resumo = {
-            "adicionados": res.get("adicionados", 0),
-            "total_final": res.get("total_final", len(df)),
-            "geocodificados": 0,
-            "situacao": "Atualizado" if res.get("houve_substituicao") else "Complementado",
-        }
-        return df, resumo
+            df = res["df_final"]
+            resumo = {
+                "adicionados": res.get("adicionados", 0),
+                "total_final": res.get("total_final", len(df)),
+                "geocodificados": 0,
+                "situacao": "Atualizado" if res.get("houve_substituicao") else "Complementado",
+            }
+            return df, resumo
 
-    if nome_indicador == "CVP (SPORTAL)":
-        return _processar_cvp_sportal(buf_01, buf_02)
+        if nome_indicador == "CVP (SPORTAL)":
+            return _processar_cvp_sportal(buf_01, buf_02)
 
-    if nome_indicador == "CVP (SIP)":
-        return processar_cvp_sip(buf_01, buf_02)
+        if nome_indicador == "CVP (SIP)":
+            return processar_cvp_sip(buf_01, buf_02)
 
-    if nome_indicador == "PERTURBAÇÃO AO SOSSEGO ALHEIO":
-        return processar_perturbacao_sossego(buf_01, buf_02)
+        if nome_indicador == "PERTURBAÇÃO AO SOSSEGO ALHEIO":
+            return processar_perturbacao_sossego(buf_01, buf_02)
 
-    if nome_indicador == "DESLOCAMENTO FORÇADO":
-        return processar_deslocamento_forcado(buf_01, buf_02)
+        if nome_indicador == "DESLOCAMENTO FORÇADO":
+            return processar_deslocamento_forcado(buf_01, buf_02)
 
-    if nome_indicador == "ROUBO DE VEÍCULO (SPORTAL)":
-        return processar_roubo_veiculo_sportal(buf_01, buf_02)
+        if nome_indicador == "ROUBO DE VEÍCULO (SPORTAL)":
+            return processar_roubo_veiculo_sportal(buf_01, buf_02)
 
-    if nome_indicador == "ROUBO DE VEÍCULO (SIP)":
-        return processar_roubo_veiculo_sip(buf_01, buf_02)
+        if nome_indicador == "ROUBO DE VEÍCULO (SIP)":
+            return processar_roubo_veiculo_sip(buf_01, buf_02)
 
-    if nome_indicador == "ACIDENTE DE TRÂNSITO":
-        return processar_acidente_transito(buf_01, buf_02)
+        if nome_indicador == "ACIDENTE DE TRÂNSITO":
+            return processar_acidente_transito(buf_01, buf_02)
 
-    if nome_indicador == "FURTO DE VEÍCULO (SPORTAL)":
-        return processar_furto_veiculo_sportal(buf_01, buf_02)
+        if nome_indicador == "FURTO DE VEÍCULO (SPORTAL)":
+            return processar_furto_veiculo_sportal(buf_01, buf_02)
 
-    if nome_indicador == "FURTO DE VEÍCULO (SIP)":
-        return processar_furto_veiculo_sip(buf_01, buf_02)
+        if nome_indicador == "FURTO DE VEÍCULO (SIP)":
+            return processar_furto_veiculo_sip(buf_01, buf_02)
 
     raise ValueError(f"Indicador desconhecido: {nome_indicador}")
 
@@ -525,7 +569,6 @@ def interface_todos_indicadores():
     )
     st.divider()
 
-    # ── Arquivo 02 único para todos ──
     st.subheader("Arquivo 02 - Complemento único (compartilhado por todos)")
     st.caption(
         "O Arquivo 02 contém as abas de cada indicador. "
@@ -548,7 +591,6 @@ def interface_todos_indicadores():
 
     st.divider()
 
-    # ── Upload em lote dos Arquivos 01 ──
     st.subheader("Arquivos 01 - Base Histórica")
     st.caption(
         "Selecione todos os arquivos de base histórica de uma só vez. "
@@ -611,7 +653,6 @@ def interface_todos_indicadores():
 
     st.divider()
 
-    # ── Botões de controle ──
     indicadores_prontos = [
         nome_ind for nome_ind in INDICADORES_ORDEM
         if nome_ind in st.session_state.todos_arq01_bytes
@@ -737,7 +778,6 @@ def interface_todos_indicadores():
             df_resultados = pd.DataFrame(resultados_linha).sort_values("Ordem").reset_index(drop=True)
             st.dataframe(df_resultados, use_container_width=True)
 
-    # ── Downloads individuais ──
     if st.session_state.todos_resultados_excel:
         st.divider()
         st.subheader("Downloads Individuais")
@@ -764,7 +804,6 @@ def interface_todos_indicadores():
                     key=f"todos_dl_{cfg['key']}",
                 )
 
-        # ── Download ZIP com tudo ──
         st.divider()
         zip_buf = BytesIO()
 
@@ -789,7 +828,6 @@ def interface_todos_indicadores():
             key="todos_dl_zip",
         )
 
-    # ── Erros ──
     if st.session_state.todos_erros:
         st.divider()
         st.subheader("Erros")
