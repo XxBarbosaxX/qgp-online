@@ -1,6 +1,6 @@
 """
-Modulo Deslocamento Forcado
-Versao Streamlit adaptada para o QGP Online, com logs de auditoria seguros.
+Módulo Deslocamento Forçado
+Versão Streamlit adaptada para o QGP Online, com logs de auditoria seguros.
 """
 
 from __future__ import annotations
@@ -74,7 +74,7 @@ def encontrar_coluna_data(df: pd.DataFrame) -> str:
     for c in df.columns:
         if "data" in str(c).strip().lower():
             return c
-    raise ValueError("Nao foi encontrada a coluna 'Data'.")
+    raise ValueError("Não foi encontrada a coluna 'Data'.")
 
 
 def encontrar_coluna_hora(df: pd.DataFrame) -> str:
@@ -84,7 +84,7 @@ def encontrar_coluna_hora(df: pd.DataFrame) -> str:
     for c in df.columns:
         if "hora" in str(c).strip().lower():
             return c
-    raise ValueError("Nao foi encontrada a coluna 'Hora'.")
+    raise ValueError("Não foi encontrada a coluna 'Hora'.")
 
 
 def valor_numerico_exato(v):
@@ -266,7 +266,7 @@ def mostrar_amostra_segura(titulo: str, df: pd.DataFrame, colunas_desejadas: lis
         st.dataframe(df[cols].head(n))
     else:
         st.warning("Nenhuma das colunas solicitadas existe nesta etapa.")
-        st.write("Colunas disponiveis:")
+        st.write("Colunas disponíveis:")
         st.write(list(df.columns))
 
 
@@ -317,7 +317,7 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
     progresso.progress(30)
 
     if "Latitude" not in df_novo.columns or "Longitude" not in df_novo.columns:
-        raise ValueError("O Arquivo 02 nao possui as colunas Latitude e Longitude esperadas.")
+        raise ValueError("O Arquivo 02 não possui as colunas Latitude e Longitude esperadas.")
 
     df_novo = df_novo.rename(columns={"Latitude": "Latitude_UTM", "Longitude": "Longitude_UTM"})
 
@@ -342,7 +342,7 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
     col_data = col_data_base
     col_hora = col_hora_base
 
-    status.info("Excluindo registros com coordenadas invalidas...")
+    status.info("Excluindo registros com coordenadas inválidas...")
     total_lido_arquivo_02 = len(df_novo)
     df_novo, removidos_invalidos = excluir_coordenadas_invalidas(df_novo, "Latitude_UTM", "Longitude_UTM")
 
@@ -354,7 +354,7 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
     )
     progresso.progress(50)
 
-    status.info("Criando referencia temporal...")
+    status.info("Criando referência temporal...")
     df_base = criar_coluna_datahora(df_base, col_data, col_hora, "__datahora__")
     df_novo = criar_coluna_datahora(df_novo, col_data, col_hora, "__datahora__")
     ultimo_datahora_base = obter_ultimo_datahora(df_base, "__datahora__")
@@ -378,13 +378,13 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
 
     if ultimo_datahora_base is None:
         df_novo_util = df_novo.copy()
-        situacao = "Base sem Data/Hora valida; complemento incluido integralmente."
+        situacao = "Base sem Data/Hora válida; complemento incluído integralmente."
     elif df_novo_filtrado.empty:
         df_novo_util = df_novo_filtrado.copy()
-        situacao = "Nenhum registro novo posterior a base."
+        situacao = "Nenhum registro novo posterior à base."
     else:
         df_novo_util = df_novo_filtrado.copy()
-        situacao = "Somente registros posteriores a ultima Data/Hora da base foram adicionados."
+        situacao = "Somente registros posteriores à última Data/Hora da base foram adicionados."
 
     if not df_novo_util.empty:
         status.info("Reprojetando coordenadas...")
@@ -431,7 +431,7 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
     ultima_ref = (
         ultimo_datahora_base.strftime("%d/%m/%Y %H:%M:%S")
         if ultimo_datahora_base is not None
-        else "sem referencia anterior valida"
+        else "sem referência anterior válida"
     )
 
     resumo = {
@@ -468,17 +468,17 @@ def _init_state():
 def render():
     _init_state()
 
-    st.subheader("Deslocamento Forcado")
-    st.write("Envie a base historica e o arquivo complementar para atualizar a base com novos registros.")
+    st.subheader("Deslocamento Forçado")
+    st.write("Envie a base histórica e o arquivo complementar para atualizar a base com novos registros.")
 
     arquivo_01 = st.file_uploader(
-        "Arquivo 01 - Base historica de Deslocamento Forcado",
+        "Arquivo 01 - Base histórica de Deslocamento Forçado",
         type=["xlsx", "xls"],
         key="deslocamento_upload_01",
     )
 
     arquivo_02 = st.file_uploader(
-        "Arquivo 02 - Complemento de Deslocamento Forcado",
+        "Arquivo 02 - Complemento de Deslocamento Forçado",
         type=["xlsx", "xls"],
         key="deslocamento_upload_02",
     )
@@ -498,7 +498,7 @@ def render():
         and st.session_state.deslocamento_arquivo_02_bytes is not None
     )
 
-    if st.button("Processar Deslocamento Forcado", type="primary", disabled=not pode_processar):
+    if st.button("Processar Deslocamento Forçado", type="primary", disabled=not pode_processar):
         try:
             arquivo_01_buffer = BytesIO(st.session_state.deslocamento_arquivo_01_bytes)
             arquivo_02_buffer = BytesIO(st.session_state.deslocamento_arquivo_02_bytes)
@@ -522,7 +522,7 @@ def render():
         c1, c2, c3 = st.columns(3)
         c1.metric("Novos registros adicionados", resumo.get("adicionados", 0))
         c2.metric("Total final da base", resumo.get("total_final", 0))
-        c3.metric("Coordenadas invalidas removidas", resumo.get("removidos_coord_invalidas", 0))
+        c3.metric("Coordenadas inválidas removidas", resumo.get("removidos_coord_invalidas", 0))
 
         st.info(
             f"Aba Arquivo 01: {resumo.get('aba_arquivo_01', '-')} | "
@@ -530,11 +530,11 @@ def render():
         )
 
         st.info(
-            f"Ultima Data/Hora da base: {resumo.get('ultima_datahora_base', '-')} | "
+            f"Última Data/Hora da base: {resumo.get('ultima_datahora_base', '-')} | "
             f"Removidos por filtro temporal: {resumo.get('removidos_por_datahora', 0)}"
         )
 
-        st.caption(resumo.get("situacao", "Processamento concluido."))
+        st.caption(resumo.get("situacao", "Processamento concluído."))
 
         if st.session_state.deslocamento_resultado_excel is not None:
             st.download_button(
