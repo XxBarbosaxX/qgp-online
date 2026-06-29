@@ -1,7 +1,7 @@
 """
-Modulo TODOS OS INDICADORES
-Processamento consolidado de multiplos indicadores
-Chama os modulos individuais com suas logicas reais (incluindo geocodificacao).
+Módulo TODOS OS INDICADORES
+Processamento consolidado de múltiplos indicadores
+Chama os módulos individuais com suas lógicas reais (incluindo geocodificação).
 """
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ from modulos.utils import (
 
 
 
-# ── Configuracao dos indicadores ──────────────────────────────────────────────
+# ── Configuração dos indicadores ──────────────────────────────────────────────
 
 INDICADORES_CONFIG = {
     "CVLI": {
@@ -63,69 +63,69 @@ INDICADORES_CONFIG = {
         "geocodifica": True,
         "grupo": "Crime Violento",
     },
-    "PERTURBACAO DO SOSSEGO": {
-        "label": "Perturbacao ao Sossego Alheio",
+    "PERTURBAÇÃO DO SOSSEGO": {
+        "label": "Perturbação ao Sossego Alheio",
         "key": "perturbacao_sossego",
         "nome_arquivo": nome_arquivo_padrao(3, "PERTURBACAO-SOSSEGO-ALHEIO"),
         "geocodifica": False,
         "grupo": "Outros",
     },
-    "DESLOCAMENTO FORCADO": {
-        "label": "Deslocamento Forcado",
+    "DESLOCAMENTO FORÇADO": {
+        "label": "Deslocamento Forçado",
         "key": "deslocamento_forcado",
         "nome_arquivo": nome_arquivo_padrao(5, "DESLOCAMENTO-FORCADO"),
         "geocodifica": False,
         "grupo": "Outros",
     },
-    "ROUBO DE VEICULO (SPORTAL)": {
-        "label": "Roubo de Veiculo (SPORTAL)",
+    "ROUBO DE VEÍCULO (SPORTAL)": {
+        "label": "Roubo de Veículo (SPORTAL)",
         "key": "roubo_sportal",
         "nome_arquivo": nome_arquivo_padrao(6, "ROUBO-DE-VEICULO-SPORTAL-LAT-LONG"),
         "geocodifica": False,
-        "grupo": "Patrimonio",
+        "grupo": "Patrimônio",
     },
-    "ROUBO DE VEICULO (SIP)": {
-        "label": "Roubo de Veiculo (SIP)",
+    "ROUBO DE VEÍCULO (SIP)": {
+        "label": "Roubo de Veículo (SIP)",
         "key": "roubo_sip",
         "nome_arquivo": nome_arquivo_padrao(7, "ROUBO-DE-VEICULO-SIP-ENDERECO"),
         "geocodifica": True,
-        "grupo": "Patrimonio",
+        "grupo": "Patrimônio",
     },
-    "ACIDENTE DE TRANSITO": {
-        "label": "Acidente de Transito",
+    "ACIDENTE DE TRÂNSITO": {
+        "label": "Acidente de Trânsito",
         "key": "acidente_transito",
         "nome_arquivo": nome_arquivo_padrao(8, "ACIDENTE-DE-TRANSITO-SPORTAL-QGP"),
         "geocodifica": False,
         "grupo": "Outros",
     },
-    "FURTO DE VEICULO (SPORTAL)": {
-        "label": "Furto de Veiculo (SPORTAL)",
+    "FURTO DE VEÍCULO (SPORTAL)": {
+        "label": "Furto de Veículo (SPORTAL)",
         "key": "furto_sportal",
         "nome_arquivo": nome_arquivo_padrao(9, "FURTO-DE-VEICULO-SPORTAL-QGP"),
         "geocodifica": False,
-        "grupo": "Patrimonio",
+        "grupo": "Patrimônio",
     },
-    "FURTO DE VEICULO (SIP)": {
-        "label": "Furto de Veiculo (SIP)",
+    "FURTO DE VEÍCULO (SIP)": {
+        "label": "Furto de Veículo (SIP)",
         "key": "furto_sip",
         "nome_arquivo": nome_arquivo_padrao(7, "FURTO-DE-VEICULO-SIP-ENDERECO"),
         "geocodifica": True,
-        "grupo": "Patrimonio",
+        "grupo": "Patrimônio",
     },
 }
 
 GRUPOS = {
     "Crime Violento": ["CVLI", "CVP (SPORTAL)", "CVP (SIP)"],
-    "Patrimonio": [
-        "ROUBO DE VEICULO (SPORTAL)",
-        "ROUBO DE VEICULO (SIP)",
-        "FURTO DE VEICULO (SPORTAL)",
-        "FURTO DE VEICULO (SIP)",
+    "Patrimônio": [
+        "ROUBO DE VEÍCULO (SPORTAL)",
+        "ROUBO DE VEÍCULO (SIP)",
+        "FURTO DE VEÍCULO (SPORTAL)",
+        "FURTO DE VEÍCULO (SIP)",
     ],
     "Outros": [
-        "PERTURBACAO DO SOSSEGO",
-        "DESLOCAMENTO FORCADO",
-        "ACIDENTE DE TRANSITO",
+        "PERTURBAÇÃO DO SOSSEGO",
+        "DESLOCAMENTO FORÇADO",
+        "ACIDENTE DE TRÂNSITO",
     ],
 }
 
@@ -134,7 +134,7 @@ GRUPOS = {
 # ── Wrapper CVP SPORTAL ────────────────────────────────────────────────────────────
 
 def _processar_cvp_sportal(buf_01: BytesIO, buf_02: BytesIO):
-    """Replica a logica de processamento do cvp_sportal sem a UI Streamlit."""
+    """Replica a lógica de processamento do cvp_sportal sem a UI Streamlit."""
     buf_01.seek(0)
     buf_02.seek(0)
     df_base = pd.read_excel(buf_01)
@@ -169,13 +169,13 @@ def _processar_cvp_sportal(buf_01: BytesIO, buf_02: BytesIO):
     base_sem_aux = df_base.drop(columns=["datahora"], errors="ignore").copy()
     if ultima_dh is None:
         df_novo_util = df_novo.drop(columns=["datahora"], errors="ignore").copy()
-        situacao = "Base anterior sem DataHora valida - Arquivo 02 incluido integralmente."
+        situacao = "Base anterior sem Data/Hora válida - Arquivo 02 incluído integralmente."
     elif df_novo_filtrado.empty:
         df_novo_util = df_novo_filtrado.drop(columns=["datahora"], errors="ignore").copy()
-        situacao = "Nenhum registro novo encontrado apos a ultima DataHora da base."
+        situacao = "Nenhum registro novo encontrado após a última Data/Hora da base."
     else:
         df_novo_util = df_novo_filtrado.drop(columns=["datahora"], errors="ignore").copy()
-        situacao = "Somente registros posteriores a ultima DataHora foram adicionados."
+        situacao = "Somente registros posteriores à última Data/Hora foram adicionados."
     adicionados = len(df_novo_util)
     if not df_novo_util.empty and col_lat_novo and col_lon_novo and col_lat_base and col_lon_base:
         df_novo_util = converter_coordenadas_para_wgs84_auto(
@@ -209,7 +209,7 @@ def _processar_cvp_sportal(buf_01: BytesIO, buf_02: BytesIO):
 # ── Dispatcher central ────────────────────────────────────────────────────────────────
 
 def _chamar_processador(nome_indicador: str, buf_01: BytesIO, buf_02: BytesIO):
-    """Chama a funcao de processamento correta para cada indicador."""
+    """Chama a função de processamento correta para cada indicador."""
     buf_01.seek(0)
     buf_02.seek(0)
     if nome_indicador == "CVLI":
@@ -229,19 +229,19 @@ def _chamar_processador(nome_indicador: str, buf_01: BytesIO, buf_02: BytesIO):
         return _processar_cvp_sportal(buf_01, buf_02)
     elif nome_indicador == "CVP (SIP)":
         return processar_cvp_sip(buf_01, buf_02)
-    elif nome_indicador == "PERTURBACAO DO SOSSEGO":
+    elif nome_indicador == "PERTURBAÇÃO DO SOSSEGO":
         return processar_perturbacao_sossego(buf_01, buf_02)
-    elif nome_indicador == "DESLOCAMENTO FORCADO":
+    elif nome_indicador == "DESLOCAMENTO FORÇADO":
         return processar_deslocamento_forcado(buf_01, buf_02)
-    elif nome_indicador == "ROUBO DE VEICULO (SPORTAL)":
+    elif nome_indicador == "ROUBO DE VEÍCULO (SPORTAL)":
         return processar_roubo_veiculo_sportal(buf_01, buf_02)
-    elif nome_indicador == "ROUBO DE VEICULO (SIP)":
+    elif nome_indicador == "ROUBO DE VEÍCULO (SIP)":
         return processar_roubo_veiculo_sip(buf_01, buf_02)
-    elif nome_indicador == "ACIDENTE DE TRANSITO":
+    elif nome_indicador == "ACIDENTE DE TRÂNSITO":
         return processar_acidente_transito(buf_01, buf_02)
-    elif nome_indicador == "FURTO DE VEICULO (SPORTAL)":
+    elif nome_indicador == "FURTO DE VEÍCULO (SPORTAL)":
         return processar_furto_veiculo_sportal(buf_01, buf_02)
-    elif nome_indicador == "FURTO DE VEICULO (SIP)":
+    elif nome_indicador == "FURTO DE VEÍCULO (SIP)":
         return processar_furto_veiculo_sip(buf_01, buf_02)
     else:
         raise ValueError(f"Indicador desconhecido: {nome_indicador}")
@@ -255,7 +255,7 @@ def _df_para_excel(df: pd.DataFrame, sheet_name: str = "Dados") -> bytes:
     return buf.getvalue()
 
 
-# ── Inicializacao de estado ──────────────────────────────────────────────────────────────
+# ── Inicialização de estado ──────────────────────────────────────────────────────────────
 
 def _init_state():
     defaults = {
@@ -277,25 +277,25 @@ def _init_state():
 # ── Interface principal ──────────────────────────────────────────────────────────────
 
 def interface_todos_indicadores():
-    """Interface principal do modulo TODOS OS INDICADORES"""
+    """Interface principal do módulo TODOS OS INDICADORES"""
     _init_state()
     st.title("Processamento Consolidado")
     st.markdown("### TODOS OS INDICADORES")
     st.info(
-        "Este modulo processa multiplos indicadores sequencialmente, "
-        "chamando cada modulo individual com sua logica completa "
-        "(incluindo geocodificacao onde aplicavel)."
+        "Este módulo processa múltiplos indicadores sequencialmente, "
+        "chamando cada módulo individual com sua lógica completa "
+        "(incluindo geocodificação onde aplicável)."
     )
     st.divider()
 
-    # ── Arquivo 02 unico para todos ──
-    st.subheader("Arquivo 02 - Complemento unico (compartilhado por todos)")
+    # ── Arquivo 02 único para todos ──
+    st.subheader("Arquivo 02 - Complemento único (compartilhado por todos)")
     st.caption(
-        "O Arquivo 02 contem as abas de cada indicador. "
-        "Cada modulo seleciona automaticamente a aba correspondente."
+        "O Arquivo 02 contém as abas de cada indicador. "
+        "Cada módulo seleciona automaticamente a aba correspondente."
     )
     arquivo_02_upload = st.file_uploader(
-        "Arquivo 02 (Excel com multiplas abas)",
+        "Arquivo 02 (Excel com múltiplas abas)",
         type=["xlsx", "xls"],
         key="todos_upload_02",
     )
@@ -309,18 +309,18 @@ def interface_todos_indicadores():
     st.divider()
 
     # ── Arquivos 01 por indicador ──
-    st.subheader("Arquivos 01 - Base Historica (um por indicador)")
-    tab_cv, tab_pat, tab_out = st.tabs(["Crime Violento", "Patrimonio", "Outros"])
+    st.subheader("Arquivos 01 - Base Histórica (um por indicador)")
+    tab_cv, tab_pat, tab_out = st.tabs(["Crime Violento", "Patrimônio", "Outros"])
     tabs_grupos = {
         "Crime Violento": tab_cv,
-        "Patrimonio": tab_pat,
+        "Patrimônio": tab_pat,
         "Outros": tab_out,
     }
     for grupo, tab in tabs_grupos.items():
         with tab:
             for nome_ind in GRUPOS[grupo]:
                 cfg = INDICADORES_CONFIG[nome_ind]
-                geo_tag = " [GEOCODIFICACAO]" if cfg["geocodifica"] else ""
+                geo_tag = " [GEOCODIFICAÇÃO]" if cfg["geocodifica"] else ""
                 arq = st.file_uploader(
                     f"{cfg['label']}{geo_tag}",
                     type=["xlsx", "xls"],
@@ -335,7 +335,7 @@ def interface_todos_indicadores():
     st.divider()
 
 
-    # ── Botoes de controle ──
+    # ── Botões de controle ──
     indicadores_prontos = [
         nome for nome in INDICADORES_CONFIG
         if nome in st.session_state.todos_arq01_bytes
@@ -351,7 +351,7 @@ def interface_todos_indicadores():
         st.warning("Nenhum Arquivo 01 carregado ainda.")
 
     if not tem_arq02:
-        st.warning("Arquivo 02 nao carregado.")
+        st.warning("Arquivo 02 não carregado.")
 
     pode_processar = len(indicadores_prontos) > 0 and tem_arq02
 
@@ -387,7 +387,7 @@ def interface_todos_indicadores():
 
         for idx, nome_ind in enumerate(indicadores_prontos):
             if st.session_state.todos_parar:
-                status.warning("Processo interrompido pelo usuario.")
+                status.warning("Processo interrompido pelo usuário.")
                 break
 
             cfg = INDICADORES_CONFIG[nome_ind]
@@ -428,7 +428,7 @@ def interface_todos_indicadores():
             progresso.progress((idx + 1) / total)
 
         st.session_state.todos_processando = False
-        status.success("Processamento concluido!")
+        status.success("Processamento concluído!")
 
         if resultados_linha:
             st.divider()
