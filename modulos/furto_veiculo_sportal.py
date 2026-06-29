@@ -1,6 +1,6 @@
 """
-Modulo Furto de Veiculo (SPORTAL)
-Versao Streamlit adaptada para o QGP Online.
+Módulo Furto de Veículo (SPORTAL)
+Versão Streamlit adaptada para o QGP Online.
 """
 
 from __future__ import annotations
@@ -37,8 +37,8 @@ def _selecionar_aba_arquivo_02(sheet_names: list[str]) -> str:
             return aba
 
     raise ValueError(
-        f"Aba 'Furto CIOPS' nao encontrada no Arquivo 02. "
-        f"Abas disponiveis: {sheet_names}"
+        f"Aba 'Furto CIOPS' não encontrada no Arquivo 02. "
+        f"Abas disponíveis: {sheet_names}"
     )
 
 
@@ -81,7 +81,7 @@ def encontrar_coluna_data(df):
     aproximados = [c for c in df.columns if "data" in str(c).strip().lower()]
     if aproximados:
         return aproximados[0]
-    raise ValueError("Nao foi encontrada a coluna 'Data'.")
+    raise ValueError("Não foi encontrada a coluna 'Data'.")
 
 
 def encontrar_coluna_hora(df):
@@ -91,7 +91,7 @@ def encontrar_coluna_hora(df):
     aproximados = [c for c in df.columns if "hora" in str(c).strip().lower()]
     if aproximados:
         return aproximados[0]
-    raise ValueError("Nao foi encontrada a coluna 'Hora'.")
+    raise ValueError("Não foi encontrada a coluna 'Hora'.")
 
 
 def encontrar_coluna_por_nomes(df, nomes_possiveis, obrigatoria=True):
@@ -108,7 +108,7 @@ def encontrar_coluna_por_nomes(df, nomes_possiveis, obrigatoria=True):
                 return c
 
     if obrigatoria:
-        raise ValueError(f"Nao foi possivel localizar nenhuma das colunas esperadas: {nomes_possiveis}")
+        raise ValueError(f"Não foi possível localizar nenhuma das colunas esperadas: {nomes_possiveis}")
     return None
 
 
@@ -322,9 +322,9 @@ def processar_furto_veiculo_sportal(arquivo_01, arquivo_02):
 
     if df_novo.empty:
         raise ValueError(
-            "Apos filtrar 'Nome da Ocorrencia' por 'FURTO DE VEICULO' e excluir "
-            "'BICICLETA' e 'BICICLETA DE APLICATIVO' em 'Subnome da Ocorrencia', "
-            "o Arquivo 02 ficou sem registros validos."
+            "Após filtrar 'Nome da Ocorrência' por 'FURTO DE VEICULO' e excluir "
+            "'BICICLETA' e 'BICICLETA DE APLICATIVO' em 'Subnome da Ocorrência', "
+            "o Arquivo 02 ficou sem registros válidos."
         )
 
     col_data_base = encontrar_coluna_data(df_base)
@@ -353,7 +353,7 @@ def processar_furto_veiculo_sportal(arquivo_01, arquivo_02):
     removidos_invalidos = total_apos_filtro_ocorrencia - len(df_novo)
 
     if df_novo.empty:
-        raise ValueError("Apos excluir coordenadas invalidas, o Arquivo 02 ficou sem registros validos.")
+        raise ValueError("Após excluir coordenadas inválidas, o Arquivo 02 ficou sem registros válidos.")
 
     df_base = criar_coluna_datahora(df_base, col_data, col_hora)
     df_novo = criar_coluna_datahora(df_novo, col_data, col_hora)
@@ -368,13 +368,13 @@ def processar_furto_veiculo_sportal(arquivo_01, arquivo_02):
 
     if ultimo_datahora_base is None:
         df_novo_util = df_novo.copy()
-        situacao = "Base anterior sem Data/Hora valida: Arquivo 02 foi incluido integralmente."
+        situacao = "Base anterior sem Data/Hora válida: Arquivo 02 foi incluído integralmente."
     elif df_novo_filtrado.empty:
         df_novo_util = df_novo_filtrado.copy()
-        situacao = "Nenhum registro novo encontrado apos a ultima Data/Hora da base: Arquivo 01 foi mantido sem acrescimos."
+        situacao = "Nenhum registro novo encontrado após a última Data/Hora da base: Arquivo 01 foi mantido sem acréscimos."
     else:
         df_novo_util = df_novo_filtrado.copy()
-        situacao = "Base anterior localizada: somente registros posteriores a ultima Data/Hora foram adicionados."
+        situacao = "Base anterior localizada: somente registros posteriores à última Data/Hora foram adicionados."
 
     adicionados = len(df_novo_util)
 
@@ -435,13 +435,13 @@ def _init_state():
 def render():
     _init_state()
 
-    st.subheader("Furto de Veiculo (SPORTAL)")
+    st.subheader("Furto de Veículo (SPORTAL)")
     st.write(
-        "Envie a base historica e o complemento SPORTAL para atualizar a base."
+        "Envie a base histórica e o complemento SPORTAL para atualizar a base."
     )
 
     arquivo_01 = st.file_uploader(
-        "Arquivo 01 - Base historica de Furto de Veiculo",
+        "Arquivo 01 - Base histórica de Furto de Veículo",
         type=["xlsx", "xls"],
         key="furto_veiculo_sportal_upload_01",
     )
@@ -473,7 +473,7 @@ def render():
         and st.session_state.furto_veiculo_sportal_arquivo_02_bytes is not None
     )
 
-    if st.button("Processar Furto de Veiculo (SPORTAL)", type="primary", disabled=not pode_processar):
+    if st.button("Processar Furto de Veículo (SPORTAL)", type="primary", disabled=not pode_processar):
         try:
             arquivo_01_buffer = BytesIO(st.session_state.furto_veiculo_sportal_arquivo_01_bytes)
             arquivo_02_buffer = BytesIO(st.session_state.furto_veiculo_sportal_arquivo_02_bytes)
@@ -486,7 +486,7 @@ def render():
             st.session_state.furto_veiculo_sportal_resumo = resumo
             st.session_state.furto_veiculo_sportal_resultado_excel = arquivo_excel_bytes
 
-            st.success("Processamento concluido com sucesso.")
+            st.success("Processamento concluído com sucesso.")
 
         except Exception as exc:
             st.exception(exc)
@@ -501,7 +501,7 @@ def render():
         c1, c2, c3 = st.columns(3)
         c1.metric("Novos registros adicionados", resumo["adicionados"])
         c2.metric("Total final da base", resumo["total_final"])
-        c3.metric("Removidos por coordenadas invalidas", resumo["removidos_invalidos"])
+        c3.metric("Removidos por coordenadas inválidas", resumo["removidos_invalidos"])
 
         st.info(
             f"Aba usada no Arquivo 01: {resumo['aba_arquivo_01']} | "
@@ -509,12 +509,12 @@ def render():
         )
 
         st.info(
-            f"Ultima Data/Hora da base: {resumo['ultima_datahora_base']} | "
-            f"Removidos por filtro de ocorrencia: {resumo['removidos_por_filtro_ocorrencia']}"
+            f"Última Data/Hora da base: {resumo['ultima_datahora_base']} | "
+            f"Removidos por filtro de ocorrência: {resumo['removidos_por_filtro_ocorrencia']}"
         )
 
         st.info(
-            f"Removidos por coordenadas invalidas: {resumo['removidos_invalidos']} | "
+            f"Removidos por coordenadas inválidas: {resumo['removidos_invalidos']} | "
             f"Removidos por filtro temporal: {resumo['removidos_por_datahora']}"
         )
 
