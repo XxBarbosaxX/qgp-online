@@ -1,6 +1,6 @@
 """
-Modulo Perturbacao ao Sossego Alheio
-Versao Streamlit adaptada para o QGP Online.
+Módulo Perturbação ao Sossego Alheio
+Versão Streamlit adaptada para o QGP Online.
 """
 
 from __future__ import annotations
@@ -85,7 +85,7 @@ def encontrar_coluna_data(df: pd.DataFrame) -> str:
     if aproximados:
         return aproximados[0]
 
-    raise ValueError("Nao foi encontrada a coluna 'Data'.")
+    raise ValueError("Não foi encontrada a coluna 'Data'.")
 
 
 def encontrar_coluna_hora(df: pd.DataFrame) -> str:
@@ -97,7 +97,7 @@ def encontrar_coluna_hora(df: pd.DataFrame) -> str:
     if aproximados:
         return aproximados[0]
 
-    raise ValueError("Nao foi encontrada a coluna 'Hora'.")
+    raise ValueError("Não foi encontrada a coluna 'Hora'.")
 
 
 def encontrar_coluna_por_nomes(
@@ -119,7 +119,7 @@ def encontrar_coluna_por_nomes(
 
     if obrigatoria:
         raise ValueError(
-            f"Nao foi possivel localizar nenhuma das colunas esperadas: {nomes_possiveis}"
+            f"Não foi possível localizar nenhuma das colunas esperadas: {nomes_possiveis}"
         )
     return None
 
@@ -391,7 +391,7 @@ def processar_perturbacao_sossego(arquivo_01, arquivo_02):
     col_data = col_data_base
     col_hora = col_hora_base
 
-    status.info("Identificando colunas de coordenadas e equivalencias...")
+    status.info("Identificando colunas de coordenadas e equivalências...")
     col_lat_base = encontrar_coluna_por_nomes(df_base, ["lat", "latitude"], obrigatoria=True)
     col_lon_base = encontrar_coluna_por_nomes(df_base, ["long", "longitude", "lon"], obrigatoria=True)
 
@@ -401,24 +401,24 @@ def processar_perturbacao_sossego(arquivo_01, arquivo_02):
     df_novo = renomear_colunas_equivalentes(df_base, df_novo)
     progresso.progress(40)
 
-    status.info("Excluindo registros com coordenadas invalidas no Arquivo 02...")
+    status.info("Excluindo registros com coordenadas inválidas no Arquivo 02...")
     total_lido_arquivo_02 = len(df_novo)
     df_novo, removidos_invalidos = excluir_coordenadas_invalidas(df_novo, col_lat_novo, col_lon_novo)
 
     if df_novo.empty:
         raise ValueError(
-            "Apos excluir coordenadas invalidas, o Arquivo 02 ficou sem registros validos."
+            "Após excluir coordenadas inválidas, o Arquivo 02 ficou sem registros válidos."
         )
     progresso.progress(50)
 
-    status.info("Montando coluna Data/Hora e verificando a ultima referencia da base...")
+    status.info("Montando coluna Data/Hora e verificando a última referência da base...")
     df_base = criar_coluna_datahora(df_base, col_data, col_hora, "__datahora__")
     df_novo = criar_coluna_datahora(df_novo, col_data, col_hora, "__datahora__")
 
     ultimo_datahora_base = obter_ultimo_datahora(df_base, "__datahora__")
     progresso.progress(60)
 
-    status.info("Filtrando apenas registros posteriores a ultima Data/Hora da base...")
+    status.info("Filtrando apenas registros posteriores à última Data/Hora da base...")
     total_antes_filtro_tempo = len(df_novo)
     df_novo_filtrado = filtrar_apenas_registros_posteriores(
         df_novo,
@@ -431,17 +431,17 @@ def processar_perturbacao_sossego(arquivo_01, arquivo_02):
 
     if ultimo_datahora_base is None:
         df_novo_util = df_novo.copy()
-        situacao = "Base anterior sem Data/Hora valida: Arquivo 02 foi incluido integralmente."
+        situacao = "Base anterior sem Data/Hora válida: Arquivo 02 foi incluído integralmente."
     elif df_novo_filtrado.empty:
         df_novo_util = df_novo_filtrado.copy()
         situacao = (
-            "Nenhum registro novo encontrado apos a ultima Data/Hora da base: "
-            "Arquivo 01 foi mantido sem acrescimos."
+            "Nenhum registro novo encontrado após a última Data/Hora da base: "
+            "Arquivo 01 foi mantido sem acréscimos."
         )
     else:
         df_novo_util = df_novo_filtrado.copy()
         situacao = (
-            "Base anterior localizada: somente registros posteriores a ultima "
+            "Base anterior localizada: somente registros posteriores à última "
             "Data/Hora foram adicionados."
         )
     progresso.progress(70)
@@ -519,23 +519,23 @@ def _init_state():
 def render():
     _init_state()
 
-    st.subheader("Perturbacao ao Sossego Alheio")
+    st.subheader("Perturbação ao Sossego Alheio")
     st.write(
-        "Envie a base historica e o arquivo complementar para atualizar a base com novos registros de Perturbacao ao Sossego Alheio."
+        "Envie a base histórica e o arquivo complementar para atualizar a base com novos registros de Perturbação ao Sossego Alheio."
     )
 
     st.caption(
-        "Fluxo: identificar a ultima Data/Hora do Arquivo 01, localizar no Arquivo 02 apenas ocorrencias posteriores, excluir coordenadas invalidas, reprojetar UTM SIRGAS2000 / 24S para WGS84 e gerar a planilha final."
+        "Fluxo: identificar a última Data/Hora do Arquivo 01, localizar no Arquivo 02 apenas ocorrências posteriores, excluir coordenadas inválidas, reprojetar UTM SIRGAS2000 / 24S para WGS84 e gerar a planilha final."
     )
 
     arquivo_01 = st.file_uploader(
-        "Arquivo 01 - Base historica de Perturbacao ao Sossego Alheio",
+        "Arquivo 01 - Base histórica de Perturbação ao Sossego Alheio",
         type=["xlsx", "xls"],
         key="perturbacao_upload_01",
     )
 
     arquivo_02 = st.file_uploader(
-        "Arquivo 02 - Complemento de Perturbacao ao Sossego Alheio",
+        "Arquivo 02 - Complemento de Perturbação ao Sossego Alheio",
         type=["xlsx", "xls"],
         key="perturbacao_upload_02",
     )
@@ -562,7 +562,7 @@ def render():
     )
 
     if st.button(
-        "Processar Perturbacao ao Sossego Alheio",
+        "Processar Perturbação ao Sossego Alheio",
         type="primary",
         disabled=not pode_processar,
     ):
@@ -594,7 +594,7 @@ def render():
         c1.metric("Novos registros adicionados", resumo.get("adicionados", 0))
         c2.metric("Total final da base", resumo.get("total_final", 0))
         c3.metric(
-            "Coordenadas invalidas removidas",
+            "Coordenadas inválidas removidas",
             resumo.get("removidos_coord_invalidas", 0),
         )
 
@@ -604,11 +604,11 @@ def render():
         )
 
         st.info(
-            f"Ultima Data/Hora da base: {resumo.get('ultima_datahora_base', '-')} | "
+            f"Última Data/Hora da base: {resumo.get('ultima_datahora_base', '-')} | "
             f"Removidos por filtro temporal: {resumo.get('removidos_por_datahora', 0)}"
         )
 
-        st.caption(resumo.get("situacao", "Processamento concluido."))
+        st.caption(resumo.get("situacao", "Processamento concluído."))
         st.dataframe(df_final.head(50), use_container_width=True)
 
         if st.session_state.perturbacao_resultado_excel is not None:
