@@ -28,24 +28,31 @@ if MODULOS_DIR not in sys.path:
     sys.path.insert(0, MODULOS_DIR)
 
 
-# ── Usuários autorizados ─────────────────────────────────────────────────────
+# ── Utilitários de autenticação ───────────────────────────────────────────────
 
 def gerar_hash_senha(senha: str) -> str:
     return hashlib.sha256(senha.encode("utf-8")).hexdigest()
 
 
-USUARIOS = {
-    "admin": {
-        "nome": "Administrador",
-        "senha_hash": gerar_hash_senha("123456"),
-        "perfil": "admin",
-    },
-    "clebio": {
-        "nome": "Clébio Barbosa",
-        "senha_hash": gerar_hash_senha("senha_segura_2026"),
-        "perfil": "admin",
-    },
-}
+def carregar_usuarios() -> dict:
+    """
+    Lê os usuários a partir de st.secrets.
+    Estrutura esperada em .streamlit/secrets.toml:
+
+    [auth.users.admin]
+    nome = "Administrador"
+    senha_hash = "HASH_AQUI"
+    perfil = "admin"
+    """
+    try:
+        auth = st.secrets.get("auth", {})
+        users = auth.get("users", {})
+        return dict(users)
+    except Exception:
+        return {}
+
+
+USUARIOS = carregar_usuarios()
 
 
 # ── Mapeamento dos módulos ───────────────────────────────────────────────────
@@ -250,17 +257,23 @@ def verificar_senha(senha_digitada: str, senha_hash_armazenada: str) -> bool:
 def autenticar_usuario(usuario: str, senha: str) -> bool:
     usuario = usuario.strip().lower()
 
+    if not USUARIOS:
+        st.error("Nenhum usuário foi configurado em st.secrets.")
+        return False
+
     if usuario not in USUARIOS:
         return False
 
     cadastro = USUARIOS[usuario]
-    if not verificar_senha(senha, cadastro["senha_hash"]):
+    senha_hash = cadastro.get("senha_hash", "")
+
+    if not verificar_senha(senha, senha_hash):
         return False
 
     st.session_state.autenticado = True
     st.session_state.usuario_logado = usuario
-    st.session_state.nome_usuario_logado = cadastro["nome"]
-    st.session_state.perfil_usuario_logado = cadastro["perfil"]
+    st.session_state.nome_usuario_logado = cadastro.get("nome", usuario)
+    st.session_state.perfil_usuario_logado = cadastro.get("perfil", "usuario")
     return True
 
 
