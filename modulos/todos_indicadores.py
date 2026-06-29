@@ -5,7 +5,9 @@ Chama os módulos individuais com suas lógicas reais (incluindo geocodificaçã
 """
 from __future__ import annotations
 
+import re
 import zipfile
+import unicodedata
 from io import BytesIO
 from datetime import datetime
 
@@ -124,6 +126,214 @@ INDICADORES_ORDEM = [
     "FURTO DE VEÍCULO (SPORTAL)",
     "FURTO DE VEÍCULO (SIP)",
 ]
+
+
+# ── Utilitários de reconhecimento automático ─────────────────────────────────
+
+def _normalizar_texto(texto: str) -> str:
+    texto = texto.strip().upper()
+    texto = unicodedata.normalize("NFKD", texto)
+    texto = "".join(ch for ch in texto if not unicodedata.combining(ch))
+    texto = re.sub(r"[^A-Z0-9]+", "-", texto)
+    texto = re.sub(r"-+", "-", texto).strip("-")
+    return texto
+
+
+def _tokens_nome_arquivo(nome_arquivo: str) -> str:
+    nome_base = nome_arquivo.rsplit(".", 1)[0]
+    return _normalizar_texto(nome_base)
+
+
+def _mapa_tokens_indicadores_nome() -> dict[str, list[str]]:
+    return {
+        "CVLI": ["CVLI", "1-CVLI"],
+        "CVP (SPORTAL)": ["CVP-SPORTAL", "2-CVP-SPORTAL"],
+        "CVP (SIP)": ["CVP-SIP", "CVP-SIP-ENDERECO", "3-CVP-SIP-ENDERECO"],
+        "PERTURBAÇÃO AO SOSSEGO ALHEIO": [
+            "PERTURBACAO-AO-SOSSEGO-ALHEIO",
+            "PERTURBACAO-SOSSEGO-ALHEIO",
+            "4-PERTURBACAO-AO-SOSSEGO-ALHEIO",
+        ],
+        "DESLOCAMENTO FORÇADO": ["DESLOCAMENTO-FORCADO", "5-DESLOCAMENTO-FORCADO"],
+        "ROUBO DE VEÍCULO (SPORTAL)": [
+            "ROUBO-DE-VEICULO-SPORTAL-LAT-LONG",
+            "ROUBO-DE-VEICULO-SPORTAL",
+            "6-ROUBO-DE-VEICULO-SPORTAL-LAT-LONG",
+        ],
+        "ROUBO DE VEÍCULO (SIP)": [
+            "ROUBO-DE-VEICULO-SIP-ENDERECO",
+            "ROUBO-DE-VEICULO-SIP",
+            "7-ROUBO-DE-VEICULO-SIP-ENDERECO",
+        ],
+        "ACIDENTE DE TRÂNSITO": [
+            "ACIDENTE-DE-TRANSITO-SPORTAL-QGP",
+            "ACIDENTE-DE-TRANSITO",
+            "8-ACIDENTE-DE-TRANSITO-SPORTAL-QGP",
+        ],
+        "FURTO DE VEÍCULO (SPORTAL)": [
+            "FURTO-DE-VEICULO-SPORTAL-QGP",
+            "FURTO-DE-VEICULO-SPORTAL",
+            "9-FURTO-DE-VEICULO-SPORTAL-QGP",
+        ],
+        "FURTO DE VEÍCULO (SIP)": [
+            "FURTO-DE-VEICULO-SIP-ENDERECO",
+            "FURTO-DE-VEICULO-SIP",
+            "10-FURTO-DE-VEICULO-SIP-ENDERECO",
+        ],
+    }
+
+
+def _identificar_por_nome(nome_arquivo: str) -> str | None:
+    nome_norm = _tokens_nome_arquivo(nome_arquivo)
+    mapa = _mapa_tokens_indicadores_nome()
+
+    correspondencias = []
+    for indicador, tokens in mapa.items():
+        for token in tokens:
+            token_norm = _normalizar_texto(token)
+            if token_norm in nome_norm:
+                correspondencias.append((len(token_norm), indicador))
+
+    if not correspondencias:
+        return None
+
+    correspondencias.sort(reverse=True)
+    return correspondencias[0][1]
+
+
+def _identificar_por_conteudo(arquivo) -> str | None:
+    """
+    Tenta identificar o indicador analisando o conteúdo da planilha.
+    Estratégia:
+    - Normaliza nomes de colunas
+    - Procura padrões de colunas típicas de cada indicador
+    - Usa heurísticas simples, mantendo robustez.
+    """
+    try:
+        arquivo.seek(0)
+        df = pd.read_excel(arquivo, nrows=200)  # amostra inicial
+    except Exception:
+        return None
+
+    df_norm = normalizar_colunas(df)
+    colunas = set(df_norm.columns)
+
+    def tem(*cols):
+        return all(c in colunas for c in cols)
+
+    def tem_algum(*cols):
+        return any(c in colunas for c in cols)
+
+    # Heurísticas específicas (ajuste conforme seu contexto real)
+    # CVLI – geralmente possui campos de vítima, CFP e natureza letal
+    if tem_algum("natureza", "tipo_crime", "tipo_ocorrencia") and tem_algum("vitima", "nome_vitima"):
+        if tem_algum("cvli", "homicidio", "latrocini"):
+            return "CVLI"
+
+    # CVP (SIP) – costuma ter campos de endereço completo para geocodificação
+    if tem_algum("logradouro", "endereco") and tem_algum("bairro", "municipio"):
+        if tem_algum("tipo_crime", "natureza") and tem_algum("cvp", "crime_contra_patrimonio"):
+            return "CVP (SIP)"
+
+    # CVP (SPORTAL) – mais focado em lat/long já presentes
+    if tem_algum("latitude", "lat") and tem_algum("longitude", "long", "lon"):
+        if tem_algum("cvp", "crime_contra_patrimonio"):
+            return "CVP (SPORTAL)"
+
+    # PERTURBAÇÃO AO SOSSEGO ALHEIO – campos frequentemente ligados a som, barulho
+    if tem_algum("natureza") and any(
+        "PERTURBACAO" in _normalizar_texto(str(v)) or "SOSSEGO" in _normalizar_texto(str(v))
+        for v in df_norm["natureza"].astype(str).unique()
+    ):
+        return "PERTURBAÇÃO AO SOSSEGO ALHEIO"
+
+    # DESLOCAMENTO FORÇADO – palavras-chave em natureza ou tipo
+    if tem_algum("natureza", "tipo_crime"):
+        valores = set(
+            _normalizar_texto(str(v))
+            for v in df_norm[tem_algum("natureza") and "natureza" or "tipo_crime"].astype(str).unique()
+        )
+        if any("DESLOCAMENTO-FORCADO" in v or "DESLOCAMENTO" in v for v in valores):
+            return "DESLOCAMENTO FORÇADO"
+
+    # ROUBO / FURTO DE VEÍCULO – presença de placa, chassi, modelo, etc.
+    if tem_algum("placa", "chassi", "modelo", "veiculo", "categoria_veiculo"):
+        # SIP x SPORTAL pela presença ou não de endereço
+        if tem_algum("logradouro", "endereco", "bairro", "municipio"):
+            # SIP
+            # se natureza contém 'ROUBO' → Roubo SIP; se 'FURTO' → Furto SIP
+            if tem_algum("natureza"):
+                valores_nat = set(_normalizar_texto(str(v)) for v in df_norm["natureza"].astype(str).unique())
+                if any("ROUBO" in v for v in valores_nat):
+                    return "ROUBO DE VEÍCULO (SIP)"
+                if any("FURTO" in v for v in valores_nat):
+                    return "FURTO DE VEÍCULO (SIP)"
+        else:
+            # SPORTAL
+            if tem_algum("latitude", "lat") and tem_algum("longitude", "long", "lon"):
+                if tem_algum("natureza"):
+                    valores_nat = set(_normalizar_texto(str(v)) for v in df_norm["natureza"].astype(str).unique())
+                    if any("ROUBO" in v for v in valores_nat):
+                        return "ROUBO DE VEÍCULO (SPORTAL)"
+                    if any("FURTO" in v for v in valores_nat):
+                        return "FURTO DE VEÍCULO (SPORTAL)"
+
+    # ACIDENTE DE TRÂNSITO – termos como acidente, colisão, sinistro
+    if tem_algum("natureza", "tipo_acidente", "tipo_crime"):
+        valores_nat = set(
+            _normalizar_texto(str(v))
+            for v in df_norm[tem_algum("natureza") and "natureza" or "tipo_acidente"].astype(str).unique()
+        )
+        if any("ACIDENTE" in v or "COLISAO" in v or "TRANSITO" in v for v in valores_nat):
+            return "ACIDENTE DE TRÂNSITO"
+
+    return None
+
+
+def _identificar_indicador(arquivo) -> tuple[str | None, str]:
+    """
+    Retorna:
+      - nome do indicador (ou None se não conseguir)
+      - mensagem explicando se foi por nome ou por conteúdo.
+    """
+    nome_arq = arquivo.name
+    ind_nome = _identificar_por_nome(nome_arq)
+    if ind_nome:
+        return ind_nome, "Identificado automaticamente pelo nome do arquivo."
+
+    ind_cont = _identificar_por_conteudo(arquivo)
+    if ind_cont:
+        return ind_cont, "Identificado automaticamente pelo conteúdo da planilha."
+
+    return None, "Não foi possível identificar o indicador pelo nome ou conteúdo."
+
+
+def _registrar_arquivos_base(arquivos_upload) -> tuple[list[str], list[str]]:
+    reconhecidos = []
+    nao_reconhecidos = []
+
+    st.session_state.todos_arq01_bytes = {}
+    st.session_state.todos_arq01_nomes = {}
+    st.session_state.todos_erros_upload = {}
+    st.session_state.todos_duplicados_upload = {}
+
+    for arq in arquivos_upload:
+        indicador, origem_msg = _identificar_indicador(arq)
+
+        if indicador is None:
+            nao_reconhecidos.append(arq.name)
+            continue
+
+        if indicador in st.session_state.todos_arq01_bytes:
+            st.session_state.todos_duplicados_upload.setdefault(indicador, []).append(arq.name)
+            continue
+
+        arq.seek(0)
+        st.session_state.todos_arq01_bytes[indicador] = arq.read()
+        st.session_state.todos_arq01_nomes[indicador] = f"{arq.name} ({origem_msg})"
+        reconhecidos.append(indicador)
+
+    return reconhecidos, nao_reconhecidos
 
 
 # ── Wrapper CVP SPORTAL ───────────────────────────────────────────────────────
@@ -292,6 +502,8 @@ def _init_state():
         "todos_erros": {},
         "todos_processando": False,
         "todos_parar": False,
+        "todos_erros_upload": {},
+        "todos_duplicados_upload": {},
     }
     for chave, valor in defaults.items():
         if chave not in st.session_state:
@@ -336,28 +548,66 @@ def interface_todos_indicadores():
 
     st.divider()
 
-    # ── Arquivos 01 por indicador em lista única ──
+    # ── Upload em lote dos Arquivos 01 ──
     st.subheader("Arquivos 01 - Base Histórica")
-    st.caption("Carregue um arquivo por indicador, conforme a ordem abaixo.")
+    st.caption(
+        "Selecione todos os arquivos de base histórica de uma só vez. "
+        "O sistema fará a identificação automática pelo nome e, se necessário, pelo conteúdo."
+    )
 
-    for nome_ind in INDICADORES_ORDEM:
-        cfg = INDICADORES_CONFIG[nome_ind]
-        geo_tag = " [GEOCODIFICAÇÃO]" if cfg["geocodifica"] else ""
-        rotulo = f"{cfg['ordem']} - {cfg['label']}{geo_tag}"
+    arquivos_base_upload = st.file_uploader(
+        "Arquivos 01 (seleção múltipla)",
+        type=["xlsx", "xls"],
+        accept_multiple_files=True,
+        key="todos_upload_01_lote",
+    )
 
-        arq = st.file_uploader(
-            rotulo,
-            type=["xlsx", "xls"],
-            key=f"todos_upload_01_{cfg['key']}",
-        )
+    if arquivos_base_upload:
+        reconhecidos, nao_reconhecidos = _registrar_arquivos_base(arquivos_base_upload)
 
-        if arq is not None:
-            arq.seek(0)
-            st.session_state.todos_arq01_bytes[nome_ind] = arq.read()
-            st.session_state.todos_arq01_nomes[nome_ind] = arq.name
+        if reconhecidos:
+            reconhecidos_ordenados = sorted(
+                reconhecidos,
+                key=lambda nome: INDICADORES_CONFIG[nome]["ordem"],
+            )
+            st.success(
+                f"{len(reconhecidos_ordenados)} arquivo(s) de base reconhecido(s): "
+                + ", ".join(
+                    f"{INDICADORES_CONFIG[nome]['ordem']} - {INDICADORES_CONFIG[nome]['label']}"
+                    for nome in reconhecidos_ordenados
+                )
+            )
 
-        if nome_ind in st.session_state.todos_arq01_nomes:
-            st.caption(f"Carregado: {st.session_state.todos_arq01_nomes[nome_ind]}")
+        if nao_reconhecidos:
+            st.warning(
+                "Arquivo(s) não reconhecido(s) pelo nome ou conteúdo: "
+                + ", ".join(nao_reconhecidos)
+            )
+
+        if st.session_state.todos_duplicados_upload:
+            for nome_ind, arquivos_dup in st.session_state.todos_duplicados_upload.items():
+                cfg = INDICADORES_CONFIG[nome_ind]
+                st.warning(
+                    f"Duplicidade para {cfg['ordem']} - {cfg['label']}: "
+                    + ", ".join(arquivos_dup)
+                    + ". Apenas o primeiro arquivo reconhecido foi considerado."
+                )
+
+    elif not arquivos_base_upload:
+        st.session_state.todos_arq01_bytes = {}
+        st.session_state.todos_arq01_nomes = {}
+        st.session_state.todos_erros_upload = {}
+        st.session_state.todos_duplicados_upload = {}
+
+    if st.session_state.todos_arq01_nomes:
+        st.markdown("#### Arquivos base identificados")
+        for nome_ind in INDICADORES_ORDEM:
+            if nome_ind in st.session_state.todos_arq01_nomes:
+                cfg = INDICADORES_CONFIG[nome_ind]
+                st.caption(
+                    f"{cfg['ordem']} - {cfg['label']}: "
+                    f"{st.session_state.todos_arq01_nomes[nome_ind]}"
+                )
 
     st.divider()
 
@@ -365,6 +615,10 @@ def interface_todos_indicadores():
     indicadores_prontos = [
         nome_ind for nome_ind in INDICADORES_ORDEM
         if nome_ind in st.session_state.todos_arq01_bytes
+    ]
+    indicadores_faltantes = [
+        nome_ind for nome_ind in INDICADORES_ORDEM
+        if nome_ind not in st.session_state.todos_arq01_bytes
     ]
     tem_arq02 = st.session_state.todos_arq02_bytes is not None
 
@@ -374,11 +628,20 @@ def interface_todos_indicadores():
             for nome in indicadores_prontos
         ]
         st.success(
-            f"{len(indicadores_prontos)} indicador(es) com Arquivo 01 carregado: "
+            f"{len(indicadores_prontos)} indicador(es) com Arquivo 01 identificado: "
             + ", ".join(indicadores_carregados)
         )
     else:
-        st.warning("Nenhum Arquivo 01 carregado ainda.")
+        st.warning("Nenhum Arquivo 01 identificado ainda.")
+
+    if indicadores_faltantes:
+        st.info(
+            "Indicadores ainda sem Arquivo 01: "
+            + ", ".join(
+                f"{INDICADORES_CONFIG[nome]['ordem']} - {INDICADORES_CONFIG[nome]['label']}"
+                for nome in indicadores_faltantes
+            )
+        )
 
     if not tem_arq02:
         st.warning("Arquivo 02 não carregado.")
