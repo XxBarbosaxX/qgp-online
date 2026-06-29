@@ -1,62 +1,210 @@
-from __future__ import annotations
-
-import os
-import sys
-import hmac
-import hashlib
-import importlib
-from datetime import datetime
+# QGP Online - Atualizador de Indicadores de Segurança Pública - SUPESP/CE
+# fix: set_page_config movido para o topo; imports lazy para evitar crash
 
 import streamlit as st
+from datetime import datetime
+import sys
+import os
 
-
-# ── Configuração inicial ──────────────────────────────────────────────────────
-
+# =========================
+# CONFIGURAÇÃO DA PÁGINA (DEVE SER O PRIMEIRO COMANDO st.*)
+# =========================
 st.set_page_config(
     page_title="QGP Online - SUPESP/CE",
     page_icon="🛡️",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="collapsed"
 )
 
-BASE_DIR = os.path.dirname(__file__)
-if BASE_DIR not in sys.path:
-    sys.path.insert(0, BASE_DIR)
+# Adicionar pasta módulos ao path
+sys.path.insert(0, os.path.dirname(__file__))  # Raiz do projeto para imports como 'from modulos.utils import'
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'modulos'))
 
-MODULOS_DIR = os.path.join(BASE_DIR, "modulos")
-if MODULOS_DIR not in sys.path:
-    sys.path.insert(0, MODULOS_DIR)
+# =========================
+# ESTADO DA APLICAÇÃO
+# =========================
+if "indicador_selecionado" not in st.session_state:
+    st.session_state.indicador_selecionado = "Selecione um indicador..."
 
+# =========================
+# CSS CUSTOMIZADO
+# =========================
+def load_custom_css():
+    st.markdown("""
+    <style>
+    .stApp {
+        background: linear-gradient(180deg, #022b26 0%, #011917 100%);
+        color: #f3f4ef;
+    }
 
-# ── Utilitários de autenticação ───────────────────────────────────────────────
+    section[data-testid="stSidebar"] {
+        display: none !important;
+    }
 
-def gerar_hash_senha(senha: str) -> str:
-    return hashlib.sha256(senha.encode("utf-8")).hexdigest()
+    .block-container {
+        padding-top: 2.6rem !important;
+        padding-bottom: 2rem;
+    }
 
+    .topbar {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin-top: 0.4rem;
+        margin-bottom: 1.2rem;
+        padding: 0.8rem 0 1rem 0;
+        border-bottom: 1px solid rgba(216, 138, 24, 0.18);
+    }
 
-def carregar_usuarios() -> dict:
-    """
-    Lê os usuários a partir de st.secrets.
-    Estrutura esperada em .streamlit/secrets.toml:
+    .topbar-title {
+        font-size: 2.2rem;
+        font-weight: 900;
+        color: #ffffff;
+        line-height: 1.15;
+        margin: 0;
+        padding-top: 0.15rem;
+        white-space: normal;
+        overflow: visible;
+    }
 
-    [auth.users.admin]
-    nome = "Administrador"
-    senha_hash = "HASH_AQUI"
-    perfil = "admin"
-    """
+    .topbar-subtitle {
+        font-size: 0.98rem;
+        font-weight: 800;
+        color: #f39a1f;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-top: 0.35rem;
+        line-height: 1.35;
+    }
+
+    .home-card {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(243, 154, 31, 0.14);
+        border-radius: 18px;
+        padding: 1.2rem 1.2rem 1rem 1.2rem;
+        margin-top: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .home-title {
+        font-size: 1.35rem;
+        font-weight: 800;
+        color: #ffffff;
+        margin-bottom: 0.35rem;
+    }
+
+    .home-subtitle {
+        color: #cdd8d2;
+        font-size: 0.98rem;
+        margin-bottom: 0.3rem;
+        line-height: 1.5;
+    }
+
+    .section-title {
+        font-size: 1.1rem;
+        font-weight: 800;
+        color: #f7f7f2;
+        margin-top: 1rem;
+        margin-bottom: 0.8rem;
+    }
+
+    .info-row {
+        margin-top: 0.8rem;
+        margin-bottom: 1rem;
+    }
+
+    .metric-chip {
+        display: inline-block;
+        background: rgba(243, 154, 31, 0.12);
+        color: #ffd089;
+        border: 1px solid rgba(243, 154, 31, 0.22);
+        border-radius: 999px;
+        padding: 0.35rem 0.8rem;
+        font-size: 0.85rem;
+        font-weight: 700;
+        margin-right: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .stButton > button {
+        background: #f39a1f !important;
+        color: #16211d !important;
+        border: none !important;
+        border-radius: 12px !important;
+        font-weight: 900 !important;
+        font-size: 0.98rem !important;
+        padding: 0.85rem 1.15rem !important;
+        width: 100% !important;
+        min-height: 3.2rem !important;
+        text-align: center !important;
+    }
+
+    .stButton > button p,
+    .stButton > button span,
+    .stButton > button div {
+        font-weight: 900 !important;
+    }
+
+    .stButton > button:hover {
+        background: #ffae34 !important;
+        color: #101816 !important;
+    }
+
+    .secondary-button .stButton > button {
+        background: transparent !important;
+        color: #f3f4ef !important;
+        border: 1px solid rgba(243, 154, 31, 0.28) !important;
+        font-weight: 800 !important;
+    }
+
+    .secondary-button .stButton > button:hover {
+        background: rgba(243, 154, 31, 0.08) !important;
+        color: #ffffff !important;
+    }
+
+    .footer-note {
+        color: #b8c3bd;
+        font-size: 0.9rem;
+        margin-top: 1rem;
+        text-align: center;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+# =========================
+# TOPBAR
+# =========================
+def render_topbar():
+    st.markdown("""
+    <div class="topbar">
+        <div>
+            <div class="topbar-title">QGP Online</div>
+            <div class="topbar-subtitle">SUPESP / CE &middot; Atualizador de Indicadores</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+# =========================
+# FUNÇÃO PARA IMPORTAR MÓDULO SOB DEMANDA (lazy import)
+# Evita crash do app se um módulo tiver erro
+# =========================
+def carregar_modulo(nome_modulo: str, nome_funcao: str):
+    """Importa um módulo sob demanda e retorna a função solicitada.
+    Retorna None se o módulo falhar, exibindo o erro de forma amigável."""
     try:
-        auth = st.secrets.get("auth", {})
-        users = auth.get("users", {})
-        return dict(users)
-    except Exception:
-        return {}
+        import importlib
+        mod = importlib.import_module(f"modulos.{nome_modulo}")
+        return getattr(mod, nome_funcao, None)
+    except Exception as e:
+        st.error(f"❌ Erro ao carregar módulo '{nome_modulo}': {e}")
+        import traceback
+        with st.expander("Detalhes do erro"):
+            st.code(traceback.format_exc())
+        return None
 
-
-USUARIOS = carregar_usuarios()
-
-
-# ── Mapeamento dos módulos ───────────────────────────────────────────────────
-
+# =========================
+# MAPEAMENTO DE INDICADORES
+# =========================
 MAPEAMENTO = {
     "CVLI": ("cvli", "interface_cvli"),
     "CVP (SPORTAL)": ("cvp_sportal", "interface_cvp_sportal"),
@@ -85,288 +233,28 @@ INDICADORES_HOME = [
     "TODOS OS INDICADORES",
 ]
 
-
-# ── Estado da aplicação ──────────────────────────────────────────────────────
-
-def init_state():
-    defaults = {
-        "autenticado": False,
-        "usuario_logado": None,
-        "nome_usuario_logado": None,
-        "perfil_usuario_logado": None,
-        "indicador_selecionado": "Selecione um indicador...",
-    }
-    for chave, valor in defaults.items():
-        if chave not in st.session_state:
-            st.session_state[chave] = valor
-
-
-# ── Estilo visual ────────────────────────────────────────────────────────────
-
-def load_custom_css():
-    st.markdown(
-        """
-        <style>
-        .stApp {
-            background: linear-gradient(180deg, #032822 0%, #011714 100%);
-            color: #f3f4ef;
-        }
-
-        section[data-testid="stSidebar"] {
-            display: none !important;
-        }
-
-        .block-container {
-            padding-top: 2.0rem !important;
-            padding-bottom: 2rem;
-            max-width: 1280px;
-        }
-
-        .topbar-wrap {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            gap: 16px;
-            margin-bottom: 1.4rem;
-            padding-bottom: 1rem;
-            border-bottom: 1px solid rgba(243, 154, 31, 0.18);
-        }
-
-        .topbar-title {
-            font-size: 2.15rem;
-            font-weight: 900;
-            color: #ffffff;
-            line-height: 1.1;
-            margin: 0;
-        }
-
-        .topbar-subtitle {
-            font-size: 0.96rem;
-            font-weight: 800;
-            color: #f39a1f;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            margin-top: 0.35rem;
-        }
-
-        .card-box {
-            background: rgba(255, 255, 255, 0.035);
-            border: 1px solid rgba(243, 154, 31, 0.16);
-            border-radius: 18px;
-            padding: 1.4rem;
-            margin-bottom: 1rem;
-        }
-
-        .login-box {
-            background: rgba(255, 255, 255, 0.04);
-            border: 1px solid rgba(243, 154, 31, 0.20);
-            border-radius: 18px;
-            padding: 1.6rem;
-            margin-top: 2rem;
-        }
-
-        .card-title {
-            font-size: 1.35rem;
-            font-weight: 800;
-            color: #ffffff;
-            margin-bottom: 0.35rem;
-        }
-
-        .card-subtitle {
-            color: #d0d8d3;
-            font-size: 0.98rem;
-            line-height: 1.5;
-            margin-bottom: 0.25rem;
-        }
-
-        .chip {
-            display: inline-block;
-            background: rgba(243, 154, 31, 0.12);
-            color: #ffd089;
-            border: 1px solid rgba(243, 154, 31, 0.22);
-            border-radius: 999px;
-            padding: 0.35rem 0.8rem;
-            font-size: 0.84rem;
-            font-weight: 700;
-            margin-right: 0.45rem;
-            margin-bottom: 0.45rem;
-        }
-
-        .footer-note {
-            color: #b8c3bd;
-            font-size: 0.90rem;
-            margin-top: 1.4rem;
-            text-align: center;
-        }
-
-        .login-help {
-            color: #c7d2cc;
-            font-size: 0.92rem;
-            margin-top: 0.5rem;
-            line-height: 1.5;
-        }
-
-        div[data-testid="stForm"] {
-            background: transparent !important;
-            border: none !important;
-            padding: 0 !important;
-        }
-
-        .stButton > button,
-        div[data-testid="stFormSubmitButton"] > button {
-            background: #f39a1f !important;
-            color: #16211d !important;
-            border: none !important;
-            border-radius: 12px !important;
-            font-weight: 900 !important;
-            font-size: 0.98rem !important;
-            min-height: 3rem !important;
-            width: 100% !important;
-        }
-
-        .stButton > button:hover,
-        div[data-testid="stFormSubmitButton"] > button:hover {
-            background: #ffae34 !important;
-            color: #101816 !important;
-        }
-
-        .secondary-button .stButton > button {
-            background: transparent !important;
-            color: #f3f4ef !important;
-            border: 1px solid rgba(243, 154, 31, 0.28) !important;
-            font-weight: 800 !important;
-        }
-
-        .secondary-button .stButton > button:hover {
-            background: rgba(243, 154, 31, 0.08) !important;
-            color: #ffffff !important;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-# ── Autenticação ─────────────────────────────────────────────────────────────
-
-def verificar_senha(senha_digitada: str, senha_hash_armazenada: str) -> bool:
-    senha_hash_digitada = gerar_hash_senha(senha_digitada)
-    return hmac.compare_digest(senha_hash_digitada, senha_hash_armazenada)
-
-
-def autenticar_usuario(usuario: str, senha: str) -> bool:
-    usuario = usuario.strip().lower()
-
-    if not USUARIOS:
-        st.error("Nenhum usuário foi configurado em st.secrets.")
-        return False
-
-    if usuario not in USUARIOS:
-        return False
-
-    cadastro = USUARIOS[usuario]
-    senha_hash = cadastro.get("senha_hash", "")
-
-    if not verificar_senha(senha, senha_hash):
-        return False
-
-    st.session_state.autenticado = True
-    st.session_state.usuario_logado = usuario
-    st.session_state.nome_usuario_logado = cadastro.get("nome", usuario)
-    st.session_state.perfil_usuario_logado = cadastro.get("perfil", "usuario")
-    return True
-
-
-def logout():
-    st.session_state.autenticado = False
-    st.session_state.usuario_logado = None
-    st.session_state.nome_usuario_logado = None
-    st.session_state.perfil_usuario_logado = None
-    st.session_state.indicador_selecionado = "Selecione um indicador..."
-    st.rerun()
-
-
-# ── Layout principal ─────────────────────────────────────────────────────────
-
-def render_topbar():
-    col1, col2 = st.columns([8, 2])
-
-    with col1:
-        st.markdown(
-            """
-            <div class="topbar-wrap">
-                <div>
-                    <div class="topbar-title">QGP Online</div>
-                    <div class="topbar-subtitle">SUPESP / CE · Atualizador de Indicadores</div>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    with col2:
-        if st.session_state.autenticado:
-            st.markdown(
-                f"**Usuário:** {st.session_state.nome_usuario_logado}<br>"
-                f"**Perfil:** {st.session_state.perfil_usuario_logado}",
-                unsafe_allow_html=True,
-            )
-            st.markdown('<div class="secondary-button">', unsafe_allow_html=True)
-            if st.button("Sair", key="btn_logout", use_container_width=True):
-                logout()
-            st.markdown("</div>", unsafe_allow_html=True)
-
-
-def render_login():
-    st.markdown(
-        """
-        <div class="login-box">
-            <div class="card-title">Acesso ao Sistema</div>
-            <div class="card-subtitle">Informe seu usuário e senha para acessar o QGP Online.</div>
-            <div class="login-help">O acesso é validado antes da liberação dos módulos de processamento.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    col1, col2, col3 = st.columns([1, 1.2, 1])
-
-    with col2:
-        with st.form("form_login", clear_on_submit=False):
-            usuario = st.text_input("Usuário", placeholder="Digite seu usuário")
-            senha = st.text_input("Senha", type="password", placeholder="Digite sua senha")
-            entrar = st.form_submit_button("Entrar", use_container_width=True)
-
-        if entrar:
-            if autenticar_usuario(usuario, senha):
-                st.success("Login realizado com sucesso.")
-                st.rerun()
-            else:
-                st.error("Usuário ou senha inválidos.")
-
-
+# =========================
+# AÇÕES DE NAVEGAÇÃO
+# =========================
 def selecionar_indicador(nome: str):
     st.session_state.indicador_selecionado = nome
 
-
 def voltar_inicio():
     st.session_state.indicador_selecionado = "Selecione um indicador..."
-    st.rerun()
 
-
+# =========================
+# TELA INICIAL
+# =========================
 def render_home():
-    st.markdown(
-        """
-        <div class="card-box">
-            <div class="card-title">Bem-vindo ao QGP Online</div>
-            <div class="card-subtitle">Sistema de atualização de indicadores de Segurança Pública da SUPESP/CE.</div>
-            <div class="card-subtitle">Selecione o indicador desejado para iniciar o processamento.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    st.markdown("""
+    <div class="home-card">
+        <div class="home-title">Bem-vindo ao QGP Online</div>
+        <div class="home-subtitle">Sistema de atualização de indicadores de Segurança Pública da SUPESP/CE.</div>
+        <div class="home-subtitle">Selecione o indicador desejado para iniciar o processamento.</div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    st.markdown("### Selecione o indicador abaixo:")
+    st.markdown("### Selecione o Indicador Abaixo:")
 
     col1, col2, col3 = st.columns(3)
 
@@ -383,63 +271,50 @@ def render_home():
                     selecionar_indicador(nome)
                     st.rerun()
 
-    st.markdown(
-        f'<div class="chip">Versão 1.0.0</div>'
-        f'<div class="chip">Data {datetime.now().strftime("%d/%m/%Y")}</div>'
-        f'<div class="chip">Hora {datetime.now().strftime("%H:%M:%S")}</div>',
-        unsafe_allow_html=True,
-    )
+    st.markdown('<div class="info-row">', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-chip">Versão 1.0.0</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-chip">Data {datetime.now().strftime("%d/%m/%Y")}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-chip">Hora {datetime.now().strftime("%H:%M:%S")}</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
+# =========================
+# INICIALIZAÇÃO
+# =========================
+load_custom_css()
+render_topbar()
 
-# ── Carregamento dinâmico dos módulos ────────────────────────────────────────
+# =========================
+# CONTEÚDO PRINCIPAL
+# =========================
+indicador = st.session_state.indicador_selecionado
 
-def carregar_modulo(nome_modulo: str, nome_funcao: str):
-    try:
-        modulo = importlib.import_module(f"modulos.{nome_modulo}")
-        return getattr(modulo, nome_funcao, None)
-    except Exception as exc:
-        st.error(f"Erro ao carregar módulo '{nome_modulo}': {exc}")
-        return None
+if indicador == "Selecione um indicador...":
+    render_home()
 
-
-def render_modulo():
-    indicador = st.session_state.indicador_selecionado
-
-    if indicador == "Selecione um indicador...":
-        render_home()
-        return
-
-    if indicador not in MAPEAMENTO:
-        st.warning(f"O indicador {indicador} estará disponível em breve.")
-        return
-
+elif indicador in MAPEAMENTO:
     col_topo_1, col_topo_2 = st.columns([10, 2])
 
     with col_topo_2:
         st.markdown('<div class="secondary-button">', unsafe_allow_html=True)
         if st.button("← Voltar", use_container_width=True):
             voltar_inicio()
-        st.markdown("</div>", unsafe_allow_html=True)
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    nome_modulo, nome_funcao = MAPEAMENTO[indicador]
-    funcao = carregar_modulo(nome_modulo, nome_funcao)
+    nome_mod, nome_func = MAPEAMENTO[indicador]
+    func = carregar_modulo(nome_mod, nome_func)
 
-    if funcao:
-        funcao()
+    if func:
+        func()
 
-
-# ── Execução principal ───────────────────────────────────────────────────────
-
-init_state()
-load_custom_css()
-render_topbar()
-
-if not st.session_state.autenticado:
-    render_login()
 else:
-    render_modulo()
+    st.warning(f"🚧 O indicador **{indicador}** estará disponível em breve")
+    st.info("👨‍💻 Sistema em desenvolvimento")
 
+# =========================
+# RODAPÉ
+# =========================
 st.markdown(
     '<p class="footer-note">QGP Online — Atualizador de Indicadores de Segurança Pública — SUPESP/CE</p>',
-    unsafe_allow_html=True,
+    unsafe_allow_html=True
 )
