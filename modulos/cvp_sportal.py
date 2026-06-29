@@ -1,6 +1,6 @@
 """
-Modulo CVP (SPORTAL) - Crimes Violentos contra o Patrimonio
-Processamento e atualizacao de dados CVP do sistema SPORTAL para QGP Online
+Módulo CVP (SPORTAL) - Crimes Violentos contra o Patrimônio
+Processamento e atualização de dados CVP do sistema SPORTAL para QGP Online
 """
 
 import io
@@ -30,14 +30,14 @@ def interface_cvp_sportal():
     """Interface Streamlit para CVP SPORTAL."""
     st.markdown("## Atualizar CVP (SPORTAL)")
     st.info("""
-    **Instrucoes:**
-    - **Arquivo 01:** Base CVP existente (dados historicos)
+    **Instruções:**
+    - **Arquivo 01:** Base CVP existente (dados históricos)
     - **Arquivo 02:** Complemento SPORTAL (novos registros)
 
-    O sistema ira:
-    - Verificar coordenadas validas
+    O sistema irá:
+    - Verificar coordenadas válidas
     - Converter coordenadas UTM (SIRGAS2000) para WGS84
-    - Adicionar apenas registros posteriores a ultima DataHora da base
+    - Adicionar apenas registros posteriores à última DataHora da base
     - Gerar arquivo final consolidado para download
     """)
 
@@ -61,7 +61,7 @@ def interface_cvp_sportal():
         )
 
     if not arquivo_base or not arquivo_novo:
-        st.warning("Por favor, faca upload dos dois arquivos para continuar.")
+        st.warning("Por favor, faça upload dos dois arquivos para continuar.")
         return
 
     if st.button("Processar Arquivos", type="primary", use_container_width=True):
@@ -72,7 +72,7 @@ def interface_cvp_sportal():
                 df_base = pd.read_excel(arquivo_base)
                 df_novo = pd.read_excel(arquivo_novo)
 
-                # Guardar colunas originais antes da normalizacao
+                # Guardar colunas originais antes da normalização
                 cols_orig_base = list(df_base.columns)
                 cols_orig_novo = list(df_novo.columns)
 
@@ -93,7 +93,7 @@ def interface_cvp_sportal():
                 subnome_ocorr_orig_novo = _encontrar_col_orig(cols_orig_novo, ["subnome", "ocorr"])
                 regioes_orig_novo = _encontrar_col_orig(cols_orig_novo, ["regi"])
 
-                # Normalizacao de colunas
+                # Normalização de colunas
                 df_base = normalizar_colunas(df_base)
                 df_novo = normalizar_colunas(df_novo)
 
@@ -130,7 +130,7 @@ def interface_cvp_sportal():
                     cols_orig_novo, regioes_orig_novo, cols_norm_novo
                 )
 
-                # Renomeacoes explicitas para compatibilizar Arquivo 02 com Arquivo 01
+                # Renomeações explícitas para compatibilizar Arquivo 02 com Arquivo 01
                 rename_map_especifico = {}
 
                 if (
@@ -181,17 +181,17 @@ def interface_cvp_sportal():
                 col_lat_novo = encontrar_coluna_por_nomes(df_novo, ["latitude"])
                 col_lon_novo = encontrar_coluna_por_nomes(df_novo, ["longitude"])
 
-                # Renomear equivalencias restantes
+                # Renomear equivalências restantes
                 df_novo = renomear_colunas_equivalentes(df_base, df_novo)
 
                 total_lido_arquivo_02 = len(df_novo)
 
-                # Remover coordenadas invalidas
+                # Remover coordenadas inválidas
                 df_novo = excluir_coordenadas_invalidas(df_novo, col_lat_novo, col_lon_novo)
                 removidos_invalidos = total_lido_arquivo_02 - len(df_novo)
 
                 if df_novo.empty:
-                    st.error("Apos excluir coordenadas invalidas, o Arquivo 02 ficou sem registros validos.")
+                    st.error("Após excluir coordenadas inválidas, o Arquivo 02 ficou sem registros válidos.")
                     return
 
                 # Criar coluna DataHora
@@ -212,13 +212,13 @@ def interface_cvp_sportal():
 
                 if ultima_datahora_base is None:
                     df_novo_util = df_novo.copy()
-                    situacao = "Base anterior sem DataHora valida - Arquivo 02 incluido integralmente."
+                    situacao = "Base anterior sem DataHora válida - Arquivo 02 incluído integralmente."
                 elif df_novo_filtrado.empty:
                     df_novo_util = df_novo_filtrado.copy()
-                    situacao = "Nenhum registro novo encontrado apos a ultima DataHora da base."
+                    situacao = "Nenhum registro novo encontrado após a última DataHora da base."
                 else:
                     df_novo_util = df_novo_filtrado.copy()
-                    situacao = "Somente registros posteriores a ultima DataHora foram adicionados."
+                    situacao = "Somente registros posteriores à última DataHora foram adicionados."
 
                 adicionados = len(df_novo_util)
 
@@ -246,28 +246,28 @@ def interface_cvp_sportal():
                 total_final = len(df_final)
 
             # Exibir resultados
-            st.success("Processamento Finalizado com Sucesso!")
+            st.success("Processamento finalizado com sucesso!")
             st.markdown("### Resumo")
 
             col_a, col_b, col_c = st.columns(3)
             with col_a:
-                st.metric("Registros Adicionados", adicionados)
+                st.metric("Registros adicionados", adicionados)
             with col_b:
-                st.metric("Total Final", total_final)
+                st.metric("Total final", total_final)
             with col_c:
                 ultima_ref = (
                     ultima_datahora_base.strftime("%d/%m/%Y %H:%M:%S")
                     if ultima_datahora_base is not None
                     else "N/A"
                 )
-                st.metric("Ultima DataHora Base", ultima_ref)
+                st.metric("Última DataHora base", ultima_ref)
 
-            st.info(f"**Situacao:** {situacao}")
+            st.info(f"**Situação:** {situacao}")
 
             if removidos_invalidos > 0:
-                st.warning(f"Registros excluidos por coordenadas invalidas: {removidos_invalidos}")
+                st.warning(f"Registros excluídos por coordenadas inválidas: {removidos_invalidos}")
             if removidos_por_datahora > 0:
-                st.warning(f"Registros excluidos por serem anteriores/iguais a ultima DataHora: {removidos_por_datahora}")
+                st.warning(f"Registros excluídos por serem anteriores/iguais à última DataHora: {removidos_por_datahora}")
 
             # Download
             excel_data = gerar_arquivo_excel(df_final, sheet_name="CVP-SPORTAL")
