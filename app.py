@@ -7,7 +7,7 @@ import sys
 import os
 
 # =========================
-# CONFIGURACAO DA PAGINA (DEVE SER O PRIMEIRO COMANDO st.*)
+# CONFIGURAÇÃO DA PÁGINA (DEVE SER O PRIMEIRO COMANDO st.*)
 # =========================
 st.set_page_config(
     page_title="QGP Online - SUPESP/CE",
@@ -16,7 +16,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Adicionar pasta modulos ao path
+# Adicionar pasta módulos ao path
 sys.path.insert(0, os.path.dirname(__file__))  # Raiz do projeto para imports como 'from modulos.utils import'
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'modulos'))
 
@@ -107,25 +107,25 @@ def render_topbar():
     """, unsafe_allow_html=True)
 
 # =========================
-# FUNCAO PARA IMPORTAR MODULO SOB DEMANDA (lazy import)
-# Evita crash do app se um modulo tiver erro
+# FUNÇÃO PARA IMPORTAR MÓDULO SOB DEMANDA (lazy import)
+# Evita crash do app se um módulo tiver erro
 # =========================
 def carregar_modulo(nome_modulo: str, nome_funcao: str):
-    """Importa um modulo sob demanda e retorna a funcao solicitada.
-    Retorna None se o modulo falhar, exibindo o erro de forma amigavel."""
+    """Importa um módulo sob demanda e retorna a função solicitada.
+    Retorna None se o módulo falhar, exibindo o erro de forma amigável."""
     try:
         import importlib
         mod = importlib.import_module(f"modulos.{nome_modulo}")
         return getattr(mod, nome_funcao, None)
     except Exception as e:
-        st.error(f"❌ Erro ao carregar modulo '{nome_modulo}': {e}")
+        st.error(f"❌ Erro ao carregar módulo '{nome_modulo}': {e}")
         import traceback
         with st.expander("Detalhes do erro"):
             st.code(traceback.format_exc())
         return None
 
 # =========================
-# INICIALIZACAO
+# INICIALIZAÇÃO
 # =========================
 load_custom_css()
 render_topbar()
@@ -142,19 +142,19 @@ with st.sidebar:
             "CVLI",
             "CVP (SPORTAL)",
             "CVP (SIP)",
-            "PERTURBACAO DO SOSSEGO ALHEIO",
-            "DESLOCAMENTO FORCADO",
-            "ROUBO DE VEICULO (SPORTAL)",
-            "ROUBO DE VEICULO (SIP)",
-            "ACIDENTE DE TRANSITO",
+            "PERTURBAÇÃO DO SOSSEGO ALHEIO",
+            "DESLOCAMENTO FORÇADO",
+            "ROUBO DE VEÍCULO (SPORTAL)",
+            "ROUBO DE VEÍCULO (SIP)",
+            "ACIDENTE DE TRÂNSITO",
             "FURTO (SPORTAL)",
             "FURTO (SIP)",
             "TODOS OS INDICADORES",
         ],
     )
 
-    st.markdown("### Informacoes")
-    st.markdown(f'<div class="metric-chip">Versao 1.0.0</div>', unsafe_allow_html=True)
+    st.markdown("### Informações")
+    st.markdown(f'<div class="metric-chip">Versão 1.0.0</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="metric-chip">Data {datetime.now().strftime("%d/%m/%Y")}</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="metric-chip">Hora {datetime.now().strftime("%H:%M:%S")}</div>', unsafe_allow_html=True)
 
@@ -162,27 +162,27 @@ with st.sidebar:
 # MAPEAMENTO DE INDICADORES
 # =========================
 MAPEAMENTO = {
-    "CVLI":                       ("cvli",                  "interface_cvli"),
-    "CVP (SPORTAL)":              ("cvp_sportal",           "interface_cvp_sportal"),
-    "CVP (SIP)":                  ("cvp_sip",               "interface_cvp_sip"),
-    "PERTURBACAO DO SOSSEGO ALHEIO": ("perturbacao_sossego", "interface_perturbacao_sossego"),
-    "DESLOCAMENTO FORCADO":        ("deslocamento_forcado",  "interface_deslocamento_forcado"),
-    "ROUBO DE VEICULO (SPORTAL)": ("roubo_veiculo_sportal", "interface_roubo_veiculo_sportal"),
-    "ROUBO DE VEICULO (SIP)":     ("roubo_veiculo_sip",     "interface_roubo_veiculo_sip"),
-    "ACIDENTE DE TRANSITO":        ("acidente_transito",     "interface_acidente_transito"),
-    "FURTO (SPORTAL)":             ("furto_veiculo_sportal", "interface_furto_veiculo_sportal"),
-    "FURTO (SIP)":                 ("furto_veiculo_sip",     "interface_furto_veiculo_sip"),
-    "TODOS OS INDICADORES":        ("todos_indicadores",     "interface_todos_indicadores"),
+    "CVLI":                          ("cvli",                  "interface_cvli"),
+    "CVP (SPORTAL)":                 ("cvp_sportal",           "interface_cvp_sportal"),
+    "CVP (SIP)":                     ("cvp_sip",               "interface_cvp_sip"),
+    "PERTURBAÇÃO DO SOSSEGO ALHEIO": ("perturbacao_sossego",   "interface_perturbacao_sossego"),
+    "DESLOCAMENTO FORÇADO":          ("deslocamento_forcado",  "interface_deslocamento_forcado"),
+    "ROUBO DE VEÍCULO (SPORTAL)":    ("roubo_veiculo_sportal", "interface_roubo_veiculo_sportal"),
+    "ROUBO DE VEÍCULO (SIP)":        ("roubo_veiculo_sip",     "interface_roubo_veiculo_sip"),
+    "ACIDENTE DE TRÂNSITO":          ("acidente_transito",     "interface_acidente_transito"),
+    "FURTO (SPORTAL)":               ("furto_veiculo_sportal", "interface_furto_veiculo_sportal"),
+    "FURTO (SIP)":                   ("furto_veiculo_sip",     "interface_furto_veiculo_sip"),
+    "TODOS OS INDICADORES":          ("todos_indicadores",     "interface_todos_indicadores"),
 }
 
 # =========================
-# CONTEUDO PRINCIPAL
+# CONTEÚDO PRINCIPAL
 # =========================
 if indicador == "Selecione um indicador...":
     st.markdown("## Bem-vindo ao QGP Online")
-    st.info("👉 Selecione um indicador no painel lateral para comecar")
+    st.info("👉 Selecione um indicador no painel lateral para começar")
 
-    st.markdown("### Indicadores Disponiveis")
+    st.markdown("### Indicadores Disponíveis")
     col1, col2, col3 = st.columns(3)
 
     with col1:
@@ -190,15 +190,15 @@ if indicador == "Selecione um indicador...":
         - ✅ CVLI
         - ✅ CVP (SPORTAL)
         - ✅ CVP (SIP)
-        - ✅ PERTURBACAO DO SOSSEGO
+        - ✅ PERTURBAÇÃO DO SOSSEGO
         """)
 
     with col2:
         st.markdown("""
-        - ✅ DESLOCAMENTO FORCADO
-        - ✅ ROUBO DE VEICULO (SPORTAL)
-        - ✅ ROUBO DE VEICULO (SIP)
-        - ✅ ACIDENTE DE TRANSITO
+        - ✅ DESLOCAMENTO FORÇADO
+        - ✅ ROUBO DE VEÍCULO (SPORTAL)
+        - ✅ ROUBO DE VEÍCULO (SIP)
+        - ✅ ACIDENTE DE TRÂNSITO
         """)
 
     with col3:
@@ -214,13 +214,13 @@ elif indicador in MAPEAMENTO:
     if func:
         func()
 else:
-    st.warning(f"🚧 O indicador **{indicador}** estara disponivel em breve")
+    st.warning(f"🚧 O indicador **{indicador}** estará disponível em breve")
     st.info("👨‍💻 Sistema em desenvolvimento")
 
 # =========================
-# RODAPE
+# RODAPÉ
 # =========================
 st.markdown(
-    '<p class="footer-note">QGP Online — Atualizador de Indicadores de Seguranca Publica — SUPESP/CE</p>',
+    '<p class="footer-note">QGP Online — Atualizador de Indicadores de Segurança Pública — SUPESP/CE</p>',
     unsafe_allow_html=True
 )
