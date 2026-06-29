@@ -42,7 +42,7 @@ def load_custom_css():
     }
 
     .block-container {
-        padding-top: 1.2rem;
+        padding-top: 2.6rem !important;
         padding-bottom: 2rem;
     }
 
@@ -50,26 +50,31 @@ def load_custom_css():
         display: flex;
         align-items: center;
         gap: 14px;
-        margin-bottom: 1rem;
-        padding: 0.4rem 0 0.8rem 0;
+        margin-top: 0.4rem;
+        margin-bottom: 1.2rem;
+        padding: 0.8rem 0 1rem 0;
         border-bottom: 1px solid rgba(216, 138, 24, 0.18);
     }
 
     .topbar-title {
-        font-size: 1.9rem;
-        font-weight: 800;
+        font-size: 2.2rem;
+        font-weight: 900;
         color: #ffffff;
-        line-height: 1.05;
+        line-height: 1.15;
         margin: 0;
+        padding-top: 0.15rem;
+        white-space: normal;
+        overflow: visible;
     }
 
     .topbar-subtitle {
-        font-size: 0.95rem;
-        font-weight: 700;
+        font-size: 0.98rem;
+        font-weight: 800;
         color: #f39a1f;
         text-transform: uppercase;
         letter-spacing: 0.08em;
-        margin-top: 0.25rem;
+        margin-top: 0.35rem;
+        line-height: 1.35;
     }
 
     .home-card {
@@ -92,6 +97,7 @@ def load_custom_css():
         color: #cdd8d2;
         font-size: 0.98rem;
         margin-bottom: 0.3rem;
+        line-height: 1.5;
     }
 
     .section-title {
@@ -125,9 +131,18 @@ def load_custom_css():
         color: #16211d !important;
         border: none !important;
         border-radius: 12px !important;
-        font-weight: 800 !important;
-        padding: 0.75rem 1.15rem !important;
+        font-weight: 900 !important;
+        font-size: 0.98rem !important;
+        padding: 0.85rem 1.15rem !important;
         width: 100% !important;
+        min-height: 3.2rem !important;
+        text-align: center !important;
+    }
+
+    .stButton > button p,
+    .stButton > button span,
+    .stButton > button div {
+        font-weight: 900 !important;
     }
 
     .stButton > button:hover {
@@ -139,6 +154,7 @@ def load_custom_css():
         background: transparent !important;
         color: #f3f4ef !important;
         border: 1px solid rgba(243, 154, 31, 0.28) !important;
+        font-weight: 800 !important;
     }
 
     .secondary-button .stButton > button:hover {
