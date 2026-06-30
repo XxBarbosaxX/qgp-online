@@ -40,8 +40,6 @@ from modulos.utils import (
 )
 
 
-# ── Configuração dos indicadores ──────────────────────────────────────────────
-
 INDICADORES_CONFIG = {
     "CVLI": {
         "ordem": 1,
@@ -129,10 +127,8 @@ INDICADORES_ORDEM = [
 ]
 
 
-# ── Utilitários de reconhecimento automático ─────────────────────────────────
-
 def _normalizar_texto(texto: str) -> str:
-    texto = texto.strip().upper()
+    texto = str(texto).strip().upper()
     texto = unicodedata.normalize("NFKD", texto)
     texto = "".join(ch for ch in texto if not unicodedata.combining(ch))
     texto = re.sub(r"[^A-Z0-9]+", "-", texto)
@@ -141,7 +137,7 @@ def _normalizar_texto(texto: str) -> str:
 
 
 def _tokens_nome_arquivo(nome_arquivo: str) -> str:
-    nome_base = nome_arquivo.rsplit(".", 1)[0]
+    nome_base = str(nome_arquivo).rsplit(".", 1)[0]
     return _normalizar_texto(nome_base)
 
 
@@ -186,13 +182,12 @@ def _mapa_tokens_indicadores_nome() -> dict[str, list[str]]:
 
 def _identificar_por_nome(nome_arquivo: str) -> str | None:
     nome_norm = _tokens_nome_arquivo(nome_arquivo)
-    mapa = _mapa_tokens_indicadores_nome()
-
     correspondencias = []
-    for indicador, tokens in mapa.items():
+
+    for indicador, tokens in _mapa_tokens_indicadores_nome().items():
         for token in tokens:
             token_norm = _normalizar_texto(token)
-            if token_norm in nome_norm:
+            if token_norm and token_norm in nome_norm:
                 correspondencias.append((len(token_norm), indicador))
 
     if not correspondencias:
@@ -206,17 +201,25 @@ def _identificar_por_conteudo(arquivo) -> str | None:
     try:
         arquivo.seek(0)
         df = pd.read_excel(arquivo, nrows=200)
+        arquivo.seek(0)
     except Exception:
         return None
 
     df_norm = normalizar_colunas(df)
     colunas = set(df_norm.columns)
 
-    def tem(*cols):
-        return all(c in colunas for c in cols)
-
     def tem_algum(*cols):
         return any(c in colunas for c in cols)
+
+    if df_norm.empty:
+        return None
+
+    natureza_series = (
+        df_norm["natureza"].astype(str).fillna("").unique()
+        if "natureza" in df_norm.columns
+        else []
+    )
+    natureza_tokens = {_normalizar_texto(v) for v in natureza_series}
 
     if tem_algum("natureza", "tipo_crime", "tipo_ocorrencia") and tem_algum("vitima", "nome_vitima"):
         if tem_algum("cvli", "homicidio", "latrocini"):
@@ -230,41 +233,34 @@ def _identificar_por_conteudo(arquivo) -> str | None:
         if tem_algum("cvp", "crime_contra_patrimonio"):
             return "CVP (SPORTAL)"
 
-    if tem_algum("natureza") and any(
-        "PERTURBACAO" in _normalizar_texto(str(v)) or "SOSSEGO" in _normalizar_texto(str(v))
-        for v in df_norm["natureza"].astype(str).unique()
-    ):
-        return "PERTURBAÇÃO AO SOSSEGO ALHEIO"
+    if "natureza" in df_norm.columns:
+        if any("PERTURBACAO" in v or "SOSSEGO" in v for v in natureza_tokens):
+            return "PERTURBAÇÃO AO SOSSEGO ALHEIO"
 
-    if tem_algum("natureza"):
-        valores_nat = set(_normalizar_texto(str(v)) for v in df_norm["natureza"].astype(str).unique())
-        if any("DESLOCAMENTO-FORCADO" in v or "DESLOCAMENTO" in v for v in valores_nat):
+        if any("DESLOCAMENTO-FORCADO" in v or "DESLOCAMENTO" in v for v in natureza_tokens):
             return "DESLOCAMENTO FORÇADO"
 
     if tem_algum("placa", "chassi", "modelo", "veiculo", "categoria_veiculo"):
         if tem_algum("logradouro", "endereco", "bairro", "municipio"):
-            if tem_algum("natureza"):
-                valores_nat = set(_normalizar_texto(str(v)) for v in df_norm["natureza"].astype(str).unique())
-                if any("ROUBO" in v for v in valores_nat):
+            if "natureza" in df_norm.columns:
+                if any("ROUBO" in v for v in natureza_tokens):
                     return "ROUBO DE VEÍCULO (SIP)"
-                if any("FURTO" in v for v in valores_nat):
+                if any("FURTO" in v for v in natureza_tokens):
                     return "FURTO DE VEÍCULO (SIP)"
-        else:
-            if tem_algum("latitude", "lat") and tem_algum("longitude", "long", "lon"):
-                if tem_algum("natureza"):
-                    valores_nat = set(_normalizar_texto(str(v)) for v in df_norm["natureza"].astype(str).unique())
-                    if any("ROUBO" in v for v in valores_nat):
-                        return "ROUBO DE VEÍCULO (SPORTAL)"
-                    if any("FURTO" in v for v in valores_nat):
-                        return "FURTO DE VEÍCULO (SPORTAL)"
+        elif tem_algum("latitude", "lat") and tem_algum("longitude", "long", "lon"):
+            if "natureza" in df_norm.columns:
+                if any("ROUBO" in v for v in natureza_tokens):
+                    return "ROUBO DE VEÍCULO (SPORTAL)"
+                if any("FURTO" in v for v in natureza_tokens):
+                    return "FURTO DE VEÍCULO (SPORTAL)"
 
     if tem_algum("natureza", "tipo_acidente", "tipo_crime"):
         if "natureza" in df_norm.columns:
-            valores_nat = set(_normalizar_texto(str(v)) for v in df_norm["natureza"].astype(str).unique())
+            valores_nat = {_normalizar_texto(str(v)) for v in df_norm["natureza"].astype(str).unique()}
         elif "tipo_acidente" in df_norm.columns:
-            valores_nat = set(_normalizar_texto(str(v)) for v in df_norm["tipo_acidente"].astype(str).unique())
+            valores_nat = {_normalizar_texto(str(v)) for v in df_norm["tipo_acidente"].astype(str).unique()}
         else:
-            valores_nat = set(_normalizar_texto(str(v)) for v in df_norm["tipo_crime"].astype(str).unique())
+            valores_nat = {_normalizar_texto(str(v)) for v in df_norm["tipo_crime"].astype(str).unique()}
 
         if any("ACIDENTE" in v or "COLISAO" in v or "TRANSITO" in v for v in valores_nat):
             return "ACIDENTE DE TRÂNSITO"
@@ -273,7 +269,7 @@ def _identificar_por_conteudo(arquivo) -> str | None:
 
 
 def _identificar_indicador(arquivo) -> tuple[str | None, str]:
-    nome_arq = arquivo.name
+    nome_arq = getattr(arquivo, "name", "arquivo_sem_nome")
     ind_nome = _identificar_por_nome(nome_arq)
     if ind_nome:
         return ind_nome, "Identificado automaticamente pelo nome do arquivo."
@@ -313,14 +309,8 @@ def _registrar_arquivos_base(arquivos_upload) -> tuple[list[str], list[str]]:
     return reconhecidos, nao_reconhecidos
 
 
-# ── Silenciador de visualizações de validação ────────────────────────────────
-
 @contextmanager
 def _silenciar_streamlit_temporariamente():
-    """
-    Suprime saídas visuais temporárias de debug/validação geradas pelos módulos
-    individuais durante o processamento consolidado.
-    """
     funcoes_silenciadas = [
         "write",
         "dataframe",
@@ -336,6 +326,9 @@ def _silenciar_streamlit_temporariamente():
         "header",
         "divider",
         "code",
+        "toast",
+        "balloons",
+        "snow",
     ]
 
     originais = {}
@@ -346,31 +339,52 @@ def _silenciar_streamlit_temporariamente():
     class _DummyContext:
         def __enter__(self):
             return self
+
         def __exit__(self, exc_type, exc, tb):
             return False
+
         def write(self, *args, **kwargs):
             return None
+
         def dataframe(self, *args, **kwargs):
             return None
+
         def table(self, *args, **kwargs):
             return None
+
         def caption(self, *args, **kwargs):
             return None
+
         def markdown(self, *args, **kwargs):
             return None
+
         def code(self, *args, **kwargs):
             return None
 
-    originais["expander"] = getattr(st, "expander", None)
-    originais["empty"] = getattr(st, "empty", None)
+        def info(self, *args, **kwargs):
+            return None
+
+        def success(self, *args, **kwargs):
+            return None
+
+        def warning(self, *args, **kwargs):
+            return None
+
+        def error(self, *args, **kwargs):
+            return None
 
     for nome in funcoes_silenciadas:
         if hasattr(st, nome):
             originais[nome] = getattr(st, nome)
             setattr(st, nome, _noop)
 
-    st.expander = lambda *args, **kwargs: _DummyContext()
-    st.empty = lambda *args, **kwargs: _DummyContext()
+    if hasattr(st, "expander"):
+        originais["expander"] = st.expander
+        st.expander = lambda *args, **kwargs: _DummyContext()
+
+    if hasattr(st, "empty"):
+        originais["empty"] = st.empty
+        st.empty = lambda *args, **kwargs: _DummyContext()
 
     try:
         yield
@@ -379,10 +393,45 @@ def _silenciar_streamlit_temporariamente():
             setattr(st, nome, func)
 
 
-# ── Wrapper CVP SPORTAL ───────────────────────────────────────────────────────
+def _normalizar_saida_processamento(resultado, nome_indicador: str) -> tuple[pd.DataFrame, dict]:
+    if isinstance(resultado, tuple) and len(resultado) == 2:
+        df_final, resumo = resultado
+
+    elif isinstance(resultado, dict):
+        if not resultado.get("sucesso", True):
+            raise ValueError(resultado.get("erro", f"Falha ao processar {nome_indicador}."))
+
+        df_final = resultado.get("df_final")
+        if df_final is None:
+            raise ValueError(f"O processador de {nome_indicador} não retornou 'df_final'.")
+
+        resumo = {
+            "adicionados": resultado.get("adicionados", 0),
+            "total_final": resultado.get("total_final", len(df_final)),
+            "geocodificados": resultado.get("geocodificados", 0),
+            "situacao": resultado.get("situacao", "Processado com sucesso."),
+        }
+
+    else:
+        raise ValueError(
+            f"Retorno inválido do processador de {nome_indicador}: {type(resultado).__name__}"
+        )
+
+    if not isinstance(df_final, pd.DataFrame):
+        raise ValueError(f"O resultado de {nome_indicador} não é um DataFrame válido.")
+
+    if not isinstance(resumo, dict):
+        resumo = {}
+
+    resumo.setdefault("adicionados", 0)
+    resumo.setdefault("total_final", len(df_final))
+    resumo.setdefault("geocodificados", 0)
+    resumo.setdefault("situacao", "Processado com sucesso.")
+
+    return df_final, resumo
+
 
 def _processar_cvp_sportal(buf_01: BytesIO, buf_02: BytesIO):
-    """Replica a lógica de processamento do CVP (SPORTAL) sem a UI do Streamlit."""
     buf_01.seek(0)
     buf_02.seek(0)
 
@@ -403,15 +452,16 @@ def _processar_cvp_sportal(buf_01: BytesIO, buf_02: BytesIO):
     if col_hora_base and col_hora_novo and col_hora_base != col_hora_novo:
         df_novo = df_novo.rename(columns={col_hora_novo: col_hora_base})
 
-    col_data = col_data_base
-    col_hora = col_hora_base
+    col_data = col_data_base or col_data_novo
+    col_hora = col_hora_base or col_hora_novo
 
     col_lat_base = encontrar_coluna_por_nomes(df_base, ["lat", "latitude"], obrigatoria=False)
     col_lon_base = encontrar_coluna_por_nomes(df_base, ["long", "longitude", "lon"], obrigatoria=False)
-    col_lat_novo = encontrar_coluna_por_nomes(df_novo, ["latitude"], obrigatoria=False)
-    col_lon_novo = encontrar_coluna_por_nomes(df_novo, ["longitude"], obrigatoria=False)
 
     df_novo = renomear_colunas_equivalentes(df_base, df_novo)
+
+    col_lat_novo = encontrar_coluna_por_nomes(df_novo, ["lat", "latitude"], obrigatoria=False)
+    col_lon_novo = encontrar_coluna_por_nomes(df_novo, ["long", "longitude", "lon"], obrigatoria=False)
 
     total_lido = len(df_novo)
     if col_lat_novo and col_lon_novo:
@@ -457,7 +507,8 @@ def _processar_cvp_sportal(buf_01: BytesIO, buf_02: BytesIO):
         df_final = base_sem_aux.copy()
 
     df_final = criar_coluna_datahora(df_final, col_data, col_hora, "datahora")
-    df_final = df_final.sort_values("datahora", ascending=True, na_position="last").reset_index(drop=True)
+    if "datahora" in df_final.columns:
+        df_final = df_final.sort_values("datahora", ascending=True, na_position="last").reset_index(drop=True)
     df_final = df_final.drop(columns=["datahora"], errors="ignore")
 
     resumo = {
@@ -472,10 +523,7 @@ def _processar_cvp_sportal(buf_01: BytesIO, buf_02: BytesIO):
     return df_final, resumo
 
 
-# ── Dispatcher central ────────────────────────────────────────────────────────
-
 def _chamar_processador(nome_indicador: str, buf_01: BytesIO, buf_02: BytesIO):
-    """Chama a função de processamento correta para cada indicador."""
     buf_01.seek(0)
     buf_02.seek(0)
 
@@ -483,44 +531,34 @@ def _chamar_processador(nome_indicador: str, buf_01: BytesIO, buf_02: BytesIO):
         if nome_indicador == "CVLI":
             proc = ProcessadorCVLI()
             res = proc.processar(buf_01, buf_02)
-            if not res["sucesso"]:
-                raise ValueError(res["erro"])
-
-            df = res["df_final"]
-            resumo = {
-                "adicionados": res.get("adicionados", 0),
-                "total_final": res.get("total_final", len(df)),
-                "geocodificados": 0,
-                "situacao": "Atualizado" if res.get("houve_substituicao") else "Complementado",
-            }
-            return df, resumo
+            return _normalizar_saida_processamento(res, nome_indicador)
 
         if nome_indicador == "CVP (SPORTAL)":
-            return _processar_cvp_sportal(buf_01, buf_02)
+            return _normalizar_saida_processamento(_processar_cvp_sportal(buf_01, buf_02), nome_indicador)
 
         if nome_indicador == "CVP (SIP)":
-            return processar_cvp_sip(buf_01, buf_02)
+            return _normalizar_saida_processamento(processar_cvp_sip(buf_01, buf_02), nome_indicador)
 
         if nome_indicador == "PERTURBAÇÃO AO SOSSEGO ALHEIO":
-            return processar_perturbacao_sossego(buf_01, buf_02)
+            return _normalizar_saida_processamento(processar_perturbacao_sossego(buf_01, buf_02), nome_indicador)
 
         if nome_indicador == "DESLOCAMENTO FORÇADO":
-            return processar_deslocamento_forcado(buf_01, buf_02)
+            return _normalizar_saida_processamento(processar_deslocamento_forcado(buf_01, buf_02), nome_indicador)
 
         if nome_indicador == "ROUBO DE VEÍCULO (SPORTAL)":
-            return processar_roubo_veiculo_sportal(buf_01, buf_02)
+            return _normalizar_saida_processamento(processar_roubo_veiculo_sportal(buf_01, buf_02), nome_indicador)
 
         if nome_indicador == "ROUBO DE VEÍCULO (SIP)":
-            return processar_roubo_veiculo_sip(buf_01, buf_02)
+            return _normalizar_saida_processamento(processar_roubo_veiculo_sip(buf_01, buf_02), nome_indicador)
 
         if nome_indicador == "ACIDENTE DE TRÂNSITO":
-            return processar_acidente_transito(buf_01, buf_02)
+            return _normalizar_saida_processamento(processar_acidente_transito(buf_01, buf_02), nome_indicador)
 
         if nome_indicador == "FURTO DE VEÍCULO (SPORTAL)":
-            return processar_furto_veiculo_sportal(buf_01, buf_02)
+            return _normalizar_saida_processamento(processar_furto_veiculo_sportal(buf_01, buf_02), nome_indicador)
 
         if nome_indicador == "FURTO DE VEÍCULO (SIP)":
-            return processar_furto_veiculo_sip(buf_01, buf_02)
+            return _normalizar_saida_processamento(processar_furto_veiculo_sip(buf_01, buf_02), nome_indicador)
 
     raise ValueError(f"Indicador desconhecido: {nome_indicador}")
 
@@ -532,8 +570,6 @@ def _df_para_excel(df: pd.DataFrame, sheet_name: str = "Dados") -> bytes:
     buf.seek(0)
     return buf.getvalue()
 
-
-# ── Inicialização de estado ───────────────────────────────────────────────────
 
 def _init_state():
     defaults = {
@@ -554,10 +590,7 @@ def _init_state():
             st.session_state[chave] = valor
 
 
-# ── Interface principal ───────────────────────────────────────────────────────
-
 def interface_todos_indicadores():
-    """Interface principal do módulo TODOS OS INDICADORES."""
     _init_state()
 
     st.title("Processamento Consolidado")
@@ -585,6 +618,9 @@ def interface_todos_indicadores():
         arquivo_02_upload.seek(0)
         st.session_state.todos_arq02_bytes = arquivo_02_upload.read()
         st.session_state.todos_arq02_nome = arquivo_02_upload.name
+    else:
+        st.session_state.todos_arq02_bytes = None
+        st.session_state.todos_arq02_nome = None
 
     if st.session_state.todos_arq02_nome:
         st.success(f"Arquivo 02 carregado: {st.session_state.todos_arq02_nome}")
@@ -634,8 +670,7 @@ def interface_todos_indicadores():
                     + ", ".join(arquivos_dup)
                     + ". Apenas o primeiro arquivo reconhecido foi considerado."
                 )
-
-    elif not arquivos_base_upload:
+    else:
         st.session_state.todos_arq01_bytes = {}
         st.session_state.todos_arq01_nomes = {}
         st.session_state.todos_erros_upload = {}
@@ -720,9 +755,11 @@ def interface_todos_indicadores():
         progresso = st.progress(0)
         status = st.empty()
         resultados_linha = []
+        interrompido = False
 
         for idx, nome_ind in enumerate(indicadores_prontos):
             if st.session_state.todos_parar:
+                interrompido = True
                 status.warning("Processo interrompido pelo usuário.")
                 break
 
@@ -770,7 +807,11 @@ def interface_todos_indicadores():
             progresso.progress((idx + 1) / total)
 
         st.session_state.todos_processando = False
-        status.success("Processamento concluído!")
+
+        if interrompido:
+            status.warning("Processamento interrompido antes da conclusão.")
+        else:
+            status.success("Processamento concluído!")
 
         if resultados_linha:
             st.divider()
@@ -840,5 +881,4 @@ def interface_todos_indicadores():
             st.error(f"{cfg['ordem']} - {cfg['label']}: {erro}")
 
 
-# Alias de compatibilidade
 ProcessadorTodosIndicadores = interface_todos_indicadores
