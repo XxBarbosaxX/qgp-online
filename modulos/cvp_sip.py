@@ -135,6 +135,16 @@ def gerar_excel_em_memoria(df: pd.DataFrame) -> bytes:
     return buffer.getvalue()
 
 
+def _safe_streamlit_call(target, metodo: str, mensagem: str):
+    try:
+        if target is not None and hasattr(target, metodo):
+            getattr(target, metodo)(mensagem)
+        else:
+            getattr(st, metodo)(mensagem)
+    except Exception:
+        getattr(st, metodo)(mensagem)
+
+
 @st.cache_data(show_spinner=False)
 def carregar_municipios() -> dict:
     caminho = Path(ARQ_CACHE_MUN)
@@ -602,9 +612,10 @@ def geocodificar_linhas_novas(
             geocodificados += 1
 
         progresso.progress(indice / max(total, 1))
-        status.info(
-            f"Geocodificando linhas novas... {indice}/{total} | "
-            f"Geocodificados: {geocodificados}"
+        _safe_streamlit_call(
+            status,
+            "info",
+            f"Geocodificando linhas novas... {indice}/{total} | Geocodificados: {geocodificados}"
         )
 
     df = df.copy()
@@ -625,7 +636,11 @@ def geocodificar_linhas_novas(
         & (df["numero_busca"].fillna("").astype(str).str.strip() == "")
     )
 
-    status.success(f"Geocodificação concluída. Registros geocodificados: {geocodificados}")
+    _safe_streamlit_call(
+        status,
+        "success",
+        f"Geocodificação concluída. Registros geocodificados: {geocodificados}"
+    )
     return df, geocodificados
 
 
