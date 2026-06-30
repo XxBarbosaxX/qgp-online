@@ -153,10 +153,21 @@ def _eh_furto_veiculo(valor: str) -> bool:
     if not txt:
         return False
 
-    termos_furto = ["FURTO"]
-    termos_veiculo = ["VEICULO", "VEICULOS", "AUTOMOVEL", "MOTO", "MOTOCICLETA", "CARRO"]
+    padroes_exatos_ou_fortes = [
+        "FURTO DE VEICULO",
+        "FURTO VEICULO",
+        "FURTO DE VEICULOS",
+        "FURTO VEICULOS",
+        "FURTO DE AUTOMOVEL",
+        "FURTO AUTOMOVEL",
+        "FURTO DE MOTOCICLETA",
+        "FURTO MOTOCICLETA",
+    ]
 
-    return any(t in txt for t in termos_furto) and any(t in txt for t in termos_veiculo)
+    if any(p in txt for p in padroes_exatos_ou_fortes):
+        return True
+
+    return "FURTO" in txt and "VEICULO" in txt
 
 
 def gerar_excel_em_memoria(df: pd.DataFrame) -> bytes:
@@ -689,9 +700,15 @@ def processar_furto_veiculo_sip(arquivo_01, arquivo_02):
         )
 
     total_antes_filtro_tipo = len(df_novo)
-    mascara_furto_veiculo = df_novo[col_natureza].apply(_eh_furto_veiculo)
-    df_novo = df_novo[mascara_furto_veiculo].copy()
+    serie_natureza = df_novo[col_natureza].fillna("").astype(str)
+    mascara_furto_veiculo = serie_natureza.apply(_eh_furto_veiculo)
+    df_novo = df_novo.loc[mascara_furto_veiculo].copy()
     removidos_por_tipo = total_antes_filtro_tipo - len(df_novo)
+
+    if df_novo.empty:
+        raise ValueError(
+            f"Após aplicar o filtro de Natureza na coluna '{col_natureza}', nenhum registro de Furto de Veículo foi encontrado na aba '{aba_novo}'."
+        )
 
     col_data_base = encontrar_coluna_data(df_base)
     col_hora_base = encontrar_coluna_hora(df_base)
