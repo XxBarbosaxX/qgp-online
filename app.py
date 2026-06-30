@@ -262,19 +262,21 @@ MAPEAMENTO = {
     "TODOS OS INDICADORES": ("todos_indicadores", "interface_todos_indicadores"),
 }
 
-# Mantido apenas para referência geral
-INDICADORES_HOME = [
-    "TODOS OS INDICADORES",
-    "ACIDENTE DE TRÂNSITO",
-    "CVLI",
-    "CVP (SIP)",
-    "CVP (SPORTAL)",
-    "DESLOCAMENTO FORÇADO",
-    "FURTO DE VEÍCULO (SIP)",
-    "FURTO DE VEÍCULO (SPORTAL)",
-    "PERTURBAÇÃO AO SOSSEGO ALHEIO",
-    "ROUBO DE VEÍCULO (SIP)",
-    "ROUBO DE VEÍCULO (SPORTAL)",
+# =========================
+# ÍCONES DOS INDICADORES
+# =========================
+INDICADORES_COM_ICONES = [
+    ("⚡ TODOS OS INDICADORES", "TODOS OS INDICADORES"),
+    ("🛡️ CVLI", "CVLI"),
+    ("📍 CVP (SPORTAL)", "CVP (SPORTAL)"),
+    ("🛰️ CVP (SIP)", "CVP (SIP)"),
+    ("🔊 PERTURBAÇÃO AO SOSSEGO ALHEIO", "PERTURBAÇÃO AO SOSSEGO ALHEIO"),
+    ("🚨 DESLOCAMENTO FORÇADO", "DESLOCAMENTO FORÇADO"),
+    ("🚗 ROUBO DE VEÍCULO (SPORTAL)", "ROUBO DE VEÍCULO (SPORTAL)"),
+    ("🚔 ROUBO DE VEÍCULO (SIP)", "ROUBO DE VEÍCULO (SIP)"),
+    ("🛣️ ACIDENTE DE TRÂNSITO", "ACIDENTE DE TRÂNSITO"),
+    ("🔓 FURTO DE VEÍCULO (SPORTAL)", "FURTO DE VEÍCULO (SPORTAL)"),
+    ("🔐 FURTO DE VEÍCULO (SIP)", "FURTO DE VEÍCULO (SIP)"),
 ]
 
 # =========================
@@ -309,18 +311,18 @@ def render_home():
 
     st.markdown("<div style='height: 0.7rem;'></div>", unsafe_allow_html=True)
 
-    # Demais indicadores ordenados abaixo
+    # Ordem definida pelo usuário
     indicadores_restantes = [
-        "ACIDENTE DE TRÂNSITO",
-        "CVLI",
-        "CVP (SIP)",
-        "CVP (SPORTAL)",
-        "DESLOCAMENTO FORÇADO",
-        "FURTO DE VEÍCULO (SIP)",
-        "FURTO DE VEÍCULO (SPORTAL)",
-        "PERTURBAÇÃO AO SOSSEGO ALHEIO",
-        "ROUBO DE VEÍCULO (SIP)",
-        "ROUBO DE VEÍCULO (SPORTAL)",
+        ("🛡️ CVLI", "CVLI"),
+        ("📍 CVP (SPORTAL)", "CVP (SPORTAL)"),
+        ("🛰️ CVP (SIP)", "CVP (SIP)"),
+        ("🔊 PERTURBAÇÃO AO SOSSEGO ALHEIO", "PERTURBAÇÃO AO SOSSEGO ALHEIO"),
+        ("🚨 DESLOCAMENTO FORÇADO", "DESLOCAMENTO FORÇADO"),
+        ("🚗 ROUBO DE VEÍCULO (SPORTAL)", "ROUBO DE VEÍCULO (SPORTAL)"),
+        ("🚔 ROUBO DE VEÍCULO (SIP)", "ROUBO DE VEÍCULO (SIP)"),
+        ("🛣️ ACIDENTE DE TRÂNSITO", "ACIDENTE DE TRÂNSITO"),
+        ("🔓 FURTO DE VEÍCULO (SPORTAL)", "FURTO DE VEÍCULO (SPORTAL)"),
+        ("🔐 FURTO DE VEÍCULO (SIP)", "FURTO DE VEÍCULO (SIP)"),
     ]
 
     col1, col2, col3 = st.columns(3)
@@ -333,9 +335,9 @@ def render_home():
 
     for coluna, bloco in zip([col1, col2, col3], blocos):
         with coluna:
-            for nome in bloco:
-                if st.button(nome, key=f"btn_{nome}", use_container_width=True):
-                    selecionar_indicador(nome)
+            for label, valor in bloco:
+                if st.button(label, key=f"btn_{valor}", use_container_width=True):
+                    selecionar_indicador(valor)
                     st.rerun()
 
     st.markdown('<div class="info-row">', unsafe_allow_html=True)
