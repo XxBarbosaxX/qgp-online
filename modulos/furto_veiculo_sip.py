@@ -133,6 +133,32 @@ def _selecionar_aba_arquivo_01(sheet_names: list[str]) -> str:
     return sheet_names[0]
 
 
+def _obter_coluna_natureza(df: pd.DataFrame) -> str | None:
+    return encontrar_coluna_por_nomes(
+        df,
+        [
+            "natureza",
+            "descricao_natureza",
+            "tipo_crime",
+            "tipo_ocorrencia",
+            "ocorrencia",
+        ],
+        obrigatoria=False,
+    )
+
+
+def _eh_furto_veiculo(valor: str) -> bool:
+    txt = sem_acento(valor)
+
+    if not txt:
+        return False
+
+    termos_furto = ["FURTO"]
+    termos_veiculo = ["VEICULO", "VEICULOS", "AUTOMOVEL", "MOTO", "MOTOCICLETA", "CARRO"]
+
+    return any(t in txt for t in termos_furto) and any(t in txt for t in termos_veiculo)
+
+
 def gerar_excel_em_memoria(df: pd.DataFrame) -> bytes:
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
@@ -655,8 +681,17 @@ def processar_furto_veiculo_sip(arquivo_01, arquivo_02):
     df_novo = normalizar_colunas(df_novo)
 
     total_lido_arquivo_02 = len(df_novo)
-    removidos_por_tipo = 0
-    col_natureza = "Nao se aplica (aba Furto SIP)"
+
+    col_natureza = _obter_coluna_natureza(df_novo)
+    if col_natureza is None:
+        raise ValueError(
+            "A aba 'Furto SIP' não possui coluna de Natureza identificável para filtrar 'Furto de Veículo'."
+        )
+
+    total_antes_filtro_tipo = len(df_novo)
+    mascara_furto_veiculo = df_novo[col_natureza].apply(_eh_furto_veiculo)
+    df_novo = df_novo[mascara_furto_veiculo].copy()
+    removidos_por_tipo = total_antes_filtro_tipo - len(df_novo)
 
     col_data_base = encontrar_coluna_data(df_base)
     col_hora_base = encontrar_coluna_hora(df_base)
@@ -789,18 +824,21 @@ def processar_furto_veiculo_sip(arquivo_01, arquivo_02):
 
     if ultima_datahora_base is None:
         df_novo_util = df_novo.copy()
-        situacao = "Base anterior sem Data/Hora valida: Arquivo 02 foi incluido integralmente."
+        situacao = (
+            "Base anterior sem Data/Hora valida: registros do Arquivo 02, "
+            "ja filtrados para Furto de Veiculo, foram incluidos integralmente."
+        )
     elif df_novo_filtrado.empty:
         df_novo_util = df_novo_filtrado.copy()
         situacao = (
-            "Nenhum registro novo encontrado apos a ultima Data/Hora da base: "
-            "Arquivo 01 foi mantido sem acrescimos."
+            "Nenhum registro novo de Furto de Veiculo encontrado apos a ultima "
+            "Data/Hora da base: Arquivo 01 foi mantido sem acrescimos."
         )
     else:
         df_novo_util = df_novo_filtrado.copy()
         situacao = (
-            "Base anterior localizada: somente registros posteriores a ultima "
-            "Data/Hora foram adicionados."
+            "Base anterior localizada: somente registros de Furto de Veiculo "
+            "posteriores a ultima Data/Hora foram adicionados."
         )
 
     geocodificados = 0
