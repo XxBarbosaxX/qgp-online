@@ -4,6 +4,7 @@ import streamlit as st
 from datetime import datetime
 import sys
 import os
+import traceback
 
 # =========================
 # CONFIGURAÇÃO DA PÁGINA
@@ -24,6 +25,30 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "modulos"))
 # =========================
 if "indicador_selecionado" not in st.session_state:
     st.session_state.indicador_selecionado = "Selecione um indicador..."
+
+# =========================
+# HELPERS SEGUROS
+# =========================
+def safe_call_message(target, method_name: str, message: str):
+    """Chama métodos do Streamlit com fallback seguro."""
+    try:
+        if target is not None and hasattr(target, method_name):
+            getattr(target, method_name)(message)
+        else:
+            getattr(st, method_name)(message)
+    except Exception:
+        getattr(st, method_name)(message)
+
+def executar_interface_segura(func, nome_indicador: str):
+    """Executa interface dentro de container válido e captura erros com detalhes."""
+    area_execucao = st.container()
+    try:
+        with area_execucao:
+            func()
+    except Exception as e:
+        st.error(f"❌ Erro ao executar o indicador '{nome_indicador}': {e}")
+        with st.expander("Detalhes do erro"):
+            st.code(traceback.format_exc())
 
 # =========================
 # CSS CUSTOMIZADO
@@ -237,10 +262,15 @@ def carregar_modulo(nome_modulo: str, nome_funcao: str):
     try:
         import importlib
         mod = importlib.import_module(f"modulos.{nome_modulo}")
-        return getattr(mod, nome_funcao, None)
+        func = getattr(mod, nome_funcao, None)
+
+        if func is None:
+            st.error(f"❌ Função '{nome_funcao}' não encontrada no módulo '{nome_modulo}'.")
+            return None
+
+        return func
     except Exception as e:
         st.error(f"❌ Erro ao carregar módulo '{nome_modulo}': {e}")
-        import traceback
         with st.expander("Detalhes do erro"):
             st.code(traceback.format_exc())
         return None
@@ -302,7 +332,6 @@ def render_home():
 
     st.markdown("### Selecione o Indicador Abaixo:")
 
-    # Botão principal no topo
     st.markdown('<div class="todos-btn">', unsafe_allow_html=True)
     if st.button("⚡ TODOS OS INDICADORES", key="btn_TODOS_OS_INDICADORES_topo", use_container_width=True):
         selecionar_indicador("TODOS OS INDICADORES")
@@ -311,7 +340,6 @@ def render_home():
 
     st.markdown("<div style='height: 0.7rem;'></div>", unsafe_allow_html=True)
 
-    # Ordem definida pelo usuário com ícones atualizados
     indicadores_restantes = [
         ("🔫 CVLI", "CVLI"),
         ("🦹 CVP (SPORTAL)", "CVP (SPORTAL)"),
@@ -341,7 +369,7 @@ def render_home():
                     st.rerun()
 
     st.markdown('<div class="info-row">', unsafe_allow_html=True)
-    st.markdown(f'<div class="metric-chip">Versão 1.0.0</div>', unsafe_allow_html=True)
+    st.markdown('<div class="metric-chip">Versão 1.0.0</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="metric-chip">Data {datetime.now().strftime("%d/%m/%Y")}</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="metric-chip">Hora {datetime.now().strftime("%H:%M:%S")}</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
@@ -374,7 +402,7 @@ elif indicador in MAPEAMENTO:
     func = carregar_modulo(nome_mod, nome_func)
 
     if func:
-        func()
+        executar_interface_segura(func, indicador)
 
 else:
     st.warning(f"🚧 O indicador **{indicador}** estará disponível em breve")
