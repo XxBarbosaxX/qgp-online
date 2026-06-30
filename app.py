@@ -267,16 +267,16 @@ MAPEAMENTO = {
 # =========================
 INDICADORES_COM_ICONES = [
     ("⚡ TODOS OS INDICADORES", "TODOS OS INDICADORES"),
-    ("🛡️ CVLI", "CVLI"),
-    ("📍 CVP (SPORTAL)", "CVP (SPORTAL)"),
-    ("🛰️ CVP (SIP)", "CVP (SIP)"),
+    ("🔫 CVLI", "CVLI"),
+    ("🦹 CVP (SPORTAL)", "CVP (SPORTAL)"),
+    ("🦹 CVP (SIP)", "CVP (SIP)"),
     ("🔊 PERTURBAÇÃO AO SOSSEGO ALHEIO", "PERTURBAÇÃO AO SOSSEGO ALHEIO"),
-    ("🚨 DESLOCAMENTO FORÇADO", "DESLOCAMENTO FORÇADO"),
-    ("🚗 ROUBO DE VEÍCULO (SPORTAL)", "ROUBO DE VEÍCULO (SPORTAL)"),
-    ("🚔 ROUBO DE VEÍCULO (SIP)", "ROUBO DE VEÍCULO (SIP)"),
+    ("🕵️ DESLOCAMENTO FORÇADO", "DESLOCAMENTO FORÇADO"),
+    ("🚗💥 ROUBO DE VEÍCULO (SPORTAL)", "ROUBO DE VEÍCULO (SPORTAL)"),
+    ("🚗💥 ROUBO DE VEÍCULO (SIP)", "ROUBO DE VEÍCULO (SIP)"),
     ("🛣️ ACIDENTE DE TRÂNSITO", "ACIDENTE DE TRÂNSITO"),
-    ("🔓 FURTO DE VEÍCULO (SPORTAL)", "FURTO DE VEÍCULO (SPORTAL)"),
-    ("🔐 FURTO DE VEÍCULO (SIP)", "FURTO DE VEÍCULO (SIP)"),
+    ("🚙🔓 FURTO DE VEÍCULO (SPORTAL)", "FURTO DE VEÍCULO (SPORTAL)"),
+    ("🚙🔓 FURTO DE VEÍCULO (SIP)", "FURTO DE VEÍCULO (SIP)"),
 ]
 
 # =========================
@@ -311,18 +311,18 @@ def render_home():
 
     st.markdown("<div style='height: 0.7rem;'></div>", unsafe_allow_html=True)
 
-    # Ordem definida pelo usuário
+    # Ordem definida pelo usuário com ícones atualizados
     indicadores_restantes = [
-        ("🛡️ CVLI", "CVLI"),
-        ("📍 CVP (SPORTAL)", "CVP (SPORTAL)"),
-        ("🛰️ CVP (SIP)", "CVP (SIP)"),
+        ("🔫 CVLI", "CVLI"),
+        ("🦹 CVP (SPORTAL)", "CVP (SPORTAL)"),
+        ("🦹 CVP (SIP)", "CVP (SIP)"),
         ("🔊 PERTURBAÇÃO AO SOSSEGO ALHEIO", "PERTURBAÇÃO AO SOSSEGO ALHEIO"),
-        ("🚨 DESLOCAMENTO FORÇADO", "DESLOCAMENTO FORÇADO"),
-        ("🚗 ROUBO DE VEÍCULO (SPORTAL)", "ROUBO DE VEÍCULO (SPORTAL)"),
-        ("🚔 ROUBO DE VEÍCULO (SIP)", "ROUBO DE VEÍCULO (SIP)"),
+        ("🕵️ DESLOCAMENTO FORÇADO", "DESLOCAMENTO FORÇADO"),
+        ("🚗💥 ROUBO DE VEÍCULO (SPORTAL)", "ROUBO DE VEÍCULO (SPORTAL)"),
+        ("🚗💥 ROUBO DE VEÍCULO (SIP)", "ROUBO DE VEÍCULO (SIP)"),
         ("🛣️ ACIDENTE DE TRÂNSITO", "ACIDENTE DE TRÂNSITO"),
-        ("🔓 FURTO DE VEÍCULO (SPORTAL)", "FURTO DE VEÍCULO (SPORTAL)"),
-        ("🔐 FURTO DE VEÍCULO (SIP)", "FURTO DE VEÍCULO (SIP)"),
+        ("🚙🔓 FURTO DE VEÍCULO (SPORTAL)", "FURTO DE VEÍCULO (SPORTAL)"),
+        ("🚙🔓 FURTO DE VEÍCULO (SIP)", "FURTO DE VEÍCULO (SIP)"),
     ]
 
     col1, col2, col3 = st.columns(3)
