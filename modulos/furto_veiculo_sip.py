@@ -729,11 +729,22 @@ def processar_furto_veiculo_sip(arquivo_01, arquivo_02):
     col_lat_base = encontrar_coluna_por_nomes(df_base, ["lat", "latitude"], obrigatoria=True)
     col_lon_base = encontrar_coluna_por_nomes(df_base, ["lon", "long", "longitude"], obrigatoria=True)
 
-    col_endereco = encontrar_coluna_por_nomes(
-        df_novo,
+    col_endereco_base = encontrar_coluna_por_nomes(
+        df_base,
         ["endereço", "endereco", "logradouro", "rua"],
         obrigatoria=True,
     )
+    col_endereco_novo = encontrar_coluna_por_nomes(
+        df_novo,
+        ["logradouro", "endereço", "endereco", "rua"],
+        obrigatoria=True,
+    )
+
+    if col_endereco_novo != col_endereco_base:
+        df_novo = df_novo.rename(columns={col_endereco_novo: col_endereco_base})
+
+    col_endereco = col_endereco_base
+
     col_numero = encontrar_coluna_por_nomes(
         df_novo,
         ["número", "numero", "localNumero", "num"],
@@ -948,6 +959,7 @@ def processar_furto_veiculo_sip(arquivo_01, arquivo_02):
         "coluna_natureza": col_natureza,
         "contagens_nivel": contagens_nivel,
         "total_lido_arquivo_02": total_lido_arquivo_02,
+        "coluna_endereco_base": col_endereco_base,
     }
 
     return df_final, resumo
@@ -1085,6 +1097,10 @@ def render():
         st.info(
             f"Coluna Natureza utilizada: {resumo['coluna_natureza']} | "
             f"Última Data/Hora da base: {resumo['ultima_datahora_base']}"
+        )
+
+        st.info(
+            f"Coluna final de endereço usada na base: {resumo['coluna_endereco_base']}"
         )
 
         st.info(
