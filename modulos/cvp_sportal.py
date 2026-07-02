@@ -76,29 +76,32 @@ def interface_cvp_sportal():
                 cols_orig_base = list(df_base.columns)
                 cols_orig_novo = list(df_novo.columns)
 
-                def _encontrar_col_orig(cols, termos):
-                    for col in cols:
-                        col_lower = str(col).strip().lower()
-                        if all(t in col_lower for t in termos):
-                            return col
+                def _normalizar_texto(txt):
+                    return str(txt).strip().lower()
+
+                def _encontrar_col_orig_exata_ou_parcial(cols, opcoes):
+                    """
+                    Procura uma coluna por nomes equivalentes.
+                    Primeiro tenta igualdade exata (case-insensitive),
+                    depois procura ocorrência parcial.
+                    """
+                    cols_map = {col: _normalizar_texto(col) for col in cols}
+
+                    # Busca exata
+                    for nome in opcoes:
+                        nome_norm = _normalizar_texto(nome)
+                        for col, col_norm in cols_map.items():
+                            if col_norm == nome_norm:
+                                return col
+
+                    # Busca parcial
+                    for nome in opcoes:
+                        nome_norm = _normalizar_texto(nome)
+                        for col, col_norm in cols_map.items():
+                            if nome_norm in col_norm:
+                                return col
+
                     return None
-
-                # Arquivo 01
-                nome_ocorr_orig_base = _encontrar_col_orig(cols_orig_base, ["nome", "ocorr"])
-                subnome_ocorr_orig_base = _encontrar_col_orig(cols_orig_base, ["subnome", "ocorr"])
-                territorio_orig_base = _encontrar_col_orig(cols_orig_base, ["territ"])
-
-                # Arquivo 02
-                nome_ocorr_orig_novo = _encontrar_col_orig(cols_orig_novo, ["nome", "ocorr"])
-                subnome_ocorr_orig_novo = _encontrar_col_orig(cols_orig_novo, ["subnome", "ocorr"])
-                regioes_orig_novo = _encontrar_col_orig(cols_orig_novo, ["regi"])
-
-                # Normalização de colunas
-                df_base = normalizar_colunas(df_base)
-                df_novo = normalizar_colunas(df_novo)
-
-                cols_norm_base = list(df_base.columns)
-                cols_norm_novo = list(df_novo.columns)
 
                 def _col_norm_de_orig(cols_orig, col_orig, cols_norm):
                     if col_orig is None:
@@ -108,6 +111,44 @@ def interface_cvp_sportal():
                         return cols_norm[idx]
                     except (ValueError, IndexError):
                         return None
+
+                # -----------------------------
+                # Mapeamento explícito das colunas de interesse
+                # -----------------------------
+                # Arquivo 01 (base)
+                nome_ocorr_orig_base = _encontrar_col_orig_exata_ou_parcial(
+                    cols_orig_base,
+                    ["Nome da Ocorrência", "Nome Ocorrência"]
+                )
+                subnome_ocorr_orig_base = _encontrar_col_orig_exata_ou_parcial(
+                    cols_orig_base,
+                    ["Subnome da Ocorrência", "Subnome Ocorrência"]
+                )
+                territorio_orig_base = _encontrar_col_orig_exata_ou_parcial(
+                    cols_orig_base,
+                    ["Território", "Territorio", "Regiões", "Regioes"]
+                )
+
+                # Arquivo 02 (novo)
+                nome_ocorr_orig_novo = _encontrar_col_orig_exata_ou_parcial(
+                    cols_orig_novo,
+                    ["Nome da Ocorrência", "Nome Ocorrência"]
+                )
+                subnome_ocorr_orig_novo = _encontrar_col_orig_exata_ou_parcial(
+                    cols_orig_novo,
+                    ["Subnome da Ocorrência", "Subnome Ocorrência"]
+                )
+                territorio_orig_novo = _encontrar_col_orig_exata_ou_parcial(
+                    cols_orig_novo,
+                    ["Território", "Territorio", "Regiões", "Regioes"]
+                )
+
+                # Normalização de colunas
+                df_base = normalizar_colunas(df_base)
+                df_novo = normalizar_colunas(df_novo)
+
+                cols_norm_base = list(df_base.columns)
+                cols_norm_novo = list(df_novo.columns)
 
                 # Nomes normalizados correspondentes
                 nome_ocorr_norm_base = _col_norm_de_orig(
@@ -126,8 +167,8 @@ def interface_cvp_sportal():
                 subnome_ocorr_norm_novo = _col_norm_de_orig(
                     cols_orig_novo, subnome_ocorr_orig_novo, cols_norm_novo
                 )
-                regioes_norm_novo = _col_norm_de_orig(
-                    cols_orig_novo, regioes_orig_novo, cols_norm_novo
+                territorio_norm_novo = _col_norm_de_orig(
+                    cols_orig_novo, territorio_orig_novo, cols_norm_novo
                 )
 
                 # Renomeações explícitas para compatibilizar Arquivo 02 com Arquivo 01
@@ -151,11 +192,11 @@ def interface_cvp_sportal():
 
                 if (
                     territorio_norm_base
-                    and regioes_norm_novo
-                    and regioes_norm_novo != territorio_norm_base
-                    and regioes_norm_novo in df_novo.columns
+                    and territorio_norm_novo
+                    and territorio_norm_novo != territorio_norm_base
+                    and territorio_norm_novo in df_novo.columns
                 ):
-                    rename_map_especifico[regioes_norm_novo] = territorio_norm_base
+                    rename_map_especifico[territorio_norm_novo] = territorio_norm_base
 
                 if rename_map_especifico:
                     df_novo = df_novo.rename(columns=rename_map_especifico)
@@ -178,11 +219,19 @@ def interface_cvp_sportal():
                 # Localizar colunas de coordenadas
                 col_lat_base = encontrar_coluna_por_nomes(df_base, ["lat", "latitude"])
                 col_lon_base = encontrar_coluna_por_nomes(df_base, ["long", "longitude", "lon"])
-                col_lat_novo = encontrar_coluna_por_nomes(df_novo, ["latitude"])
-                col_lon_novo = encontrar_coluna_por_nomes(df_novo, ["longitude"])
+                col_lat_novo = encontrar_coluna_por_nomes(df_novo, ["latitude", "lat"])
+                col_lon_novo = encontrar_coluna_por_nomes(df_novo, ["longitude", "long", "lon"])
 
                 # Renomear equivalências restantes
                 df_novo = renomear_colunas_equivalentes(df_base, df_novo)
+
+                # Reidentificar colunas após possíveis renomeações automáticas
+                if nome_ocorr_norm_base and nome_ocorr_norm_base in df_novo.columns:
+                    nome_ocorr_norm_novo = nome_ocorr_norm_base
+                if subnome_ocorr_norm_base and subnome_ocorr_norm_base in df_novo.columns:
+                    subnome_ocorr_norm_novo = subnome_ocorr_norm_base
+                if territorio_norm_base and territorio_norm_base in df_novo.columns:
+                    territorio_norm_novo = territorio_norm_base
 
                 total_lido_arquivo_02 = len(df_novo)
 
@@ -208,7 +257,7 @@ def interface_cvp_sportal():
                 removidos_por_datahora = total_antes_filtro_tempo - len(df_novo_filtrado)
 
                 # Preparar base sem coluna auxiliar
-                base_sem_aux = df_base.drop(columns=["datahora"])
+                base_sem_aux = df_base.drop(columns=["datahora"], errors="ignore")
 
                 if ultima_datahora_base is None:
                     df_novo_util = df_novo.copy()
@@ -222,6 +271,17 @@ def interface_cvp_sportal():
 
                 adicionados = len(df_novo_util)
 
+                # Garantir presença das colunas críticas antes do alinhamento
+                colunas_criticas = [
+                    nome_ocorr_norm_base,
+                    subnome_ocorr_norm_base,
+                    territorio_norm_base,
+                ]
+
+                for col in colunas_criticas:
+                    if col and col not in df_novo_util.columns:
+                        df_novo_util[col] = pd.NA
+
                 # Reprojetar coordenadas UTM -> WGS84
                 if not df_novo_util.empty:
                     df_novo_util = converter_coordenadas_para_wgs84_auto(
@@ -231,6 +291,36 @@ def interface_cvp_sportal():
                         col_lat_destino=col_lat_base,
                         col_lon_destino=col_lon_base
                     )
+
+                    # Reforço final de compatibilização das colunas sensíveis
+                    rename_map_final = {}
+                    if (
+                        nome_ocorr_norm_base
+                        and nome_ocorr_norm_novo
+                        and nome_ocorr_norm_novo in df_novo_util.columns
+                        and nome_ocorr_norm_novo != nome_ocorr_norm_base
+                    ):
+                        rename_map_final[nome_ocorr_norm_novo] = nome_ocorr_norm_base
+
+                    if (
+                        subnome_ocorr_norm_base
+                        and subnome_ocorr_norm_novo
+                        and subnome_ocorr_norm_novo in df_novo_util.columns
+                        and subnome_ocorr_norm_novo != subnome_ocorr_norm_base
+                    ):
+                        rename_map_final[subnome_ocorr_norm_novo] = subnome_ocorr_norm_base
+
+                    if (
+                        territorio_norm_base
+                        and territorio_norm_novo
+                        and territorio_norm_novo in df_novo_util.columns
+                        and territorio_norm_novo != territorio_norm_base
+                    ):
+                        rename_map_final[territorio_norm_novo] = territorio_norm_base
+
+                    if rename_map_final:
+                        df_novo_util = df_novo_util.rename(columns=rename_map_final)
+
                     df_novo_util = alinhar_colunas_com_base(base_sem_aux, df_novo_util)
                     df_final = pd.concat([base_sem_aux, df_novo_util], ignore_index=True)
                 else:
@@ -241,7 +331,7 @@ def interface_cvp_sportal():
                 df_final = df_final.sort_values(
                     by="datahora", ascending=True, na_position="last"
                 ).reset_index(drop=True)
-                df_final = df_final.drop(columns=["datahora"])
+                df_final = df_final.drop(columns=["datahora"], errors="ignore")
 
                 total_final = len(df_final)
 
