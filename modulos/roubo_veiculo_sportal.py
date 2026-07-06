@@ -17,6 +17,7 @@ NOME_ARQUIVO_FINAL = nome_arquivo_padrao(6, "ROUBO-DE-VEICULO-SPORTAL-LAT-LONG")
 EPSG_UTM_SIRGAS_24S = 31984
 EPSG_WGS84 = 4326
 VALOR_FILTRO_OCORRENCIA = "ROUBO DE VEÍCULO"
+VALOR_EXCLUSAO_SUBNOME = "BICICLETA"
 
 
 def _normalizar_nome_aba(nome: str) -> str:
@@ -211,6 +212,19 @@ def filtrar_por_nome_ocorrencia(
     serie = df[coluna_nome_ocorrencia].astype(str).apply(_normalizar_texto)
     valor_norm = _normalizar_texto(valor_filtro)
     return df.loc[serie == valor_norm].copy()
+
+
+def excluir_por_subnome_ocorrencia(
+    df: pd.DataFrame,
+    coluna_subnome_ocorrencia: str,
+    valor_exclusao: str = VALOR_EXCLUSAO_SUBNOME,
+) -> tuple[pd.DataFrame, int]:
+    serie = df[coluna_subnome_ocorrencia].astype(str).apply(_normalizar_texto)
+    valor_norm = _normalizar_texto(valor_exclusao)
+
+    df_filtrado = df.loc[~serie.str.contains(valor_norm, na=False)].copy()
+    removidos = len(df) - len(df_filtrado)
+    return df_filtrado, removidos
 
 
 def valor_numerico_exato(v):
@@ -565,6 +579,11 @@ def processar_roubo_veiculo_sportal(arquivo_01, arquivo_02):
         ["nome da ocorrência", "nome ocorrencia", "ocorrência", "ocorrencia"],
         obrigatoria=True,
     )
+    col_subnome_ocorrencia = encontrar_coluna_por_nomes(
+        df_novo,
+        ["subnome da ocorrência", "subnome da ocorrencia", "subnome ocorrência", "subnome ocorrencia"],
+        obrigatoria=True,
+    )
 
     total_lido_arquivo_02 = len(df_novo)
 
@@ -572,16 +591,24 @@ def processar_roubo_veiculo_sportal(arquivo_01, arquivo_02):
     df_novo = filtrar_por_nome_ocorrencia(df_novo, col_nome_ocorrencia, VALOR_FILTRO_OCORRENCIA)
     removidos_por_tipo = total_lido_arquivo_02 - len(df_novo)
 
-    mostrar_amostra_segura(
-        "Arquivo 02 após filtro por Nome da Ocorrência = ROUBO DE VEÍCULO:",
+    status.info("Excluindo ocorrências com Subnome da Ocorrência contendo BICICLETA...")
+    df_novo, removidos_por_subnome = excluir_por_subnome_ocorrencia(
         df_novo,
-        ["Data", "Hora", col_nome_ocorrencia, "Subnome da Ocorrência", "Latitude", "Longitude"],
+        col_subnome_ocorrencia,
+        VALOR_EXCLUSAO_SUBNOME,
+    )
+
+    mostrar_amostra_segura(
+        "Arquivo 02 após filtro por Nome da Ocorrência = ROUBO DE VEÍCULO e exclusão de BICICLETA no Subnome da Ocorrência:",
+        df_novo,
+        ["Data", "Hora", col_nome_ocorrencia, col_subnome_ocorrencia, "Latitude", "Longitude"],
         10,
     )
 
     if df_novo.empty:
         raise ValueError(
-            "Após filtrar a coluna 'Nome da Ocorrência' por 'ROUBO DE VEÍCULO', "
+            "Após filtrar a coluna 'Nome da Ocorrência' por 'ROUBO DE VEÍCULO' "
+            "e excluir registros com 'BICICLETA' em 'Subnome da Ocorrência', "
             "o Arquivo 02 ficou sem registros válidos."
         )
 
@@ -750,6 +777,7 @@ def processar_roubo_veiculo_sportal(arquivo_01, arquivo_02):
         "adicionados": adicionados,
         "total_final": len(df_final),
         "removidos_por_tipo": removidos_por_tipo,
+        "removidos_por_subnome": removidos_por_subnome,
         "removidos_coord_invalidas": removidos_invalidos,
         "removidos_por_datahora": removidos_por_datahora,
         "ultima_datahora_base": ultima_ref,
@@ -845,6 +873,7 @@ def render():
 
         st.info(
             f"Última Data/Hora da base: {resumo.get('ultima_datahora_base', '-')} | "
+            f"Removidos por subnome (BICICLETA): {resumo.get('removidos_por_subnome', 0)} | "
             f"Removidos por coordenadas inválidas: {resumo.get('removidos_coord_invalidas', 0)} | "
             f"Removidos por filtro temporal: {resumo.get('removidos_por_datahora', 0)}"
         )
