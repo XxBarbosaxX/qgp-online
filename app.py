@@ -57,9 +57,9 @@ def load_custom_css():
     st.markdown("""
     <style>
     @keyframes pulse-border {
-        0%   { box-shadow: 0 0 0 0 rgba(118, 255, 159, 0.30), 0 6px 24px rgba(72, 201, 120, 0.16); }
-        70%  { box-shadow: 0 0 0 10px rgba(118, 255, 159, 0.00), 0 6px 24px rgba(72, 201, 120, 0.08); }
-        100% { box-shadow: 0 0 0 0 rgba(118, 255, 159, 0.00), 0 6px 24px rgba(72, 201, 120, 0.16); }
+        0%   { box-shadow: 0 0 0 0 rgba(118, 255, 159, 0.26), 0 4px 18px rgba(72, 201, 120, 0.14); }
+        70%  { box-shadow: 0 0 0 8px rgba(118, 255, 159, 0.00), 0 4px 18px rgba(72, 201, 120, 0.07); }
+        100% { box-shadow: 0 0 0 0 rgba(118, 255, 159, 0.00), 0 4px 18px rgba(72, 201, 120, 0.14); }
     }
 
     .stApp {
@@ -72,70 +72,70 @@ def load_custom_css():
     }
 
     .block-container {
-        padding-top: 2.5rem !important;
-        padding-bottom: 2.2rem;
-        max-width: 96%;
+        padding-top: 2.15rem !important;
+        padding-bottom: 1.8rem;
+        max-width: 97%;
     }
 
     .topbar {
         display: flex;
         align-items: center;
-        gap: 14px;
-        margin-top: 0.35rem;
-        margin-bottom: 1.35rem;
-        padding: 0.8rem 0 1rem 0;
-        border-bottom: 1px solid rgba(216, 138, 24, 0.18);
+        gap: 12px;
+        margin-top: 0.2rem;
+        margin-bottom: 1rem;
+        padding: 0.65rem 0 0.9rem 0;
+        border-bottom: 1px solid rgba(216, 138, 24, 0.16);
     }
 
     .topbar-title {
-        font-size: 2.2rem;
+        font-size: 2.05rem;
         font-weight: 900;
         color: #ffffff;
-        line-height: 1.15;
+        line-height: 1.1;
         margin: 0;
     }
 
     .topbar-subtitle {
-        font-size: 0.98rem;
+        font-size: 0.94rem;
         font-weight: 800;
         color: #f39a1f;
         text-transform: uppercase;
-        letter-spacing: 0.08em;
-        margin-top: 0.35rem;
+        letter-spacing: 0.07em;
+        margin-top: 0.28rem;
     }
 
     .home-card {
-        background: rgba(255,255,255,0.03);
-        border: 1px solid rgba(243,154,31,0.14);
+        background: rgba(255,255,255,0.025);
+        border: 1px solid rgba(243,154,31,0.12);
         border-radius: 18px;
-        padding: 1.2rem 1.2rem 1rem 1.2rem;
-        margin-top: 0.8rem;
-        margin-bottom: 1.2rem;
+        padding: 1rem 1.05rem 0.9rem 1.05rem;
+        margin-top: 0.45rem;
+        margin-bottom: 0.85rem;
     }
 
     .home-title {
-        font-size: 1.35rem;
+        font-size: 1.26rem;
         font-weight: 800;
         color: #ffffff;
-        margin-bottom: 0.35rem;
+        margin-bottom: 0.28rem;
     }
 
     .home-subtitle {
         color: #cdd8d2;
-        font-size: 0.98rem;
-        margin-bottom: 0.3rem;
-        line-height: 1.5;
+        font-size: 0.94rem;
+        margin-bottom: 0.22rem;
+        line-height: 1.42;
     }
 
     .section-wrap {
         height: 100%;
-        border: 1px solid rgba(243,154,31,0.18);
-        border-radius: 24px;
-        padding: 1rem 1rem 1.15rem 1rem;
-        background: linear-gradient(180deg, rgba(5, 48, 42, 0.78) 0%, rgba(4, 31, 28, 0.84) 100%);
+        border: 1px solid rgba(243,154,31,0.16);
+        border-radius: 22px;
+        padding: 0.82rem 0.82rem 0.95rem 0.82rem;
+        background: linear-gradient(180deg, rgba(5, 48, 42, 0.76) 0%, rgba(4, 31, 28, 0.82) 100%);
         box-shadow:
-            0 0 0 1px rgba(18, 77, 67, 0.38),
-            0 16px 34px rgba(0, 0, 0, 0.18),
+            0 0 0 1px rgba(18, 77, 67, 0.34),
+            0 10px 24px rgba(0, 0, 0, 0.14),
             inset 0 1px 0 rgba(255,255,255,0.02);
         display: flex;
         flex-direction: column;
@@ -143,81 +143,81 @@ def load_custom_css():
     }
 
     .section-card {
-        background: rgba(255,255,255,0.03);
-        border: 1px solid rgba(243,154,31,0.12);
-        border-radius: 18px;
-        padding: 1.15rem 1.15rem 1.05rem 1.15rem;
-        margin-top: 0.1rem;
-        margin-bottom: 0.15rem;
-        min-height: 118px;
+        background: rgba(255,255,255,0.028);
+        border: 1px solid rgba(243,154,31,0.11);
+        border-radius: 16px;
+        padding: 0.95rem 0.95rem 0.9rem 0.95rem;
+        margin-top: 0;
+        margin-bottom: 0;
+        min-height: 108px;
         display: flex;
         flex-direction: column;
         justify-content: center;
     }
 
     .section-title {
-        font-size: 1.14rem;
+        font-size: 1.03rem;
         font-weight: 900;
         color: #ffffff;
-        margin-bottom: 0.42rem;
+        margin-bottom: 0.34rem;
         letter-spacing: 0.01em;
         text-transform: uppercase;
     }
 
     .section-subtitle {
         color: #d8e3de;
-        font-size: 0.95rem;
+        font-size: 0.91rem;
         margin-bottom: 0;
-        line-height: 1.45;
+        line-height: 1.38;
     }
 
     .section-spacer {
-        height: 0.95rem;
-    }
-
-    .btn-gap-strong {
-        height: 1.05rem;
-    }
-
-    .btn-gap-normal {
         height: 0.72rem;
     }
 
+    .btn-gap-strong {
+        height: 0.82rem;
+    }
+
+    .btn-gap-normal {
+        height: 0.52rem;
+    }
+
     .info-row {
-        margin-top: 1.35rem;
-        margin-bottom: 1rem;
+        margin-top: 1rem;
+        margin-bottom: 0.8rem;
     }
 
     .metric-chip {
         display: inline-block;
         background: rgba(243,154,31,0.12);
         color: #ffd089;
-        border: 1px solid rgba(243,154,31,0.22);
+        border: 1px solid rgba(243,154,31,0.2);
         border-radius: 999px;
-        padding: 0.35rem 0.8rem;
-        font-size: 0.85rem;
+        padding: 0.32rem 0.72rem;
+        font-size: 0.82rem;
         font-weight: 700;
-        margin-right: 0.5rem;
-        margin-bottom: 0.5rem;
+        margin-right: 0.42rem;
+        margin-bottom: 0.42rem;
     }
 
     .stButton > button {
         background: linear-gradient(135deg, #f39a1f 0%, #e08010 100%) !important;
         color: #16211d !important;
-        border: 1px solid rgba(243,154,31,0.35) !important;
-        border-radius: 14px !important;
+        border: 1px solid rgba(243,154,31,0.32) !important;
+        border-radius: 13px !important;
         font-weight: 900 !important;
-        font-size: 0.95rem !important;
-        padding: 0.82rem 0.95rem !important;
+        font-size: 0.92rem !important;
+        padding: 0.72rem 0.85rem !important;
         width: 100% !important;
-        min-height: 3.15rem !important;
+        min-height: 3rem !important;
         text-align: center !important;
         transition: transform 0.15s ease, box-shadow 0.18s ease,
                     background 0.18s ease, filter 0.15s ease !important;
-        box-shadow: 0 2px 8px rgba(243,154,31,0.18) !important;
+        box-shadow: 0 2px 7px rgba(243,154,31,0.16) !important;
         letter-spacing: 0.01em !important;
         white-space: normal !important;
-        line-height: 1.2 !important;
+        line-height: 1.15 !important;
     }
 
     .stButton > button p,
@@ -225,59 +225,59 @@ def load_custom_css():
     .stButton > button div {
         font-weight: 900 !important;
         white-space: normal !important;
-        line-height: 1.2 !important;
+        line-height: 1.15 !important;
     }
 
     .stButton > button:hover {
         background: linear-gradient(135deg, #ffb83a 0%, #f39a1f 100%) !important;
         color: #0d1a16 !important;
-        transform: translateY(-2px) scale(1.012) !important;
-        box-shadow: 0 6px 20px rgba(243,154,31,0.32) !important;
-        filter: brightness(1.06) !important;
+        transform: translateY(-2px) scale(1.01) !important;
+        box-shadow: 0 5px 16px rgba(243,154,31,0.28) !important;
+        filter: brightness(1.05) !important;
     }
 
     .stButton > button:active {
-        transform: translateY(0px) scale(0.98) !important;
-        box-shadow: 0 1px 4px rgba(243,154,31,0.15) !important;
-        filter: brightness(0.96) !important;
+        transform: translateY(0px) scale(0.985) !important;
+        box-shadow: 0 1px 4px rgba(243,154,31,0.14) !important;
+        filter: brightness(0.97) !important;
     }
 
     .todos-btn .stButton > button {
         background: linear-gradient(135deg, #8df5ab 0%, #6ce592 100%) !important;
         color: #f39a1f !important;
-        border: 2px solid rgba(183, 255, 203, 0.95) !important;
-        border-radius: 15px !important;
-        font-size: 1.02rem !important;
-        min-height: 3.8rem !important;
+        border: 2px solid rgba(183, 255, 203, 0.92) !important;
+        border-radius: 14px !important;
+        font-size: 0.98rem !important;
+        min-height: 3.35rem !important;
         animation: pulse-border 2.2s ease-in-out infinite !important;
         letter-spacing: 0.02em !important;
         text-shadow: none !important;
         box-shadow:
-            0 6px 20px rgba(72, 201, 120, 0.22),
-            inset 0 1px 0 rgba(255,255,255,0.22) !important;
+            0 5px 16px rgba(72, 201, 120, 0.18),
+            inset 0 1px 0 rgba(255,255,255,0.2) !important;
         font-weight: 900 !important;
     }
 
     .todos-btn .stButton > button:hover {
         background: linear-gradient(135deg, #9af7b5 0%, #7ae89c 100%) !important;
         color: #ff9f1a !important;
-        transform: translateY(-3px) scale(1.018) !important;
+        transform: translateY(-2px) scale(1.01) !important;
         box-shadow:
-            0 10px 28px rgba(72, 201, 120, 0.28),
-            0 0 0 3px rgba(171,255,193,0.18),
-            inset 0 1px 0 rgba(255,255,255,0.24) !important;
+            0 8px 22px rgba(72, 201, 120, 0.24),
+            0 0 0 2px rgba(171,255,193,0.16),
+            inset 0 1px 0 rgba(255,255,255,0.22) !important;
         filter: brightness(1.02) !important;
     }
 
     .todos-btn .stButton > button:active {
-        transform: translateY(0px) scale(0.97) !important;
-        filter: brightness(0.97) !important;
+        transform: translateY(0px) scale(0.98) !important;
+        filter: brightness(0.98) !important;
     }
 
     .secondary-button .stButton > button {
         background: transparent !important;
         color: #f3f4ef !important;
-        border: 1px solid rgba(243,154,31,0.28) !important;
+        border: 1px solid rgba(243,154,31,0.26) !important;
         font-weight: 800 !important;
         box-shadow: none !important;
         transition: transform 0.14s ease, background 0.16s ease, border-color 0.16s ease !important;
@@ -286,9 +286,9 @@ def load_custom_css():
     .secondary-button .stButton > button:hover {
         background: rgba(243,154,31,0.08) !important;
         color: #ffffff !important;
-        border-color: rgba(243,154,31,0.55) !important;
+        border-color: rgba(243,154,31,0.5) !important;
         transform: translateY(-1px) !important;
-        box-shadow: 0 3px 10px rgba(243,154,31,0.10) !important;
+        box-shadow: 0 3px 8px rgba(243,154,31,0.08) !important;
     }
 
     .secondary-button .stButton > button:active {
@@ -297,8 +297,8 @@ def load_custom_css():
 
     .footer-note {
         color: #b8c3bd;
-        font-size: 0.9rem;
-        margin-top: 1.15rem;
+        font-size: 0.88rem;
+        margin-top: 0.95rem;
         text-align: center;
     }
 
@@ -442,9 +442,9 @@ def render_home():
     """, unsafe_allow_html=True)
 
     st.markdown("### Módulos disponíveis")
-    st.markdown("<div style='height: 0.45rem;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height: 0.25rem;'></div>", unsafe_allow_html=True)
 
-    col_esq, col_centro, col_dir = st.columns([1.45, 1.0, 1.0], gap="large")
+    col_esq, col_centro, col_dir = st.columns(3, gap="small")
 
     with col_esq:
         render_bloco_completo(
