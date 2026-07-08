@@ -697,7 +697,7 @@ def _df_to_excel_bytes(df: pd.DataFrame) -> bytes:
     return buffer.read()
 
 
-def interface_geocodificacao() -> None:
+def interface_geocodificar() -> None:
     st.markdown(
         """
         <div class="module-shell">
@@ -730,8 +730,18 @@ def interface_geocodificacao() -> None:
 
         with col_c2:
             limiar_nome = st.slider("Limiar de similaridade", 70, 100, 88)
-            raio_confirma_m = st.number_input("Raio de confirmação (m)", min_value=10.0, value=100.0, step=10.0)
-            raio_municipio_km = st.number_input("Raio do município (km)", min_value=1.0, value=8.0, step=1.0)
+            raio_confirma_m = st.number_input(
+                "Raio de confirmação (m)",
+                min_value=10.0,
+                value=100.0,
+                step=10.0,
+            )
+            raio_municipio_km = st.number_input(
+                "Raio do município (km)",
+                min_value=1.0,
+                value=8.0,
+                step=1.0,
+            )
 
     uploaded_file = st.file_uploader(
         "Enviar arquivo de ocorrências",
