@@ -90,7 +90,7 @@ def render_panel_atualizacao() -> None:
         st.markdown('<div class="field-gap"></div>', unsafe_allow_html=True)
 
         st.selectbox(
-            "Indicador",
+            "Selecione um Indicador",
             options=INDICADORES_ATUALIZACAO,
             key="indicador_dropdown",
             label_visibility="visible",
