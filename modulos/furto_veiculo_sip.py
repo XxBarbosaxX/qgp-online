@@ -85,6 +85,165 @@ TIPOS = ("Rua", "Avenida", "Travessa", "Praca", "Rodovia", "Alameda", "Passeio")
 ROOFTOP = ("pointaddress", "streetaddress", "subaddress", "pointaddressvd")
 
 
+def _aplicar_estilo_furto_veiculo_sip() -> None:
+    """Aplica estilo visual padronizado ao módulo."""
+    st.markdown(
+        """
+        <style>
+            .fvsip-card {
+                background: rgba(255, 255, 255, 0.02);
+                border: 1px solid rgba(255, 255, 255, 0.07);
+                border-radius: 18px;
+                padding: 1.1rem 1.1rem 0.85rem 1.1rem;
+                margin: 1rem 0;
+            }
+
+            .fvsip-title {
+                font-size: 1.15rem;
+                font-weight: 800;
+                color: #f8fafc;
+                margin-bottom: 0.25rem;
+            }
+
+            .fvsip-desc {
+                font-size: 0.93rem;
+                color: rgba(255, 255, 255, 0.72);
+                margin-bottom: 0.8rem;
+                line-height: 1.55;
+            }
+
+            .fvsip-list {
+                margin: 0.55rem 0 0 0;
+                padding-left: 1rem;
+                color: rgba(255, 255, 255, 0.78);
+                font-size: 0.92rem;
+            }
+
+            .fvsip-grid {
+                display: grid;
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+                gap: 0.85rem;
+                margin-top: 1rem;
+            }
+
+            .fvsip-stat {
+                background: rgba(255, 255, 255, 0.025);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 16px;
+                padding: 0.95rem 1rem;
+            }
+
+            .fvsip-stat-label {
+                font-size: 0.78rem;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                color: rgba(255, 255, 255, 0.58);
+                margin-bottom: 0.35rem;
+                font-weight: 700;
+            }
+
+            .fvsip-stat-value {
+                font-size: 1.18rem;
+                font-weight: 900;
+                color: #ffffff;
+                line-height: 1.15;
+                word-break: break-word;
+            }
+
+            .fvsip-badges {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.5rem;
+                margin-top: 0.65rem;
+            }
+
+            .fvsip-badge {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.35rem;
+                padding: 0.5rem 0.72rem;
+                border-radius: 999px;
+                font-size: 0.82rem;
+                font-weight: 700;
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                background: rgba(255, 255, 255, 0.03);
+                color: #e5f3ee;
+            }
+
+            .fvsip-badge.ok {
+                background: rgba(34, 197, 94, 0.10);
+                color: #b7f7c9;
+                border-color: rgba(34, 197, 94, 0.22);
+            }
+
+            .fvsip-badge.warn {
+                background: rgba(245, 158, 11, 0.10);
+                color: #fde4b0;
+                border-color: rgba(245, 158, 11, 0.22);
+            }
+
+            .fvsip-badge.info {
+                background: rgba(59, 130, 246, 0.10);
+                color: #bfdbfe;
+                border-color: rgba(59, 130, 246, 0.22);
+            }
+
+            .fvsip-badge.neutral {
+                background: rgba(255, 255, 255, 0.04);
+                color: #e5e7eb;
+                border-color: rgba(255, 255, 255, 0.10);
+            }
+
+            .fvsip-level-grid {
+                display: grid;
+                grid-template-columns: repeat(5, minmax(0, 1fr));
+                gap: 0.75rem;
+                margin-top: 0.9rem;
+            }
+
+            .fvsip-level {
+                background: rgba(255,255,255,0.025);
+                border: 1px solid rgba(255,255,255,0.08);
+                border-radius: 14px;
+                padding: 0.85rem 0.9rem;
+            }
+
+            .fvsip-level-name {
+                font-size: 0.78rem;
+                color: rgba(255,255,255,0.64);
+                font-weight: 700;
+                margin-bottom: 0.35rem;
+                min-height: 2rem;
+            }
+
+            .fvsip-level-value {
+                font-size: 1.12rem;
+                font-weight: 900;
+                color: #fff;
+            }
+
+            @media (max-width: 1200px) {
+                .fvsip-grid {
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                }
+
+                .fvsip-level-grid {
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                }
+            }
+
+            @media (max-width: 640px) {
+                .fvsip-grid,
+                .fvsip-level-grid {
+                    grid-template-columns: 1fr;
+                }
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def sem_acento(texto: str) -> str:
     normalizado = unicodedata.normalize("NFKD", str(texto or ""))
     return "".join(c for c in normalizado if not unicodedata.combining(c)).upper().strip()
@@ -707,7 +866,8 @@ def processar_furto_veiculo_sip(arquivo_01, arquivo_02):
 
     if df_novo.empty:
         raise ValueError(
-            f"Após aplicar o filtro de Natureza na coluna '{col_natureza}', nenhum registro de Furto de Veículo foi encontrado na aba '{aba_novo}'."
+            f"Após aplicar o filtro de Natureza na coluna '{col_natureza}', nenhum registro "
+            f"de Furto de Veículo foi encontrado na aba '{aba_novo}'."
         )
 
     col_data_base = encontrar_coluna_data(df_base)
@@ -853,20 +1013,20 @@ def processar_furto_veiculo_sip(arquivo_01, arquivo_02):
     if ultima_datahora_base is None:
         df_novo_util = df_novo.copy()
         situacao = (
-            "Base anterior sem Data/Hora valida: registros do Arquivo 02, "
-            "ja filtrados para Furto de Veiculo, foram incluidos integralmente."
+            "Base anterior sem Data/Hora válida: registros do Arquivo 02, já filtrados para "
+            "Furto de Veículo, foram incluídos integralmente."
         )
     elif df_novo_filtrado.empty:
         df_novo_util = df_novo_filtrado.copy()
         situacao = (
-            "Nenhum registro novo de Furto de Veiculo encontrado apos a ultima "
-            "Data/Hora da base: Arquivo 01 foi mantido sem acrescimos."
+            "Nenhum registro novo de Furto de Veículo encontrado após a última Data/Hora "
+            "da base: Arquivo 01 foi mantido sem acréscimos."
         )
     else:
         df_novo_util = df_novo_filtrado.copy()
         situacao = (
-            "Base anterior localizada: somente registros de Furto de Veiculo "
-            "posteriores a ultima Data/Hora foram adicionados."
+            "Base anterior localizada: somente registros de Furto de Veículo posteriores "
+            "à última Data/Hora foram adicionados."
         )
 
     geocodificados = 0
@@ -980,15 +1140,59 @@ def _init_state():
             st.session_state[chave] = valor
 
 
+def _limpar_estado_furto_veiculo_sip() -> None:
+    chaves = [
+        "furto_veiculo_sip_arquivo_01_bytes",
+        "furto_veiculo_sip_arquivo_01_nome",
+        "furto_veiculo_sip_arquivo_02_bytes",
+        "furto_veiculo_sip_arquivo_02_nome",
+        "furto_veiculo_sip_resultado_excel",
+        "furto_veiculo_sip_resultado_df",
+        "furto_veiculo_sip_resumo",
+        "furto_veiculo_sip_upload_01",
+        "furto_veiculo_sip_upload_02",
+    ]
+    for chave in chaves:
+        if chave in st.session_state:
+            del st.session_state[chave]
+
+
 def render():
     _init_state()
+    _aplicar_estilo_furto_veiculo_sip()
 
-    st.subheader("Furto de Veículo (SIP) - Geocodificação por Endereço")
-    st.write(
-        "Envie a base histórica e o complemento SIP para atualizar a base com geocodificação."
+    st.markdown(
+        """
+        <div class="fvsip-card">
+            <div class="fvsip-title">Processamento de Furto de Veículo (SIP)</div>
+            <div class="fvsip-desc">
+                Envie a base histórica e o complemento SIP para atualizar a base consolidada
+                com geocodificação por endereço, filtro por natureza, validação temporal e
+                padronização final no formato do QGP Online.
+            </div>
+            <ul class="fvsip-list">
+                <li>Filtro automático dos registros compatíveis com Furto de Veículo.</li>
+                <li>Geocodificação híbrida com ArcGIS e base parquet enxuta.</li>
+                <li>Validação por similaridade de logradouro e contexto municipal.</li>
+                <li>Classificação por nível de geocodificação.</li>
+                <li>Geração do arquivo final consolidado para download.</li>
+            </ul>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-    st.caption(f"Base geográfica utilizada na raiz do projeto: {CAMINHO_BASE_ENXUTA}")
+    st.markdown(
+        f"""
+        <div class="fvsip-card">
+            <div class="fvsip-title">Base geográfica de apoio</div>
+            <div class="fvsip-desc">
+                Arquivo esperado na raiz do projeto: <strong>{CAMINHO_BASE_ENXUTA}</strong>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     try:
         base_geo = carregar_base_geografica()
@@ -1003,17 +1207,21 @@ def render():
     except Exception as exc:
         st.error(f"Erro ao carregar base geográfica: {exc}")
 
-    arquivo_01 = st.file_uploader(
-        "Arquivo 01 - Base histórica de Furto de Veículo",
-        type=["xlsx", "xls"],
-        key="furto_veiculo_sip_upload_01",
-    )
+    col1, col2 = st.columns(2)
 
-    arquivo_02 = st.file_uploader(
-        "Arquivo 02 - Complemento SIP (aba Furto SIP)",
-        type=["xlsx", "xls"],
-        key="furto_veiculo_sip_upload_02",
-    )
+    with col1:
+        arquivo_01 = st.file_uploader(
+            "📁 Arquivo 01 - Base histórica",
+            type=["xlsx", "xls"],
+            key="furto_veiculo_sip_upload_01",
+        )
+
+    with col2:
+        arquivo_02 = st.file_uploader(
+            "📁 Arquivo 02 - Complemento SIP",
+            type=["xlsx", "xls"],
+            key="furto_veiculo_sip_upload_02",
+        )
 
     if arquivo_01 is not None:
         arquivo_01.seek(0)
@@ -1025,101 +1233,184 @@ def render():
         st.session_state.furto_veiculo_sip_arquivo_02_bytes = arquivo_02.read()
         st.session_state.furto_veiculo_sip_arquivo_02_nome = arquivo_02.name
 
+    badges_upload = []
     if st.session_state.furto_veiculo_sip_arquivo_01_nome:
-        st.info(f"Arquivo 01 carregado: {st.session_state.furto_veiculo_sip_arquivo_01_nome}")
-
+        badges_upload.append(
+            f'<span class="fvsip-badge ok">Base carregada: {st.session_state.furto_veiculo_sip_arquivo_01_nome}</span>'
+        )
     if st.session_state.furto_veiculo_sip_arquivo_02_nome:
-        st.info(f"Arquivo 02 carregado: {st.session_state.furto_veiculo_sip_arquivo_02_nome}")
+        badges_upload.append(
+            f'<span class="fvsip-badge ok">Complemento carregado: {st.session_state.furto_veiculo_sip_arquivo_02_nome}</span>'
+        )
+
+    if badges_upload:
+        st.markdown(
+            f'<div class="fvsip-badges">{"".join(badges_upload)}</div>',
+            unsafe_allow_html=True,
+        )
+
+    st.markdown(
+        """
+        <div class="fvsip-card">
+            <div class="fvsip-title">Execução do processamento</div>
+            <div class="fvsip-desc">
+                Após validar os arquivos enviados, execute a rotina para filtrar,
+                geocodificar, consolidar e gerar a base final pronta para exportação.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     pode_processar = (
         st.session_state.furto_veiculo_sip_arquivo_01_bytes is not None
         and st.session_state.furto_veiculo_sip_arquivo_02_bytes is not None
     )
 
-    if st.button("Processar Furto de Veículo (SIP)", type="primary", disabled=not pode_processar):
+    col_btn1, col_btn2 = st.columns(2)
+
+    with col_btn1:
+        processar = st.button(
+            "Processar Furto de Veículo (SIP)",
+            type="primary",
+            disabled=not pode_processar,
+            use_container_width=True,
+            key="btn_processar_furto_veiculo_sip",
+        )
+
+    with col_btn2:
+        limpar = st.button(
+            "Limpar seleção",
+            use_container_width=True,
+            key="btn_limpar_furto_veiculo_sip",
+        )
+
+    if limpar:
+        _limpar_estado_furto_veiculo_sip()
+        st.rerun()
+
+    if processar:
         try:
             arquivo_01_buffer = BytesIO(st.session_state.furto_veiculo_sip_arquivo_01_bytes)
             arquivo_02_buffer = BytesIO(st.session_state.furto_veiculo_sip_arquivo_02_bytes)
 
             with st.spinner("Processando e geocodificando registros..."):
-                df_final, resumo = processar_furto_veiculo_sip(arquivo_01_buffer, arquivo_02_buffer)
+                df_final, resumo = processar_furto_veiculo_sip(
+                    arquivo_01_buffer,
+                    arquivo_02_buffer,
+                )
                 arquivo_excel_bytes = gerar_excel_em_memoria(df_final)
 
             st.session_state.furto_veiculo_sip_resultado_df = df_final
             st.session_state.furto_veiculo_sip_resumo = resumo
             st.session_state.furto_veiculo_sip_resultado_excel = arquivo_excel_bytes
 
-            st.success("Processamento concluído com sucesso.")
+            st.success("✅ Processamento concluído com sucesso.")
 
         except Exception as exc:
             st.exception(exc)
 
     if (
-        st.session_state.furto_veiculo_sip_resultado_df is not None
-        and st.session_state.furto_veiculo_sip_resumo is not None
+        st.session_state.furto_veiculo_sip_resultado_df is None
+        or st.session_state.furto_veiculo_sip_resumo is None
     ):
-        df_final = st.session_state.furto_veiculo_sip_resultado_df
-        resumo = st.session_state.furto_veiculo_sip_resumo
+        return
 
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Novos registros adicionados", resumo["adicionados"])
-        c2.metric("Total final da base", resumo["total_final"])
-        c3.metric("Registros geocodificados", resumo["geocodificados"])
+    df_final = st.session_state.furto_veiculo_sip_resultado_df
+    resumo = st.session_state.furto_veiculo_sip_resumo
 
-        contagens_nivel = resumo.get("contagens_nivel", {})
-        if contagens_nivel:
-            st.subheader("Resumo dos níveis de geocodificação")
+    st.markdown(
+        f"""
+        <div class="fvsip-card">
+            <div class="fvsip-title">Resumo do processamento</div>
+            <div class="fvsip-desc">{resumo.get("situacao", "Processamento concluído.")}</div>
+            <div class="fvsip-grid">
+                <div class="fvsip-stat">
+                    <div class="fvsip-stat-label">Registros adicionados</div>
+                    <div class="fvsip-stat-value">{resumo.get("adicionados", 0)}</div>
+                </div>
+                <div class="fvsip-stat">
+                    <div class="fvsip-stat-label">Total final</div>
+                    <div class="fvsip-stat-value">{resumo.get("total_final", 0)}</div>
+                </div>
+                <div class="fvsip-stat">
+                    <div class="fvsip-stat-label">Geocodificados</div>
+                    <div class="fvsip-stat-value">{resumo.get("geocodificados", 0)}</div>
+                </div>
+                <div class="fvsip-stat">
+                    <div class="fvsip-stat-label">Lidos no arquivo 02</div>
+                    <div class="fvsip-stat-value">{resumo.get("total_lido_arquivo_02", 0)}</div>
+                </div>
+            </div>
+            <div class="fvsip-badges">
+                <span class="fvsip-badge info">Aba base: {resumo.get("aba_arquivo_01", "-")}</span>
+                <span class="fvsip-badge info">Aba complemento: {resumo.get("aba_arquivo_02", "-")}</span>
+                <span class="fvsip-badge info">Coluna Natureza: {resumo.get("coluna_natureza", "-")}</span>
+                <span class="fvsip-badge info">Coluna endereço final: {resumo.get("coluna_endereco_base", "-")}</span>
+                <span class="fvsip-badge neutral">Última Data/Hora base: {resumo.get("ultima_datahora_base", "-")}</span>
+                <span class="fvsip-badge warn">Removidos por Natureza: {resumo.get("removidos_por_tipo", 0)}</span>
+                <span class="fvsip-badge warn">Removidos por Data/Hora: {resumo.get("removidos_por_datahora", 0)}</span>
+                <span class="fvsip-badge warn">Sem geocodificação: {resumo.get("removidos_sem_geocodificacao", 0)}</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-            exato_numero = contagens_nivel.get("Exato (Numero)", 0)
-            centroide_rua = contagens_nivel.get("Centroide de Rua", 0)
-            centroide_bairro = contagens_nivel.get("Centroide de Bairro", 0)
-            centroide_cidade = contagens_nivel.get("Centroide de Cidade", 0)
-            nao_encontrado = contagens_nivel.get("Nao Encontrado", 0)
+    contagens_nivel = resumo.get("contagens_nivel", {})
+    if contagens_nivel:
+        exato_numero = contagens_nivel.get("Exato (Numero)", 0)
+        centroide_rua = contagens_nivel.get("Centroide de Rua", 0)
+        centroide_bairro = contagens_nivel.get("Centroide de Bairro", 0)
+        centroide_cidade = contagens_nivel.get("Centroide de Cidade", 0)
+        nao_encontrado = contagens_nivel.get("Nao Encontrado", 0)
 
-            n1, n2, n3 = st.columns(3)
-            n1.metric("Exato (Numero)", exato_numero)
-            n2.metric("Centroide de Rua", centroide_rua)
-            n3.metric("Centroide de Bairro", centroide_bairro)
-
-            n4, n5 = st.columns(2)
-            n4.metric("Centroide de Cidade", centroide_cidade)
-            n5.metric("Nao Encontrado", nao_encontrado)
-
-            st.caption(
-                "Os valores acima mostram quantos registros caíram em cada nível de geocodificação."
-            )
-
-        st.info(
-            f"Aba usada no Arquivo 01: {resumo['aba_arquivo_01']} | "
-            f"Aba usada no Arquivo 02: {resumo['aba_arquivo_02']}"
+        st.markdown(
+            f"""
+            <div class="fvsip-card">
+                <div class="fvsip-title">Níveis de geocodificação</div>
+                <div class="fvsip-desc">
+                    Distribuição final dos registros conforme o nível de precisão alcançado no processo de geocodificação.
+                </div>
+                <div class="fvsip-level-grid">
+                    <div class="fvsip-level">
+                        <div class="fvsip-level-name">Exato (Número)</div>
+                        <div class="fvsip-level-value">{exato_numero}</div>
+                    </div>
+                    <div class="fvsip-level">
+                        <div class="fvsip-level-name">Centroide de Rua</div>
+                        <div class="fvsip-level-value">{centroide_rua}</div>
+                    </div>
+                    <div class="fvsip-level">
+                        <div class="fvsip-level-name">Centroide de Bairro</div>
+                        <div class="fvsip-level-value">{centroide_bairro}</div>
+                    </div>
+                    <div class="fvsip-level">
+                        <div class="fvsip-level-name">Centroide de Cidade</div>
+                        <div class="fvsip-level-value">{centroide_cidade}</div>
+                    </div>
+                    <div class="fvsip-level">
+                        <div class="fvsip-level-name">Não Encontrado</div>
+                        <div class="fvsip-level-value">{nao_encontrado}</div>
+                    </div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
 
-        st.info(
-            f"Coluna Natureza utilizada: {resumo['coluna_natureza']} | "
-            f"Última Data/Hora da base: {resumo['ultima_datahora_base']}"
+    with st.expander("Prévia dos dados processados", expanded=False):
+        st.dataframe(df_final.head(200), use_container_width=True, hide_index=True)
+
+    if st.session_state.furto_veiculo_sip_resultado_excel is not None:
+        st.download_button(
+            label="💾 Baixar arquivo final",
+            data=st.session_state.furto_veiculo_sip_resultado_excel,
+            file_name=NOME_ARQUIVO_FINAL,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="furto_veiculo_sip_download_final",
+            use_container_width=True,
         )
-
-        st.info(
-            f"Coluna final de endereço usada na base: {resumo['coluna_endereco_base']}"
-        )
-
-        st.info(
-            f"Removidos por Natureza: {resumo['removidos_por_tipo']} | "
-            f"Removidos por filtro temporal: {resumo['removidos_por_datahora']} | "
-            f"Removidos sem geocodificação: {resumo['removidos_sem_geocodificacao']}"
-        )
-
-        st.caption(resumo["situacao"])
-        st.dataframe(df_final.head(50), use_container_width=True)
-
-        if st.session_state.furto_veiculo_sip_resultado_excel is not None:
-            st.download_button(
-                label="Baixar arquivo final",
-                data=st.session_state.furto_veiculo_sip_resultado_excel,
-                file_name=NOME_ARQUIVO_FINAL,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="furto_veiculo_sip_download_final",
-            )
 
 
 interface_furto_veiculo_sip = render
