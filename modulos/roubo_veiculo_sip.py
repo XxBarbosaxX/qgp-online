@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
+from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from typing import Optional
@@ -35,17 +36,22 @@ from modulos.utils import (
 
 NOME_ARQUIVO_FINAL = nome_arquivo_padrao(7, "ROUBO-DE-VEICULO-SIP-ENDERECO")
 
-USAR_EXTERNO = True
-CAMINHO_BASE_ENXUTA = "CVP_SIP_GEOCODIFICAR.parquet"
-VALOR_FILTRO_NATUREZA = "ROUBO DE VEICULO"
 
-LIMIAR_NOME = 88
-RAIO_CONFIRMA_M = 100.0
-RAIO_MUNICIPIO_KM = 8.0
-LIMIAR_SUSPEITO = 5
+@dataclass(frozen=True)
+class RouboVeiculoSipConfig:
+    usar_externo: bool = True
+    caminho_base_enxuta: str = "CVP_SIP_GEOCODIFICAR.parquet"
+    valor_filtro_natureza: str = "ROUBO DE VEICULO"
+    limiar_nome: int = 88
+    raio_confirma_m: float = 100.0
+    raio_municipio_km: float = 8.0
+    limiar_suspeito: int = 5
+    uf_codigo: str = "23"
+    arq_cache_mun: str = "municipios_ce.json"
+    arcgis_timeout: int = 15
+    arcgis_delay_s: float = 0.4
+    arcgis_retries: int = 2
 
-UF_CODIGO = "23"
-ARQ_CACHE_MUN = "municipios_ce.json"
 
 SUBST = {
     "AV": "Avenida",
@@ -204,6 +210,78 @@ def _aplicar_estilo_roubo_veiculo_sip() -> None:
                 border-color: rgba(239, 68, 68, 0.22);
             }
 
+            .rvsip-field-label {
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+                margin-bottom: 0.45rem;
+                margin-top: 0.2rem;
+            }
+
+            .rvsip-field-label-text {
+                font-size: 0.92rem;
+                font-weight: 700;
+                color: rgba(255, 255, 255, 0.90);
+                line-height: 1.2;
+            }
+
+            .rvsip-tooltip {
+                position: relative;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 18px;
+                height: 18px;
+                border-radius: 999px;
+                border: 1px solid rgba(255, 255, 255, 0.16);
+                background: rgba(255, 255, 255, 0.05);
+                color: #dbeafe;
+                font-size: 0.72rem;
+                font-weight: 800;
+                cursor: help;
+                flex-shrink: 0;
+            }
+
+            .rvsip-tooltip-box {
+                position: absolute;
+                left: calc(100% + 10px);
+                top: 50%;
+                transform: translateY(-50%);
+                width: 300px;
+                background: #0f172a;
+                color: #e5eefb;
+                border: 1px solid rgba(148, 163, 184, 0.28);
+                border-radius: 12px;
+                padding: 0.75rem 0.85rem;
+                font-size: 0.82rem;
+                line-height: 1.45;
+                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.30);
+                opacity: 0;
+                visibility: hidden;
+                pointer-events: none;
+                transition: opacity 0.18s ease, transform 0.18s ease;
+                z-index: 9999;
+            }
+
+            .rvsip-tooltip-box::before {
+                content: "";
+                position: absolute;
+                left: -6px;
+                top: 50%;
+                width: 10px;
+                height: 10px;
+                background: #0f172a;
+                border-left: 1px solid rgba(148, 163, 184, 0.28);
+                border-bottom: 1px solid rgba(148, 163, 184, 0.28);
+                transform: translateY(-50%) rotate(45deg);
+            }
+
+            .rvsip-tooltip:hover .rvsip-tooltip-box {
+                opacity: 1;
+                visibility: visible;
+                transform: translateY(-50%) translateX(2px);
+            }
+
             @media (max-width: 1180px) {
                 .rvsip-grid-status,
                 .rvsip-grid-levels {
@@ -216,8 +294,44 @@ def _aplicar_estilo_roubo_veiculo_sip() -> None:
                 .rvsip-grid-levels {
                     grid-template-columns: 1fr;
                 }
+
+                .rvsip-tooltip-box {
+                    left: 50%;
+                    top: calc(100% + 10px);
+                    transform: translateX(-50%);
+                    width: min(280px, 80vw);
+                }
+
+                .rvsip-tooltip-box::before {
+                    left: 50%;
+                    top: -6px;
+                    transform: translateX(-50%) rotate(45deg);
+                    border-left: 1px solid rgba(148, 163, 184, 0.28);
+                    border-top: 1px solid rgba(148, 163, 184, 0.28);
+                    border-bottom: none;
+                }
+
+                .rvsip-tooltip:hover .rvsip-tooltip-box {
+                    transform: translateX(-50%);
+                }
             }
         </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _render_label_flutuante(label: str, tooltip: str) -> None:
+    """Renderiza um rótulo com tooltip flutuante."""
+    st.markdown(
+        f"""
+        <div class="rvsip-field-label">
+            <span class="rvsip-field-label-text">{label}</span>
+            <span class="rvsip-tooltip">
+                ?
+                <span class="rvsip-tooltip-box">{tooltip}</span>
+            </span>
+        </div>
         """,
         unsafe_allow_html=True,
     )
@@ -279,8 +393,8 @@ def gerar_excel_em_memoria(df: pd.DataFrame) -> bytes:
 
 
 @st.cache_data(show_spinner=False)
-def carregar_municipios() -> dict:
-    caminho = Path(ARQ_CACHE_MUN)
+def carregar_municipios(uf_codigo: str, arq_cache_mun: str) -> dict:
+    caminho = Path(arq_cache_mun)
 
     if caminho.exists():
         try:
@@ -289,7 +403,7 @@ def carregar_municipios() -> dict:
         except Exception:
             pass
 
-    url = f"https://servicodados.ibge.gov.br/api/v1/localidades/estados/{UF_CODIGO}/municipios"
+    url = f"https://servicodados.ibge.gov.br/api/v1/localidades/estados/{uf_codigo}/municipios"
 
     try:
         import gzip
@@ -326,8 +440,8 @@ def _montar_nome_logradouro(tipo: str, nome: str) -> str:
 
 
 @st.cache_data(show_spinner=False)
-def carregar_base_geografica() -> Optional[pd.DataFrame]:
-    caminho_parquet = Path(CAMINHO_BASE_ENXUTA)
+def carregar_base_geografica(caminho_base_enxuta: str) -> Optional[pd.DataFrame]:
+    caminho_parquet = Path(caminho_base_enxuta)
     if not caminho_parquet.exists():
         return None
 
@@ -348,7 +462,7 @@ def carregar_base_geografica() -> Optional[pd.DataFrame]:
 
     if faltantes:
         raise ValueError(
-            f"O arquivo {CAMINHO_BASE_ENXUTA} não possui as colunas esperadas: {sorted(faltantes)}"
+            f"O arquivo {caminho_base_enxuta} não possui as colunas esperadas: {sorted(faltantes)}"
         )
 
     base = base.copy()
@@ -361,7 +475,10 @@ def carregar_base_geografica() -> Optional[pd.DataFrame]:
         .str[:7]
     )
     base["nome_orig"] = base.apply(
-        lambda linha: _montar_nome_logradouro(linha.get("NM_TIP_LOG"), linha.get("NM_LOG")),
+        lambda linha: _montar_nome_logradouro(
+            linha.get("NM_TIP_LOG"),
+            linha.get("NM_LOG"),
+        ),
         axis=1,
     )
     base["nome_norm"] = base["nome_orig"].apply(sem_acento)
@@ -381,14 +498,20 @@ def carregar_base_geografica() -> Optional[pd.DataFrame]:
 
 
 @st.cache_resource(show_spinner=False)
-def obter_geocoder_arcgis():
-    if not USAR_EXTERNO:
+def obter_geocoder_arcgis(
+    usar_externo: bool,
+    timeout: int,
+    delay_s: float,
+    retries: int,
+):
+    if not usar_externo:
         return None
-    arc = ArcGIS(timeout=15)
+
+    arc = ArcGIS(timeout=timeout)
     return RateLimiter(
         arc.geocode,
-        min_delay_seconds=0.4,
-        max_retries=2,
+        min_delay_seconds=delay_s,
+        max_retries=retries,
         swallow_exceptions=True,
     )
 
@@ -458,9 +581,10 @@ def _hav(lat1, lon1, lat2, lon2):
 
 
 class MotorGeocodificacaoSoberana:
-    def __init__(self):
-        self.base = carregar_base_geografica()
-        self.municipios = carregar_municipios()
+    def __init__(self, config: RouboVeiculoSipConfig):
+        self.config = config
+        self.base = carregar_base_geografica(config.caminho_base_enxuta)
+        self.municipios = carregar_municipios(config.uf_codigo, config.arq_cache_mun)
         self.tree = None
         self.centroides_municipio = {}
 
@@ -477,7 +601,12 @@ class MotorGeocodificacaoSoberana:
                 for codigo, linha in centroides.iterrows()
             }
 
-        self.geocode_ext = obter_geocoder_arcgis()
+        self.geocode_ext = obter_geocoder_arcgis(
+            config.usar_externo,
+            config.arcgis_timeout,
+            config.arcgis_delay_s,
+            config.arcgis_retries,
+        )
 
     def cod_municipio(self, municipio: str) -> str:
         return self.municipios.get(sem_acento(municipio), "")
@@ -491,7 +620,7 @@ class MotorGeocodificacaoSoberana:
         if ancora is not None and self.tree is not None:
             indices = self.tree.query_ball_point(
                 [ancora[0], ancora[1]],
-                r=RAIO_MUNICIPIO_KM / 111.0,
+                r=self.config.raio_municipio_km / 111.0,
             )
             return np.array(indices, dtype=int)
 
@@ -511,7 +640,7 @@ class MotorGeocodificacaoSoberana:
                 melhor_score = score
                 melhor_indice = indice
 
-        if melhor_indice is not None and melhor_score >= LIMIAR_NOME:
+        if melhor_indice is not None and melhor_score >= self.config.limiar_nome:
             return (
                 float(self.glat[melhor_indice]),
                 float(self.glon[melhor_indice]),
@@ -527,17 +656,25 @@ class MotorGeocodificacaoSoberana:
 
         nomes = self.gnome[indices]
         mascara = np.array(
-            [fuzz.token_set_ratio(rua_norm, nome) >= LIMIAR_NOME for nome in nomes]
+            [
+                fuzz.token_set_ratio(rua_norm, nome) >= self.config.limiar_nome
+                for nome in nomes
+            ]
         )
 
         if not mascara.any():
             return False, None
 
         indices_filtrados = indices[mascara]
-        distancias = _hav(lat, lon, self.glat[indices_filtrados], self.glon[indices_filtrados])
+        distancias = _hav(
+            lat,
+            lon,
+            self.glat[indices_filtrados],
+            self.glon[indices_filtrados],
+        )
         melhor = float(distancias.min())
 
-        return melhor <= RAIO_CONFIRMA_M, melhor
+        return melhor <= self.config.raio_confirma_m, melhor
 
     def geocodificar(self, rua: str, numero: str, bairro: str, municipio: str):
         rua_limpa = limpar_logradouro(rua)
@@ -566,8 +703,16 @@ class MotorGeocodificacaoSoberana:
             if self.geocode_ext is not None:
                 loc = self.geocode_ext(consulta, out_fields="*")
                 if loc:
-                    addr_type = ((loc.raw or {}).get("attributes", {}) or {}).get("Addr_type", "")
-                    externo = (float(loc.latitude), float(loc.longitude), str(addr_type).lower())
+                    addr_type = (
+                        ((loc.raw or {}).get("attributes", {}) or {}).get(
+                            "Addr_type", ""
+                        )
+                    )
+                    externo = (
+                        float(loc.latitude),
+                        float(loc.longitude),
+                        str(addr_type).lower(),
+                    )
 
             ancora = (externo[0], externo[1]) if externo else None
 
@@ -711,8 +856,9 @@ def geocodificar_linhas_novas(
     df: pd.DataFrame,
     col_lat_destino: str,
     col_lon_destino: str,
+    config: RouboVeiculoSipConfig,
 ) -> tuple[pd.DataFrame, int]:
-    motor = MotorGeocodificacaoSoberana()
+    motor = MotorGeocodificacaoSoberana(config)
 
     lats = []
     lons = []
@@ -764,7 +910,7 @@ def geocodificar_linhas_novas(
     contagem = chave.value_counts()
     df["Ocorrencias_Mesmo_Ponto"] = chave.map(contagem).fillna(1).astype(int)
     df["_loc_aproximada"] = (
-        (df["Ocorrencias_Mesmo_Ponto"] >= LIMIAR_SUSPEITO)
+        (df["Ocorrencias_Mesmo_Ponto"] >= config.limiar_suspeito)
         & (df["numero_busca"].fillna("").astype(str).str.strip() == "")
     )
 
@@ -774,7 +920,7 @@ def geocodificar_linhas_novas(
 
 def filtrar_por_natureza(
     df: pd.DataFrame,
-    natureza_alvo: str = VALOR_FILTRO_NATUREZA,
+    natureza_alvo: str,
 ) -> tuple[pd.DataFrame, str]:
     col_natureza = encontrar_coluna_por_nomes(
         df,
@@ -786,7 +932,11 @@ def filtrar_por_natureza(
     return df_filtrado, col_natureza
 
 
-def processar_roubo_veiculo_sip(arquivo_01, arquivo_02):
+def processar_roubo_veiculo_sip(
+    arquivo_01,
+    arquivo_02,
+    config: RouboVeiculoSipConfig,
+):
     arquivo_01.seek(0)
     arquivo_02.seek(0)
 
@@ -806,12 +956,15 @@ def processar_roubo_veiculo_sip(arquivo_01, arquivo_02):
     df_novo = normalizar_colunas(df_novo)
 
     total_lido_arquivo_02 = len(df_novo)
-    df_novo, col_natureza = filtrar_por_natureza(df_novo, VALOR_FILTRO_NATUREZA)
+    df_novo, col_natureza = filtrar_por_natureza(
+        df_novo,
+        config.valor_filtro_natureza,
+    )
     removidos_por_tipo = total_lido_arquivo_02 - len(df_novo)
 
     if df_novo.empty:
         raise ValueError(
-            "Após filtrar a coluna 'Natureza' por 'ROUBO DE VEICULO', "
+            f"Após filtrar a coluna 'Natureza' por '{config.valor_filtro_natureza}', "
             "o Arquivo 02 ficou sem registros."
         )
 
@@ -824,8 +977,16 @@ def processar_roubo_veiculo_sip(arquivo_01, arquivo_02):
         obrigatoria=True,
     )
 
-    col_lat_base = encontrar_coluna_por_nomes(df_base, ["lat", "latitude"], obrigatoria=True)
-    col_lon_base = encontrar_coluna_por_nomes(df_base, ["lon", "long", "longitude"], obrigatoria=True)
+    col_lat_base = encontrar_coluna_por_nomes(
+        df_base,
+        ["lat", "latitude"],
+        obrigatoria=True,
+    )
+    col_lon_base = encontrar_coluna_por_nomes(
+        df_base,
+        ["lon", "long", "longitude"],
+        obrigatoria=True,
+    )
 
     col_endereco = encontrar_coluna_por_nomes(
         df_novo,
@@ -834,10 +995,14 @@ def processar_roubo_veiculo_sip(arquivo_01, arquivo_02):
     )
     col_numero = encontrar_coluna_por_nomes(
         df_novo,
-        ["número", "numero", "localNumero", "num"],
+        ["número", "numero", "localnumero", "num"],
         obrigatoria=True,
     )
-    col_bairro = encontrar_coluna_por_nomes(df_novo, ["bairro"], obrigatoria=True)
+    col_bairro = encontrar_coluna_por_nomes(
+        df_novo,
+        ["bairro"],
+        obrigatoria=True,
+    )
     col_municipio = encontrar_coluna_por_nomes(
         df_novo,
         ["município", "municipio", "cidade"],
@@ -917,6 +1082,7 @@ def processar_roubo_veiculo_sip(arquivo_01, arquivo_02):
             df_novo_util,
             col_lat_base,
             col_lon_base,
+            config,
         )
 
         antes_exclusao_sem_geo = len(df_novo_util)
@@ -995,7 +1161,7 @@ def processar_roubo_veiculo_sip(arquivo_01, arquivo_02):
     return df_final, resumo
 
 
-def _init_state():
+def _init_state() -> None:
     defaults = {
         "roubo_veiculo_sip_arquivo_01_bytes": None,
         "roubo_veiculo_sip_arquivo_01_nome": None,
@@ -1004,6 +1170,7 @@ def _init_state():
         "roubo_veiculo_sip_resultado_excel": None,
         "roubo_veiculo_sip_resultado_df": None,
         "roubo_veiculo_sip_resumo": None,
+        "roubo_veiculo_sip_config": None,
     }
     for chave, valor in defaults.items():
         if chave not in st.session_state:
@@ -1019,6 +1186,7 @@ def _limpar_estado_roubo_veiculo_sip() -> None:
         "roubo_veiculo_sip_resultado_excel",
         "roubo_veiculo_sip_resultado_df",
         "roubo_veiculo_sip_resumo",
+        "roubo_veiculo_sip_config",
         "roubo_veiculo_sip_upload_01",
         "roubo_veiculo_sip_upload_02",
     ]
@@ -1027,7 +1195,145 @@ def _limpar_estado_roubo_veiculo_sip() -> None:
             del st.session_state[chave]
 
 
-def render():
+def _obter_configuracao_ui() -> RouboVeiculoSipConfig:
+    with st.expander("Configuração técnica", expanded=False):
+        col_cfg1, col_cfg2 = st.columns(2, gap="large")
+
+        with col_cfg1:
+            _render_label_flutuante(
+                "Usar ArcGIS como fallback",
+                (
+                    "Quando ativado, o sistema complementa a busca na base enxuta "
+                    "com geocodificação externa ArcGIS para melhorar a cobertura."
+                ),
+            )
+            usar_externo = st.toggle(
+                "Usar ArcGIS como fallback",
+                value=True,
+                label_visibility="collapsed",
+                key="rvsip_cfg_usar_externo",
+            )
+
+            _render_label_flutuante(
+                "Base geográfica (.parquet)",
+                (
+                    "Arquivo parquet auxiliar com logradouros e coordenadas utilizado "
+                    "como base principal de geocodificação local."
+                ),
+            )
+            caminho_base_enxuta = st.text_input(
+                "Base geográfica (.parquet)",
+                value="CVP_SIP_GEOCODIFICAR.parquet",
+                label_visibility="collapsed",
+                key="rvsip_cfg_base_parquet",
+            )
+
+            _render_label_flutuante(
+                "Filtro de Natureza",
+                (
+                    "Valor exato usado para manter apenas ocorrências do tipo "
+                    "roubo de veículo no Arquivo 02."
+                ),
+            )
+            valor_filtro_natureza = st.text_input(
+                "Filtro de Natureza",
+                value="ROUBO DE VEICULO",
+                label_visibility="collapsed",
+                key="rvsip_cfg_filtro_natureza",
+            )
+
+            _render_label_flutuante(
+                "Arquivo cache de municípios",
+                (
+                    "Arquivo JSON local usado para armazenar o mapeamento IBGE "
+                    "dos municípios do Ceará e evitar consultas repetidas."
+                ),
+            )
+            arq_cache_mun = st.text_input(
+                "Arquivo cache de municípios",
+                value="municipios_ce.json",
+                label_visibility="collapsed",
+                key="rvsip_cfg_cache_municipios",
+            )
+
+        with col_cfg2:
+            _render_label_flutuante(
+                "Limiar de similaridade",
+                (
+                    "Percentual mínimo de similaridade entre o logradouro informado e "
+                    "o logradouro da base para aceitar o casamento textual."
+                ),
+            )
+            limiar_nome = st.slider(
+                "Limiar de similaridade",
+                min_value=70,
+                max_value=100,
+                value=88,
+                label_visibility="collapsed",
+                key="rvsip_cfg_limiar_nome",
+            )
+
+            _render_label_flutuante(
+                "Raio de confirmação (m)",
+                (
+                    "Distância máxima, em metros, para validar se o ponto retornado "
+                    "pelo ArcGIS é coerente com a base espacial local."
+                ),
+            )
+            raio_confirma_m = st.number_input(
+                "Raio de confirmação (m)",
+                min_value=10.0,
+                value=100.0,
+                step=10.0,
+                label_visibility="collapsed",
+                key="rvsip_cfg_raio_confirma",
+            )
+
+            _render_label_flutuante(
+                "Raio do município (km)",
+                (
+                    "Raio usado para restringir a busca espacial quando o município "
+                    "não é localizado diretamente por código."
+                ),
+            )
+            raio_municipio_km = st.number_input(
+                "Raio do município (km)",
+                min_value=1.0,
+                value=8.0,
+                step=1.0,
+                label_visibility="collapsed",
+                key="rvsip_cfg_raio_municipio",
+            )
+
+            _render_label_flutuante(
+                "Limiar de ponto suspeito",
+                (
+                    "Quantidade mínima de ocorrências no mesmo ponto para marcar "
+                    "localização aproximada em registros sem número."
+                ),
+            )
+            limiar_suspeito = st.number_input(
+                "Limiar de ponto suspeito",
+                min_value=2,
+                value=5,
+                step=1,
+                label_visibility="collapsed",
+                key="rvsip_cfg_limiar_suspeito",
+            )
+
+    return RouboVeiculoSipConfig(
+        usar_externo=usar_externo,
+        caminho_base_enxuta=caminho_base_enxuta.strip(),
+        valor_filtro_natureza=valor_filtro_natureza.strip() or "ROUBO DE VEICULO",
+        limiar_nome=int(limiar_nome),
+        raio_confirma_m=float(raio_confirma_m),
+        raio_municipio_km=float(raio_municipio_km),
+        limiar_suspeito=int(limiar_suspeito),
+        arq_cache_mun=arq_cache_mun.strip() or "municipios_ce.json",
+    )
+
+
+def render() -> None:
     _init_state()
     _aplicar_estilo_roubo_veiculo_sip()
 
@@ -1052,8 +1358,11 @@ def render():
         unsafe_allow_html=True,
     )
 
+    config = _obter_configuracao_ui()
+    st.session_state.roubo_veiculo_sip_config = config
+
     try:
-        base_geo = carregar_base_geografica()
+        base_geo = carregar_base_geografica(config.caminho_base_enxuta)
 
         if base_geo is not None and not base_geo.empty:
             st.markdown(
@@ -1065,8 +1374,9 @@ def render():
                         a geocodificação dos novos registros.
                     </div>
                     <div class="rvsip-badge-wrap">
-                        <span class="rvsip-badge ok">Arquivo: {CAMINHO_BASE_ENXUTA}</span>
+                        <span class="rvsip-badge ok">Arquivo: {config.caminho_base_enxuta}</span>
                         <span class="rvsip-badge info">Registros: {len(base_geo):,}</span>
+                        <span class="rvsip-badge info">Fallback ArcGIS: {"Sim" if config.usar_externo else "Não"}</span>
                     </div>
                 </div>
                 """,
@@ -1082,7 +1392,7 @@ def render():
                         presente e íntegro na raiz do projeto.
                     </div>
                     <div class="rvsip-badge-wrap">
-                        <span class="rvsip-badge error">Arquivo esperado: {CAMINHO_BASE_ENXUTA}</span>
+                        <span class="rvsip-badge error">Arquivo esperado: {config.caminho_base_enxuta}</span>
                     </div>
                 </div>
                 """,
@@ -1195,6 +1505,7 @@ def render():
                 df_final, resumo = processar_roubo_veiculo_sip(
                     arquivo_01_buffer,
                     arquivo_02_buffer,
+                    config,
                 )
                 arquivo_excel_bytes = gerar_excel_em_memoria(df_final)
 
