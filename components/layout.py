@@ -8,8 +8,6 @@ from config.settings import VERSAO_SISTEMA
 from services.modules_loader import (
     INDICADORES_ATUALIZACAO,
     MAPEAMENTO,
-    MODULOS_CONSOLIDACAO,
-    MODULOS_GEO,
     carregar_modulo,
     executar_interface_segura,
 )
@@ -67,109 +65,118 @@ def render_info_chips() -> None:
 def render_panel_header(kicker: str, titulo: str, descricao: str) -> None:
     st.markdown(
         f"""
-        <div class="panel-head">
-            <div class="panel-kicker">{kicker}</div>
-            <div class="panel-title">{titulo}</div>
-            <p class="panel-description">{descricao}</p>
-        </div>
+        <div class="panel-kicker">{kicker}</div>
+        <div class="panel-title">{titulo}</div>
+        <p class="panel-description">{descricao}</p>
         """,
         unsafe_allow_html=True,
     )
 
 
 def render_panel_atualizacao() -> None:
-    st.markdown('<div class="panel-card">', unsafe_allow_html=True)
+    with st.container():
+        st.markdown('<div class="panel-card">', unsafe_allow_html=True)
 
-    render_panel_header(
-        "Atualização",
-        "Indicadores operacionais",
-        "Execute a atualização completa ou selecione um indicador específico para processamento individual.",
-    )
+        render_panel_header(
+            "Atualização",
+            "Indicadores operacionais",
+            "Execute a atualização completa ou selecione um indicador específico para processamento individual.",
+        )
 
-    if st.button("Executar todos os indicadores", use_container_width=True):
-        selecionar_indicador("TODOS OS INDICADORES")
-        st.rerun()
+        if st.button("Executar todos os indicadores", key="btn_todos", use_container_width=True):
+            selecionar_indicador("TODOS OS INDICADORES")
+            st.rerun()
 
-    st.markdown("<div style='height: 0.85rem;'></div>", unsafe_allow_html=True)
+        st.markdown('<div class="field-gap"></div>', unsafe_allow_html=True)
 
-    st.selectbox(
-        "Selecione o indicador",
-        options=INDICADORES_ATUALIZACAO,
-        key="indicador_dropdown",
-        label_visibility="visible",
-    )
+        st.selectbox(
+            "Indicador",
+            options=INDICADORES_ATUALIZACAO,
+            key="indicador_dropdown",
+            label_visibility="visible",
+        )
 
-    st.markdown("<div style='height: 0.65rem;'></div>", unsafe_allow_html=True)
+        st.markdown('<div class="field-gap-sm"></div>', unsafe_allow_html=True)
 
-    if st.button("Abrir indicador selecionado", use_container_width=True):
-        selecionar_indicador(st.session_state.indicador_dropdown)
-        st.rerun()
+        if st.button("Abrir indicador selecionado", key="btn_abrir_indicador", use_container_width=True):
+            selecionar_indicador(st.session_state.indicador_dropdown)
+            st.rerun()
 
-    st.markdown(
-        f"""
-        <div class="panel-footer">
-            {len(INDICADORES_ATUALIZACAO)} indicadores disponíveis para processamento individual.
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        st.markdown(
+            f"""
+            <div class="panel-footer">
+                {len(INDICADORES_ATUALIZACAO)} indicadores disponíveis para processamento individual.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-    st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
 
 def render_panel_geocodificacao() -> None:
-    st.markdown('<div class="panel-card">', unsafe_allow_html=True)
+    with st.container():
+        st.markdown('<div class="panel-card">', unsafe_allow_html=True)
 
-    render_panel_header(
-        "Geoprocessamento",
-        "Geocodificação",
-        "Módulo dedicado à geocodificação de ocorrências e endereços para análise espacial.",
-    )
+        render_panel_header(
+            "Geoprocessamento",
+            "Geocodificação",
+            "Módulo dedicado à geocodificação de ocorrências e endereços para análise espacial.",
+        )
 
-    if st.button("Abrir módulo de geocodificação", key="btn_geo", use_container_width=True):
-        selecionar_indicador("GEOCODIFICAÇÃO")
-        st.rerun()
+        st.markdown('<div class="panel-action-gap"></div>', unsafe_allow_html=True)
 
-    st.markdown(
-        """
-        <div class="panel-footer">
-            Recomendado para rotinas de qualificação territorial e estudos de distribuição espacial.
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        if st.button("Abrir módulo de geocodificação", key="btn_geo", use_container_width=True):
+            selecionar_indicador("GEOCODIFICAÇÃO")
+            st.rerun()
 
-    st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown(
+            """
+            <div class="panel-footer">
+                Recomendado para rotinas de qualificação territorial e estudos de distribuição espacial.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.markdown("</div>", unsafe_allow_html=True)
 
 
 def render_panel_consolidacao() -> None:
-    st.markdown('<div class="panel-card">', unsafe_allow_html=True)
+    with st.container():
+        st.markdown('<div class="panel-card">', unsafe_allow_html=True)
 
-    render_panel_header(
-        "Consolidação",
-        "Consolidar indicadores",
-        "Organize e unifique resultados em uma base consolidada para consumo analítico.",
-    )
+        render_panel_header(
+            "Consolidação",
+            "Consolidar indicadores",
+            "Organize e unifique resultados em uma base consolidada para consumo analítico.",
+        )
 
-    if st.button("Abrir consolidação", key="btn_consolidar", use_container_width=True):
-        selecionar_indicador("CONSOLIDAR INDICADORES")
-        st.rerun()
+        st.markdown('<div class="panel-action-gap"></div>', unsafe_allow_html=True)
 
-    st.markdown(
-        """
-        <div class="panel-footer">
-            Ideal para fechamento de rotinas e preparação de saídas institucionais.
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        if st.button("Abrir módulo de consolidação", key="btn_consolidar", use_container_width=True):
+            selecionar_indicador("CONSOLIDAR INDICADORES")
+            st.rerun()
 
-    st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown(
+            """
+            <div class="panel-footer">
+                Ideal para fechamento de rotinas e preparação de saídas institucionais.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.markdown("</div>", unsafe_allow_html=True)
 
 
 def render_home() -> None:
     render_home_hero()
-    st.markdown('<div class="section-title">Módulos disponíveis</div>', unsafe_allow_html=True)
+
+    st.markdown(
+        '<div class="section-title">Módulos disponíveis</div>',
+        unsafe_allow_html=True,
+    )
 
     col1, col2, col3 = st.columns(3, gap="large")
 
@@ -193,9 +200,9 @@ def render_modulo() -> None:
     with col_titulo:
         st.markdown(
             f"""
-            <div style="padding: 0.15rem 0 0.75rem 0;">
+            <div class="module-header">
                 <div class="panel-kicker">Módulo ativo</div>
-                <div class="section-title" style="margin-bottom:0;">{indicador}</div>
+                <div class="section-title module-title">{indicador}</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -203,7 +210,7 @@ def render_modulo() -> None:
 
     with col_acao:
         st.markdown('<div class="secondary-button">', unsafe_allow_html=True)
-        if st.button("← Voltar", use_container_width=True):
+        if st.button("← Voltar", key="btn_voltar", use_container_width=True):
             voltar_inicio()
             st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
