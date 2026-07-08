@@ -2,42 +2,34 @@
 """
 GEOCODIFICADOR DIESP - VERSAO MODULAR PARA QGP ONLINE
 ====================================================
-Adaptado para uso interno no sistema, sem interface interativa local/Colab.
 
-ESCADA:
-  1. ArcGIS (numero da porta) - so se confirmado pela base (<=100 m da face de
-     mesmo nome). So roda com usar_externo=True.
-  2. Base GPKG/parquet (nivel rua) - soberano, casamento por similaridade.
-  3. ArcGIS nivel rua/bairro - cobre rua ausente da base (nao confirmado).
-  4. Centroide do municipio - quando nem a base tem a rua.
+Motor de geocodificacao adaptado para uso no QGP Online com interface Streamlit.
 
-USO PRINCIPAL:
-    config = GeocodificadorConfig(
-        caminho_gpkg="bases/Faces_de_Quadra_-_Ceara_ARRUAMENTO.gpkg",
-        caminho_base_enxuta="bases/faces_quadras_ce.parquet",
-    )
-    geo = GeocodificadorDIESP(config)
-    df_saida = geo.geocodificar_dataframe(df)
-
-OPCIONAL:
-    df_saida, resumo = geocodificar_ocorrencias(df, config=config)
+Fluxo principal:
+1. Upload de arquivo pelo usuario.
+2. Deteccao ou selecao manual das colunas.
+3. Execucao da geocodificacao com feedback visual.
+4. Exibicao de metricas, preview e exportacao do resultado.
 """
 
 from __future__ import annotations
 
+import io
+import json
 import os
 import re
-import json
 import unicodedata
 from dataclasses import dataclass
-from typing import Optional, Dict, Tuple, Any
+from datetime import datetime
+from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+import streamlit as st
+from geopy.extra.rate_limiter import RateLimiter
+from geopy.geocoders import ArcGIS
 from rapidfuzz import fuzz
 from scipy.spatial import cKDTree
-from geopy.geocoders import ArcGIS
-from geopy.extra.rate_limiter import RateLimiter
 
 
 # ============================================================================
@@ -47,8 +39,8 @@ from geopy.extra.rate_limiter import RateLimiter
 @dataclass
 class GeocodificadorConfig:
     usar_externo: bool = True
-    caminho_gpkg: str = "Faces_de_Quadra_-_Ceara_ARRUAMENTO.gpkg"
-    caminho_base_enxuta: str = "ROUBO DE VEICULO GEOCODIFICAR.parquet"
+    caminho_gpkg: str = "bases/Faces_de_Quadra_-_Ceara_ARRUAMENTO.gpkg"
+    caminho_base_enxuta: str = "bases/faces_quadras_ce.parquet"
     layer_gpkg: str = "reprojetado"
     epsg_gpkg: int = 31984
 
@@ -58,7 +50,7 @@ class GeocodificadorConfig:
     limiar_suspeito: int = 5
 
     uf_codigo: str = "23"
-    arq_cache_mun: str = "municipios_ce.json"
+    arq_cache_mun: str = "bases/municipios_ce.json"
 
     arcgis_timeout: int = 15
     arcgis_delay_s: float = 0.4
@@ -79,18 +71,43 @@ class GeocodificadorConfig:
 # ============================================================================
 
 SUBST = {
-    "AV": "Avenida", "AVD": "Avenida", "AVENIDA": "Avenida",
-    "R": "Rua", "RUA": "Rua", "TV": "Travessa", "TRV": "Travessa",
-    "TRAV": "Travessa", "TRAVESSA": "Travessa", "PC": "Praca", "PCA": "Praca",
-    "PRACA": "Praca", "ROD": "Rodovia", "AL": "Alameda", "PSO": "Passeio",
-    "GRJ": "", "DR": "Doutor", "DRA": "Doutora", "PE": "Padre",
-    "PRES": "Presidente", "CEL": "Coronel", "GEN": "General",
-    "PROF": "Professor", "MAE": "Maestro",
+    "AV": "Avenida",
+    "AVD": "Avenida",
+    "AVENIDA": "Avenida",
+    "R": "Rua",
+    "RUA": "Rua",
+    "TV": "Travessa",
+    "TRV": "Travessa",
+    "TRAV": "Travessa",
+    "TRAVESSA": "Travessa",
+    "PC": "Praca",
+    "PCA": "Praca",
+    "PRACA": "Praca",
+    "ROD": "Rodovia",
+    "AL": "Alameda",
+    "PSO": "Passeio",
+    "GRJ": "",
+    "DR": "Doutor",
+    "DRA": "Doutora",
+    "PE": "Padre",
+    "PRES": "Presidente",
+    "CEL": "Coronel",
+    "GEN": "General",
+    "PROF": "Professor",
+    "MAE": "Maestro",
 }
-CORR = {"RAIMUINDO": "RAIMUNDO", "OSWALDO": "OSVALDO"}
+
+CORR = {
+    "RAIMUINDO": "RAIMUNDO",
+    "OSWALDO": "OSVALDO",
+}
+
 RUIDO = ["LADO PAR", "LADO IMPAR", "- P", "FORTALEZA, CE", ", CE"]
+
 RE_BNI = re.compile(r"\(?\s*bairro\s+n[aã]o\s+identificad[oa]\s*\)?", flags=re.IGNORECASE)
+
 TIPOS = ("Rua", "Avenida", "Travessa", "Praca", "Rodovia", "Alameda", "Passeio")
+
 ROOFTOP = ("pointaddress", "streetaddress", "subaddress", "pointaddressvd")
 
 
@@ -212,10 +229,10 @@ class GeocodificadorDIESP:
                 arc.geocode,
                 min_delay_seconds=self.config.arcgis_delay_s,
                 max_retries=self.config.arcgis_retries,
-                swallow_exceptions=True
+                swallow_exceptions=True,
             )
 
-    def _log(self, msg: str):
+    def _log(self, msg: str) -> None:
         if self.logger:
             try:
                 self.logger(msg)
@@ -223,20 +240,16 @@ class GeocodificadorDIESP:
             except Exception:
                 pass
 
-    # ========================================================================
-    # BASE OFICIAL
-    # ========================================================================
-
     def _construir_base_enxuta(self, gpkg: str, parquet_saida: str) -> pd.DataFrame:
         import fiona
-        from shapely.geometry import shape
         from pyproj import Transformer
+        from shapely.geometry import shape
 
         self._log("[BASE] Gerando base enxuta a partir do GPKG...")
         tr = Transformer.from_crs(
             f"EPSG:{self.config.epsg_gpkg}",
             "EPSG:4326",
-            always_xy=True
+            always_xy=True,
         )
 
         regs = []
@@ -270,7 +283,7 @@ class GeocodificadorDIESP:
 
         base = pd.DataFrame(
             regs,
-            columns=["cod_mun", "nome_norm", "nome_orig", "lat", "lon", "tot_geral"]
+            columns=["cod_mun", "nome_norm", "nome_orig", "lat", "lon", "tot_geral"],
         )
 
         pasta_saida = os.path.dirname(parquet_saida)
@@ -299,22 +312,14 @@ class GeocodificadorDIESP:
                 return base.reset_index(drop=True)
             except Exception as e:
                 raise RuntimeError(
-                    f"Falha ao abrir a base enxuta '{caminho_parquet}'. "
-                    f"Erro original: {e}"
+                    f"Falha ao abrir a base enxuta '{caminho_parquet}'. Erro original: {e}"
                 ) from e
 
         if caminho_gpkg and os.path.exists(caminho_gpkg):
             return self._construir_base_enxuta(caminho_gpkg, caminho_parquet).reset_index(drop=True)
 
-        self._log(
-            "[BASE] Base nao encontrada (nem parquet nem GPKG). "
-            "Motor soberano indisponivel."
-        )
+        self._log("[BASE] Base nao encontrada (nem parquet nem GPKG).")
         return None
-
-    # ========================================================================
-    # MUNICIPIOS
-    # ========================================================================
 
     def _carregar_municipios(self) -> Dict[str, str]:
         arq_cache = self.config.arq_cache_mun
@@ -332,8 +337,8 @@ class GeocodificadorDIESP:
         )
 
         try:
-            import urllib.request
             import gzip
+            import urllib.request
 
             req = urllib.request.Request(url, headers={"Accept-Encoding": "gzip"})
             with urllib.request.urlopen(req, timeout=30) as r:
@@ -355,15 +360,8 @@ class GeocodificadorDIESP:
             return mapa
 
         except Exception as e:
-            self._log(
-                f"[MUN] Nao foi possivel obter a tabela do IBGE ({e}). "
-                "Ancoragem pela base/ponto externo quando possivel."
-            )
+            self._log(f"[MUN] Nao foi possivel obter a tabela do IBGE ({e}).")
             return {}
-
-    # ========================================================================
-    # MOTOR
-    # ========================================================================
 
     def cod_municipio(self, municipio: Any) -> str:
         return self.mun.get(sem_acento(municipio), "")
@@ -377,7 +375,7 @@ class GeocodificadorDIESP:
         if ancora is not None and self.tree is not None:
             ix = self.tree.query_ball_point(
                 [ancora[0], ancora[1]],
-                r=self.config.raio_municipio_km / 111.0
+                r=self.config.raio_municipio_km / 111.0,
             )
             return np.array(ix, dtype=int)
 
@@ -405,16 +403,14 @@ class GeocodificadorDIESP:
         lon: float,
         rua_norm: str,
         cod: str,
-        ancora: Optional[Tuple[float, float]]
+        ancora: Optional[Tuple[float, float]],
     ):
         ix = self._idx_municipio(cod, ancora or (lat, lon))
         if not len(ix):
             return False, None
 
         nomes = self.gnome[ix]
-        msk = np.array([
-            fuzz.token_set_ratio(rua_norm, n) >= self.config.limiar_nome for n in nomes
-        ])
+        msk = np.array([fuzz.token_set_ratio(rua_norm, n) >= self.config.limiar_nome for n in nomes])
         if not msk.any():
             return False, None
 
@@ -428,7 +424,7 @@ class GeocodificadorDIESP:
         rua: Any,
         num: Any,
         bairro: Any,
-        municipio: Any
+        municipio: Any,
     ) -> Tuple[Any, Any, str, str, bool, Optional[float]]:
         rua_l = limpar_logradouro(rua)
         bai_l = limpar_bairro(bairro, municipio)
@@ -481,15 +477,11 @@ class GeocodificadorDIESP:
 
         return (None, None, "Nao Encontrado", "-", False, None)
 
-    # ========================================================================
-    # POS-PROCESSAMENTO
-    # ========================================================================
-
     def diagnosticar_coordenadas(
         self,
         df: pd.DataFrame,
         lat_col: Optional[str] = None,
-        lon_col: Optional[str] = None
+        lon_col: Optional[str] = None,
     ) -> pd.DataFrame:
         lat_col = lat_col or self.config.coluna_lat_saida
         lon_col = lon_col or self.config.coluna_lon_saida
@@ -512,17 +504,13 @@ class GeocodificadorDIESP:
 
         return df
 
-    # ========================================================================
-    # PLANILHA / DATAFRAME
-    # ========================================================================
-
     def geocodificar_dataframe(
         self,
         df: pd.DataFrame,
         coluna_logradouro: Optional[str] = None,
         coluna_numero: Optional[str] = None,
         coluna_bairro: Optional[str] = None,
-        coluna_municipio: Optional[str] = None
+        coluna_municipio: Optional[str] = None,
     ) -> pd.DataFrame:
         if df is None or df.empty:
             return df.copy()
@@ -543,9 +531,7 @@ class GeocodificadorDIESP:
         lats, lons, nivel, fonte, conf, dists, temnum = [], [], [], [], [], [], []
         total = len(df)
 
-        self._log(
-            f"[COLUNAS] logradouro={c_log} numero={c_num} bairro={c_bai} municipio={c_mun}"
-        )
+        self._log(f"[COLUNAS] logradouro={c_log} numero={c_num} bairro={c_bai} municipio={c_mun}")
 
         for i, row in df.iterrows():
             num = limpar_numero(row.get(c_num)) if c_num else ""
@@ -554,7 +540,7 @@ class GeocodificadorDIESP:
                 row.get(c_log),
                 num,
                 row.get(c_bai) if c_bai else "",
-                row.get(c_mun)
+                row.get(c_mun),
             )
 
             lats.append(r[0])
@@ -588,7 +574,7 @@ class GeocodificadorDIESP:
                 "geocodificadas": 0,
                 "perc_geocodificadas": 0.0,
                 "exato_numero": 0,
-                "nao_encontrado": 0
+                "nao_encontrado": 0,
             }
 
         col_nivel = self.config.coluna_nivel_saida
@@ -609,7 +595,7 @@ class GeocodificadorDIESP:
         self,
         caminho_entrada: str,
         caminho_saida: Optional[str] = None,
-        **kwargs
+        **kwargs,
     ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
         if not caminho_entrada or not os.path.exists(caminho_entrada):
             raise FileNotFoundError(f"Arquivo nao encontrado: {caminho_entrada}")
@@ -657,7 +643,7 @@ def geocodificar_ocorrencias(
     df: pd.DataFrame,
     config: Optional[GeocodificadorConfig] = None,
     logger=None,
-    **kwargs
+    **kwargs,
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     servico = GeocodificadorDIESP(config=config, logger=logger)
     df_saida = servico.geocodificar_dataframe(df, **kwargs)
@@ -670,11 +656,266 @@ def geocodificar_arquivo_ocorrencias(
     caminho_saida: Optional[str] = None,
     config: Optional[GeocodificadorConfig] = None,
     logger=None,
-    **kwargs
+    **kwargs,
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     servico = GeocodificadorDIESP(config=config, logger=logger)
     return servico.geocodificar_excel(
         caminho_entrada=caminho_entrada,
         caminho_saida=caminho_saida,
-        **kwargs
+        **kwargs,
     )
+
+
+# ============================================================================
+# UI STREAMLIT
+# ============================================================================
+
+def _ler_arquivo_upload(uploaded_file) -> pd.DataFrame:
+    nome = uploaded_file.name.lower()
+
+    if nome.endswith(".csv"):
+        return pd.read_csv(uploaded_file)
+
+    if nome.endswith(".xlsx") or nome.endswith(".xls"):
+        return pd.read_excel(uploaded_file)
+
+    if nome.endswith(".parquet"):
+        return pd.read_parquet(uploaded_file)
+
+    raise ValueError("Formato nao suportado. Envie CSV, XLSX, XLS ou Parquet.")
+
+
+def _df_to_csv_bytes(df: pd.DataFrame) -> bytes:
+    return df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+
+
+def _df_to_excel_bytes(df: pd.DataFrame) -> bytes:
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="geocodificacao")
+    buffer.seek(0)
+    return buffer.read()
+
+
+def interface_geocodificacao() -> None:
+    st.markdown(
+        """
+        <div class="module-shell">
+            <div class="module-shell-header">
+                <div class="module-shell-kicker">Geoprocessamento · Módulo</div>
+                <div class="module-shell-title">Geocodificação de ocorrências</div>
+                <p class="module-shell-description">
+                    Execute o processo de geocodificação de bases de ocorrências com apoio da base oficial,
+                    validação espacial e fallback externo quando habilitado.
+                </p>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    with st.expander("Configuração técnica", expanded=False):
+        col_c1, col_c2 = st.columns(2, gap="large")
+
+        with col_c1:
+            usar_externo = st.toggle("Usar ArcGIS como fallback", value=True)
+            caminho_gpkg = st.text_input(
+                "Caminho do GPKG",
+                value="bases/Faces_de_Quadra_-_Ceara_ARRUAMENTO.gpkg",
+            )
+            caminho_base_enxuta = st.text_input(
+                "Caminho da base enxuta (.parquet)",
+                value="bases/faces_quadras_ce.parquet",
+            )
+
+        with col_c2:
+            limiar_nome = st.slider("Limiar de similaridade", 70, 100, 88)
+            raio_confirma_m = st.number_input("Raio de confirmação (m)", min_value=10.0, value=100.0, step=10.0)
+            raio_municipio_km = st.number_input("Raio do município (km)", min_value=1.0, value=8.0, step=1.0)
+
+    uploaded_file = st.file_uploader(
+        "Enviar arquivo de ocorrências",
+        type=["csv", "xlsx", "xls", "parquet"],
+        help="Formatos suportados: CSV, Excel e Parquet.",
+    )
+
+    if uploaded_file is None:
+        st.info("Envie um arquivo para iniciar a geocodificação.")
+        return
+
+    try:
+        df = _ler_arquivo_upload(uploaded_file)
+    except Exception as exc:
+        st.error(f"Falha ao ler o arquivo enviado: {exc}")
+        return
+
+    st.markdown('<div class="module-shell-separator"></div>', unsafe_allow_html=True)
+
+    col_m1, col_m2, col_m3 = st.columns(3, gap="large")
+    with col_m1:
+        st.metric("Registros carregados", f"{len(df):,}".replace(",", "."))
+    with col_m2:
+        st.metric("Colunas detectadas", len(df.columns))
+    with col_m3:
+        st.metric("Formato", uploaded_file.name.split(".")[-1].upper())
+
+    st.markdown(
+        """
+        <div class="module-shell-section-title">Pré-visualização da base</div>
+        <p class="module-shell-section-subtitle">
+            Revise os dados antes do processamento e confirme o mapeamento das colunas principais.
+        </p>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.dataframe(df.head(20), use_container_width=True)
+
+    colunas = list(df.columns)
+    c_log_auto = detectar(df, ["logradouro", "endereco", "rua"])
+    c_num_auto = detectar(df, ["localNumero", "numero", "num"])
+    c_bai_auto = detectar(df, ["bairro"])
+    c_mun_auto = detectar(df, ["municipio", "cidade"])
+
+    st.markdown('<div class="module-shell-separator"></div>', unsafe_allow_html=True)
+
+    st.markdown(
+        """
+        <div class="module-shell-section-title">Mapeamento de colunas</div>
+        <p class="module-shell-section-subtitle">
+            Ajuste manualmente caso a detecção automática não corresponda ao layout da planilha.
+        </p>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    col_f1, col_f2, col_f3, col_f4 = st.columns(4, gap="large")
+
+    with col_f1:
+        coluna_logradouro = st.selectbox(
+            "Logradouro",
+            options=colunas,
+            index=colunas.index(c_log_auto) if c_log_auto in colunas else 0,
+        )
+
+    with col_f2:
+        coluna_numero = st.selectbox(
+            "Número",
+            options=[""] + colunas,
+            index=([""] + colunas).index(c_num_auto) if c_num_auto in colunas else 0,
+        )
+
+    with col_f3:
+        coluna_bairro = st.selectbox(
+            "Bairro",
+            options=[""] + colunas,
+            index=([""] + colunas).index(c_bai_auto) if c_bai_auto in colunas else 0,
+        )
+
+    with col_f4:
+        coluna_municipio = st.selectbox(
+            "Município",
+            options=colunas,
+            index=colunas.index(c_mun_auto) if c_mun_auto in colunas else 0,
+        )
+
+    st.markdown('<div class="module-shell-separator"></div>', unsafe_allow_html=True)
+
+    if st.button("Iniciar geocodificação", use_container_width=True, key="geo_processar"):
+        logs = []
+
+        def logger(msg: str) -> None:
+            logs.append(msg)
+
+        try:
+            config = GeocodificadorConfig(
+                usar_externo=usar_externo,
+                caminho_gpkg=caminho_gpkg,
+                caminho_base_enxuta=caminho_base_enxuta,
+                limiar_nome=limiar_nome,
+                raio_confirma_m=raio_confirma_m,
+                raio_municipio_km=raio_municipio_km,
+            )
+
+            with st.status("Processando geocodificação...", expanded=True) as status:
+                status.write("Inicializando serviço...")
+                geo = GeocodificadorDIESP(config=config, logger=logger)
+
+                status.write("Executando geocodificação da base...")
+                df_saida = geo.geocodificar_dataframe(
+                    df,
+                    coluna_logradouro=coluna_logradouro,
+                    coluna_numero=coluna_numero or None,
+                    coluna_bairro=coluna_bairro or None,
+                    coluna_municipio=coluna_municipio,
+                )
+
+                status.write("Consolidando resumo executivo...")
+                resumo = geo.resumir_resultado(df_saida)
+
+                for item in logs[-10:]:
+                    status.write(item)
+
+                status.update(label="Geocodificação concluída com sucesso.", state="complete")
+
+            st.session_state["geo_df_saida"] = df_saida
+            st.session_state["geo_resumo"] = resumo
+            st.session_state["geo_nome_arquivo"] = os.path.splitext(uploaded_file.name)[0]
+
+            st.success("Processamento concluído.")
+
+        except Exception as exc:
+            st.error(f"Erro ao executar geocodificação: {exc}")
+            return
+
+    if "geo_df_saida" not in st.session_state:
+        return
+
+    df_saida = st.session_state["geo_df_saida"]
+    resumo = st.session_state["geo_resumo"]
+    nome_arquivo = st.session_state.get("geo_nome_arquivo", "resultado_geocodificacao")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    st.markdown('<div class="module-shell-separator"></div>', unsafe_allow_html=True)
+
+    col_r1, col_r2, col_r3, col_r4 = st.columns(4, gap="large")
+    with col_r1:
+        st.metric("Total", f"{resumo['total']:,}".replace(",", "."))
+    with col_r2:
+        st.metric("Geocodificadas", f"{resumo['geocodificadas']:,}".replace(",", "."))
+    with col_r3:
+        st.metric("Taxa de sucesso", f"{resumo['perc_geocodificadas']}%")
+    with col_r4:
+        st.metric("Não encontrado", f"{resumo['nao_encontrado']:,}".replace(",", "."))
+
+    st.markdown(
+        """
+        <div class="module-shell-section-title">Resultado processado</div>
+        <p class="module-shell-section-subtitle">
+            Visualize a base tratada, valide os campos de geocodificação e exporte os dados para uso analítico.
+        </p>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.dataframe(df_saida, use_container_width=True)
+
+    col_d1, col_d2 = st.columns(2, gap="large")
+
+    with col_d1:
+        st.download_button(
+            label="Baixar resultado em CSV",
+            data=_df_to_csv_bytes(df_saida),
+            file_name=f"{nome_arquivo}_geocodificado_{timestamp}.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+
+    with col_d2:
+        st.download_button(
+            label="Baixar resultado em Excel",
+            data=_df_to_excel_bytes(df_saida),
+            file_name=f"{nome_arquivo}_geocodificado_{timestamp}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
