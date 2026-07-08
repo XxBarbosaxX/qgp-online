@@ -87,51 +87,84 @@ ROOFTOP = ("pointaddress", "streetaddress", "subaddress", "pointaddressvd")
 
 
 def _aplicar_estilo_cvp_sip() -> None:
-    """Aplica o estilo visual padronizado do módulo CVP (SIP)."""
+    """Aplica estilo visual padronizado ao módulo CVP SIP."""
     st.markdown(
         """
         <style>
-            .cvp-sip-card {
-                background: rgba(255, 255, 255, 0.02);
-                border: 1px solid rgba(255, 255, 255, 0.07);
+            .cvp-sip-shell {
+                display: flex;
+                flex-direction: column;
+                gap: 1rem;
+                margin-bottom: 1rem;
+            }
+
+            .cvp-sip-hero {
+                background: linear-gradient(135deg, rgba(8, 54, 49, 0.92) 0%, rgba(9, 79, 70, 0.92) 100%);
+                border: 1px solid rgba(255, 255, 255, 0.08);
                 border-radius: 18px;
-                padding: 1.15rem 1.15rem 0.85rem 1.15rem;
-                margin: 1rem 0;
+                padding: 1.4rem 1.4rem 1.2rem 1.4rem;
+                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+            }
+
+            .cvp-sip-kicker {
+                font-size: 0.78rem;
+                text-transform: uppercase;
+                letter-spacing: 0.14em;
+                font-weight: 800;
+                color: #f7b267;
+                margin-bottom: 0.55rem;
             }
 
             .cvp-sip-title {
+                font-size: 2rem;
+                line-height: 1.1;
+                font-weight: 900;
+                color: #f8fafc;
+                margin: 0 0 0.5rem 0;
+            }
+
+            .cvp-sip-description {
+                color: rgba(255, 255, 255, 0.82);
+                font-size: 0.98rem;
+                line-height: 1.6;
+                margin: 0;
+                max-width: 920px;
+            }
+
+            .cvp-sip-section-card {
+                background: rgba(255, 255, 255, 0.02);
+                border: 1px solid rgba(255, 255, 255, 0.07);
+                border-radius: 18px;
+                padding: 1.1rem 1.1rem 0.7rem 1.1rem;
+                margin: 1rem 0;
+            }
+
+            .cvp-sip-section-title {
                 font-size: 1.15rem;
                 font-weight: 800;
                 color: #f8fafc;
                 margin-bottom: 0.25rem;
             }
 
-            .cvp-sip-desc {
+            .cvp-sip-section-desc {
                 font-size: 0.93rem;
-                line-height: 1.55;
-                color: rgba(255, 255, 255, 0.72);
+                color: rgba(255, 255, 255, 0.70);
                 margin-bottom: 0.9rem;
+                line-height: 1.5;
             }
 
-            .cvp-sip-list {
-                margin: 0.55rem 0 0 0;
+            .cvp-sip-mini-list {
+                margin: 0.6rem 0 0 0;
                 padding-left: 1rem;
                 color: rgba(255,255,255,0.78);
                 font-size: 0.92rem;
             }
 
-            .cvp-sip-upload-label {
-                font-size: 0.95rem;
-                font-weight: 700;
-                color: #f8fafc;
-                margin-bottom: 0.35rem;
-            }
-
-            .cvp-sip-grid {
+            .cvp-sip-grid-status {
                 display: grid;
-                grid-template-columns: repeat(4, minmax(0, 1fr));
+                grid-template-columns: repeat(5, minmax(0, 1fr));
                 gap: 0.85rem;
-                margin: 1rem 0 0.35rem 0;
+                margin: 1rem 0 0.2rem 0;
             }
 
             .cvp-sip-stat {
@@ -151,18 +184,18 @@ def _aplicar_estilo_cvp_sip() -> None:
             }
 
             .cvp-sip-stat-value {
-                font-size: 1.18rem;
+                font-size: 1.20rem;
                 font-weight: 900;
                 color: #ffffff;
                 line-height: 1.15;
                 word-break: break-word;
             }
 
-            .cvp-sip-badges {
+            .cvp-sip-badge-wrap {
                 display: flex;
                 flex-wrap: wrap;
                 gap: 0.5rem;
-                margin-top: 0.7rem;
+                margin-top: 0.55rem;
                 margin-bottom: 0.15rem;
             }
 
@@ -170,7 +203,7 @@ def _aplicar_estilo_cvp_sip() -> None:
                 display: inline-flex;
                 align-items: center;
                 gap: 0.35rem;
-                padding: 0.48rem 0.72rem;
+                padding: 0.5rem 0.72rem;
                 border-radius: 999px;
                 font-size: 0.82rem;
                 font-weight: 700;
@@ -198,17 +231,40 @@ def _aplicar_estilo_cvp_sip() -> None:
             }
 
             @media (max-width: 1180px) {
-                .cvp-sip-grid {
+                .cvp-sip-grid-status {
                     grid-template-columns: repeat(2, minmax(0, 1fr));
                 }
             }
 
             @media (max-width: 640px) {
-                .cvp-sip-grid {
+                .cvp-sip-grid-status {
                     grid-template-columns: 1fr;
+                }
+
+                .cvp-sip-title {
+                    font-size: 1.6rem;
                 }
             }
         </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _render_hero_cvp_sip() -> None:
+    """Renderiza o hero visual do módulo CVP SIP."""
+    st.markdown(
+        """
+        <div class="cvp-sip-shell">
+            <div class="cvp-sip-hero">
+                <div class="cvp-sip-kicker">Módulo ativo</div>
+                <div class="cvp-sip-title">CVP (SIP)</div>
+                <p class="cvp-sip-description">
+                    Atualize a base do CVP (SIP) com geocodificação por endereço,
+                    validação temporal e consolidação padronizada para uso no QGP Online.
+                </p>
+            </div>
+        </div>
         """,
         unsafe_allow_html=True,
     )
@@ -274,10 +330,7 @@ def carregar_municipios() -> dict:
         except Exception:
             pass
 
-    url = (
-        f"https://servicodados.ibge.gov.br/api/v1/localidades/estados/"
-        f"{UF_CODIGO}/municipios"
-    )
+    url = f"https://servicodados.ibge.gov.br/api/v1/localidades/estados/{UF_CODIGO}/municipios"
 
     try:
         import gzip
@@ -349,10 +402,7 @@ def carregar_base_geografica() -> Optional[pd.DataFrame]:
         .str[:7]
     )
     base["nome_orig"] = base.apply(
-        lambda linha: _montar_nome_logradouro(
-            linha.get("NM_TIP_LOG"),
-            linha.get("NM_LOG"),
-        ),
+        lambda linha: _montar_nome_logradouro(linha.get("NM_TIP_LOG"), linha.get("NM_LOG")),
         axis=1,
     )
     base["nome_norm"] = base["nome_orig"].apply(sem_acento)
@@ -525,12 +575,7 @@ class MotorGeocodificacaoSoberana:
             return False, None
 
         indices_filtrados = indices[mascara]
-        distancias = _hav(
-            lat,
-            lon,
-            self.glat[indices_filtrados],
-            self.glon[indices_filtrados],
-        )
+        distancias = _hav(lat, lon, self.glat[indices_filtrados], self.glon[indices_filtrados])
         melhor = float(distancias.min())
 
         return melhor <= RAIO_CONFIRMA_M, melhor
@@ -562,25 +607,13 @@ class MotorGeocodificacaoSoberana:
             if self.geocode_ext is not None:
                 loc = self.geocode_ext(consulta, out_fields="*")
                 if loc:
-                    addr_type = (
-                        ((loc.raw or {}).get("attributes", {}) or {}).get("Addr_type", "")
-                    )
-                    externo = (
-                        float(loc.latitude),
-                        float(loc.longitude),
-                        str(addr_type).lower(),
-                    )
+                    addr_type = ((loc.raw or {}).get("attributes", {}) or {}).get("Addr_type", "")
+                    externo = (float(loc.latitude), float(loc.longitude), str(addr_type).lower())
 
             ancora = (externo[0], externo[1]) if externo else None
 
             if externo:
-                ok, distancia = self.validar(
-                    externo[0],
-                    externo[1],
-                    rua_norm,
-                    cod,
-                    ancora,
-                )
+                ok, distancia = self.validar(externo[0], externo[1], rua_norm, cod, ancora)
                 if ok:
                     return (
                         externo[0],
@@ -808,16 +841,8 @@ def processar_cvp_sip(arquivo_01, arquivo_02):
         obrigatoria=True,
     )
 
-    col_lat_base = encontrar_coluna_por_nomes(
-        df_base,
-        ["lat", "latitude"],
-        obrigatoria=True,
-    )
-    col_lon_base = encontrar_coluna_por_nomes(
-        df_base,
-        ["lon", "long", "longitude"],
-        obrigatoria=True,
-    )
+    col_lat_base = encontrar_coluna_por_nomes(df_base, ["lat", "latitude"], obrigatoria=True)
+    col_lon_base = encontrar_coluna_por_nomes(df_base, ["lon", "long", "longitude"], obrigatoria=True)
 
     col_endereco = encontrar_coluna_por_nomes(
         df_novo,
@@ -985,8 +1010,7 @@ def processar_cvp_sip(arquivo_01, arquivo_02):
     return df_final, resumo
 
 
-def _init_state() -> None:
-    """Inicializa o session state do módulo."""
+def _init_state():
     defaults = {
         "cvp_sip_arquivo_01_bytes": None,
         "cvp_sip_arquivo_01_nome": None,
@@ -1002,7 +1026,7 @@ def _init_state() -> None:
 
 
 def _limpar_estado_cvp_sip() -> None:
-    """Limpa os estados do módulo CVP SIP."""
+    """Limpa o estado do módulo CVP SIP."""
     chaves = [
         "cvp_sip_arquivo_01_bytes",
         "cvp_sip_arquivo_01_nome",
@@ -1019,22 +1043,21 @@ def _limpar_estado_cvp_sip() -> None:
             del st.session_state[chave]
 
 
-def render() -> None:
-    """Renderiza a interface do módulo CVP SIP."""
+def render():
     _init_state()
     _aplicar_estilo_cvp_sip()
+    _render_hero_cvp_sip()
 
     st.markdown(
         """
-        <div class="cvp-sip-card">
-            <div class="cvp-sip-title">Geocodificação de ocorrências por endereço</div>
-            <div class="cvp-sip-desc">
-                Envie a base histórica e o complemento SIP para atualizar a base do CVP com
-                geocodificação automatizada, filtro temporal e consolidação padronizada para uso no
-                QGP Online.
+        <div class="cvp-sip-section-card">
+            <div class="cvp-sip-section-title">Processamento CVP (SIP)</div>
+            <div class="cvp-sip-section-desc">
+                Envie a base histórica e o complemento SIP para atualizar a base com geocodificação
+                por endereço, filtro temporal e consolidação padronizada.
             </div>
-            <ul class="cvp-sip-list">
-                <li>Seleção automática das abas mais adequadas nos arquivos.</li>
+            <ul class="cvp-sip-mini-list">
+                <li>Seleção automática das abas mais adequadas.</li>
                 <li>Geocodificação híbrida com ArcGIS e base enxuta em Parquet.</li>
                 <li>Inclusão apenas de registros posteriores à última Data/Hora da base.</li>
                 <li>Geração do arquivo final consolidado para download.</li>
@@ -1049,12 +1072,12 @@ def render() -> None:
         if base_geo is not None and not base_geo.empty:
             st.markdown(
                 f"""
-                <div class="cvp-sip-card">
-                    <div class="cvp-sip-title">Base geográfica operacional</div>
-                    <div class="cvp-sip-desc">
-                        A base auxiliar de geocodificação está carregada e pronta para uso.
+                <div class="cvp-sip-section-card">
+                    <div class="cvp-sip-section-title">Base geográfica operacional</div>
+                    <div class="cvp-sip-section-desc">
+                        A base auxiliar foi carregada com sucesso e está pronta para apoiar a geocodificação.
                     </div>
-                    <div class="cvp-sip-badges">
+                    <div class="cvp-sip-badge-wrap">
                         <span class="cvp-sip-badge ok">Base carregada com sucesso</span>
                         <span class="cvp-sip-badge info">Registros: {len(base_geo):,}</span>
                         <span class="cvp-sip-badge info">Arquivo: {CAMINHO_BASE_ENXUTA}</span>
@@ -1073,27 +1096,17 @@ def render() -> None:
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown(
-            '<div class="cvp-sip-upload-label">📁 Arquivo 01 - Base histórica CVP</div>',
-            unsafe_allow_html=True,
-        )
         arquivo_01 = st.file_uploader(
-            "Arquivo 01 - Base historica CVP",
+            "📁 Arquivo 01 - Base histórica CVP",
             type=["xlsx", "xls"],
             key="cvp_sip_upload_01",
-            label_visibility="collapsed",
         )
 
     with col2:
-        st.markdown(
-            '<div class="cvp-sip-upload-label">📁 Arquivo 02 - Complemento SIP</div>',
-            unsafe_allow_html=True,
-        )
         arquivo_02 = st.file_uploader(
-            "Arquivo 02 - Complemento SIP",
+            "📁 Arquivo 02 - Complemento SIP",
             type=["xlsx", "xls"],
             key="cvp_sip_upload_02",
-            label_visibility="collapsed",
         )
 
     if arquivo_01 is not None:
@@ -1106,6 +1119,19 @@ def render() -> None:
         st.session_state.cvp_sip_arquivo_02_bytes = arquivo_02.read()
         st.session_state.cvp_sip_arquivo_02_nome = arquivo_02.name
 
+    st.markdown(
+        """
+        <div class="cvp-sip-section-card">
+            <div class="cvp-sip-section-title">Execução do processamento</div>
+            <div class="cvp-sip-section-desc">
+                Após validar os arquivos enviados, execute a rotina para aplicar geocodificação,
+                filtro temporal, padronização estrutural e geração da base consolidada.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
     badges_upload = []
     if st.session_state.cvp_sip_arquivo_01_nome:
         badges_upload.append(
@@ -1116,22 +1142,9 @@ def render() -> None:
             f'<span class="cvp-sip-badge ok">Complemento carregado: {st.session_state.cvp_sip_arquivo_02_nome}</span>'
         )
 
-    st.markdown(
-        """
-        <div class="cvp-sip-card">
-            <div class="cvp-sip-title">Execução do processamento</div>
-            <div class="cvp-sip-desc">
-                Após validar os arquivos enviados, execute a rotina para aplicar geocodificação,
-                filtro temporal, padronização estrutural e geração da base consolidada.
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
     if badges_upload:
         st.markdown(
-            f'<div class="cvp-sip-badges">{"".join(badges_upload)}</div>',
+            f'<div class="cvp-sip-badge-wrap">{"".join(badges_upload)}</div>',
             unsafe_allow_html=True,
         )
 
@@ -1168,10 +1181,7 @@ def render() -> None:
             arquivo_02_buffer = BytesIO(st.session_state.cvp_sip_arquivo_02_bytes)
 
             with st.spinner("Processando e geocodificando registros do CVP (SIP)..."):
-                df_final, resumo = processar_cvp_sip(
-                    arquivo_01_buffer,
-                    arquivo_02_buffer,
-                )
+                df_final, resumo = processar_cvp_sip(arquivo_01_buffer, arquivo_02_buffer)
                 arquivo_excel_bytes = gerar_excel_em_memoria(df_final)
 
             st.session_state.cvp_sip_resultado_df = df_final
@@ -1194,10 +1204,10 @@ def render() -> None:
 
     st.markdown(
         f"""
-        <div class="cvp-sip-card">
-            <div class="cvp-sip-title">Resumo do processamento</div>
-            <div class="cvp-sip-desc">{resumo["situacao"]}</div>
-            <div class="cvp-sip-grid">
+        <div class="cvp-sip-section-card">
+            <div class="cvp-sip-section-title">Resumo do processamento</div>
+            <div class="cvp-sip-section-desc">{resumo["situacao"]}</div>
+            <div class="cvp-sip-grid-status">
                 <div class="cvp-sip-stat">
                     <div class="cvp-sip-stat-label">Registros adicionados</div>
                     <div class="cvp-sip-stat-value">{resumo["adicionados"]}</div>
@@ -1214,10 +1224,13 @@ def render() -> None:
                     <div class="cvp-sip-stat-label">Última Data/Hora base</div>
                     <div class="cvp-sip-stat-value">{resumo["ultima_datahora_base"]}</div>
                 </div>
+                <div class="cvp-sip-stat">
+                    <div class="cvp-sip-stat-label">Sem geocodificação</div>
+                    <div class="cvp-sip-stat-value">{resumo["removidos_sem_geocodificacao"]}</div>
+                </div>
             </div>
-            <div class="cvp-sip-badges">
+            <div class="cvp-sip-badge-wrap">
                 <span class="cvp-sip-badge warn">Filtrados por Data/Hora: {resumo["removidos_por_datahora"]}</span>
-                <span class="cvp-sip-badge warn">Sem geocodificação: {resumo["removidos_sem_geocodificacao"]}</span>
                 <span class="cvp-sip-badge info">Aba base: {resumo["aba_arquivo_01"]}</span>
                 <span class="cvp-sip-badge info">Aba complemento: {resumo["aba_arquivo_02"]}</span>
             </div>
@@ -1236,12 +1249,9 @@ def render() -> None:
 
         st.markdown(
             f"""
-            <div class="cvp-sip-card">
-                <div class="cvp-sip-title">Níveis de geocodificação</div>
-                <div class="cvp-sip-desc">
-                    Distribuição dos registros conforme o nível de precisão obtido na geocodificação.
-                </div>
-                <div class="cvp-sip-grid">
+            <div class="cvp-sip-section-card">
+                <div class="cvp-sip-section-title">Níveis de geocodificação</div>
+                <div class="cvp-sip-grid-status">
                     <div class="cvp-sip-stat">
                         <div class="cvp-sip-stat-label">Exato (Número)</div>
                         <div class="cvp-sip-stat-value">{exato_numero}</div>
@@ -1258,9 +1268,10 @@ def render() -> None:
                         <div class="cvp-sip-stat-label">Centroide de Cidade</div>
                         <div class="cvp-sip-stat-value">{centroide_cidade}</div>
                     </div>
-                </div>
-                <div class="cvp-sip-badges">
-                    <span class="cvp-sip-badge warn">Não encontrado: {nao_encontrado}</span>
+                    <div class="cvp-sip-stat">
+                        <div class="cvp-sip-stat-label">Não encontrado</div>
+                        <div class="cvp-sip-stat-value">{nao_encontrado}</div>
+                    </div>
                 </div>
             </div>
             """,
