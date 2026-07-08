@@ -16,6 +16,127 @@ from modulos.utils import nome_arquivo_padrao
 NOME_ARQUIVO_FINAL = nome_arquivo_padrao(3, "PERTURBACAO-SOSSEGO-ALHEIO")
 
 
+def _aplicar_estilo_perturbacao() -> None:
+    """Aplica estilo visual padronizado ao módulo."""
+    st.markdown(
+        """
+        <style>
+            .pert-section-card {
+                background: rgba(255, 255, 255, 0.02);
+                border: 1px solid rgba(255, 255, 255, 0.07);
+                border-radius: 18px;
+                padding: 1.1rem 1.1rem 0.7rem 1.1rem;
+                margin: 1rem 0;
+            }
+
+            .pert-section-title {
+                font-size: 1.15rem;
+                font-weight: 800;
+                color: #f8fafc;
+                margin-bottom: 0.25rem;
+            }
+
+            .pert-section-desc {
+                font-size: 0.93rem;
+                color: rgba(255, 255, 255, 0.70);
+                margin-bottom: 0.9rem;
+                line-height: 1.5;
+            }
+
+            .pert-mini-list {
+                margin: 0.6rem 0 0 0;
+                padding-left: 1rem;
+                color: rgba(255,255,255,0.78);
+                font-size: 0.92rem;
+            }
+
+            .pert-grid-status {
+                display: grid;
+                grid-template-columns: repeat(5, minmax(0, 1fr));
+                gap: 0.85rem;
+                margin: 1rem 0 0.2rem 0;
+            }
+
+            .pert-stat {
+                background: rgba(255, 255, 255, 0.025);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 16px;
+                padding: 0.95rem 1rem;
+            }
+
+            .pert-stat-label {
+                font-size: 0.78rem;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                color: rgba(255, 255, 255, 0.58);
+                margin-bottom: 0.35rem;
+                font-weight: 700;
+            }
+
+            .pert-stat-value {
+                font-size: 1.20rem;
+                font-weight: 900;
+                color: #ffffff;
+                line-height: 1.15;
+                word-break: break-word;
+            }
+
+            .pert-badge-wrap {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.5rem;
+                margin-top: 0.55rem;
+                margin-bottom: 0.15rem;
+            }
+
+            .pert-badge {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.35rem;
+                padding: 0.5rem 0.72rem;
+                border-radius: 999px;
+                font-size: 0.82rem;
+                font-weight: 700;
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                background: rgba(255, 255, 255, 0.03);
+                color: #e5f3ee;
+            }
+
+            .pert-badge.ok {
+                background: rgba(34, 197, 94, 0.10);
+                color: #b7f7c9;
+                border-color: rgba(34, 197, 94, 0.22);
+            }
+
+            .pert-badge.warn {
+                background: rgba(245, 158, 11, 0.10);
+                color: #fde4b0;
+                border-color: rgba(245, 158, 11, 0.22);
+            }
+
+            .pert-badge.info {
+                background: rgba(59, 130, 246, 0.10);
+                color: #bfdbfe;
+                border-color: rgba(59, 130, 246, 0.22);
+            }
+
+            @media (max-width: 1180px) {
+                .pert-grid-status {
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                }
+            }
+
+            @media (max-width: 640px) {
+                .pert-grid-status {
+                    grid-template-columns: 1fr;
+                }
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def _normalizar_nome_aba(nome: str) -> str:
     return (
         str(nome or "")
@@ -247,9 +368,7 @@ def criar_coluna_datahora(
         if d is None or h is None:
             combinado.append(pd.NaT)
         else:
-            combinado.append(
-                pd.to_datetime(f"{d} {h}", errors="coerce", dayfirst=True)
-            )
+            combinado.append(pd.to_datetime(f"{d} {h}", errors="coerce", dayfirst=True))
 
     df[nome_coluna] = combinado
     return df
@@ -516,29 +635,62 @@ def _init_state():
             st.session_state[chave] = valor
 
 
+def _limpar_estado_perturbacao() -> None:
+    chaves = [
+        "perturbacao_arquivo_01_bytes",
+        "perturbacao_arquivo_01_nome",
+        "perturbacao_arquivo_02_bytes",
+        "perturbacao_arquivo_02_nome",
+        "perturbacao_resultado_excel",
+        "perturbacao_resultado_df",
+        "perturbacao_resumo",
+        "perturbacao_upload_01",
+        "perturbacao_upload_02",
+    ]
+    for chave in chaves:
+        if chave in st.session_state:
+            del st.session_state[chave]
+
+
 def render():
     _init_state()
+    _aplicar_estilo_perturbacao()
 
-    st.subheader("Perturbação ao Sossego Alheio")
-    st.write(
-        "Envie a base histórica e o arquivo complementar para atualizar a base com novos registros de Perturbação ao Sossego Alheio."
+    st.markdown(
+        """
+        <div class="pert-section-card">
+            <div class="pert-section-title">Processamento de Perturbação ao Sossego Alheio</div>
+            <div class="pert-section-desc">
+                Envie a base histórica e o arquivo complementar para atualizar a base com novos
+                registros, aplicando filtro temporal, validação de coordenadas e reprojeção para WGS84.
+            </div>
+            <ul class="pert-mini-list">
+                <li>Identificação automática das abas mais adequadas.</li>
+                <li>Exclusão de coordenadas inválidas no arquivo complementar.</li>
+                <li>Inclusão apenas de registros posteriores à última Data/Hora da base.</li>
+                <li>Reprojeção UTM SIRGAS2000 / 24S para WGS84.</li>
+                <li>Geração da planilha final consolidada para download.</li>
+            </ul>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-    st.caption(
-        "Fluxo: identificar a última Data/Hora do Arquivo 01, localizar no Arquivo 02 apenas ocorrências posteriores, excluir coordenadas inválidas, reprojetar UTM SIRGAS2000 / 24S para WGS84 e gerar a planilha final."
-    )
+    col1, col2 = st.columns(2)
 
-    arquivo_01 = st.file_uploader(
-        "Arquivo 01 - Base histórica de Perturbação ao Sossego Alheio",
-        type=["xlsx", "xls"],
-        key="perturbacao_upload_01",
-    )
+    with col1:
+        arquivo_01 = st.file_uploader(
+            "📁 Arquivo 01 - Base histórica",
+            type=["xlsx", "xls"],
+            key="perturbacao_upload_01",
+        )
 
-    arquivo_02 = st.file_uploader(
-        "Arquivo 02 - Complemento de Perturbação ao Sossego Alheio",
-        type=["xlsx", "xls"],
-        key="perturbacao_upload_02",
-    )
+    with col2:
+        arquivo_02 = st.file_uploader(
+            "📁 Arquivo 02 - Complemento",
+            type=["xlsx", "xls"],
+            key="perturbacao_upload_02",
+        )
 
     if arquivo_01 is not None:
         arquivo_01.seek(0)
@@ -550,75 +702,141 @@ def render():
         st.session_state.perturbacao_arquivo_02_bytes = arquivo_02.read()
         st.session_state.perturbacao_arquivo_02_nome = arquivo_02.name
 
+    badges_upload = []
     if st.session_state.perturbacao_arquivo_01_nome:
-        st.info(f"Arquivo 01 carregado: {st.session_state.perturbacao_arquivo_01_nome}")
-
+        badges_upload.append(
+            f'<span class="pert-badge ok">Base carregada: {st.session_state.perturbacao_arquivo_01_nome}</span>'
+        )
     if st.session_state.perturbacao_arquivo_02_nome:
-        st.info(f"Arquivo 02 carregado: {st.session_state.perturbacao_arquivo_02_nome}")
+        badges_upload.append(
+            f'<span class="pert-badge ok">Complemento carregado: {st.session_state.perturbacao_arquivo_02_nome}</span>'
+        )
+
+    if badges_upload:
+        st.markdown(
+            f'<div class="pert-badge-wrap">{"".join(badges_upload)}</div>',
+            unsafe_allow_html=True,
+        )
+
+    st.markdown(
+        """
+        <div class="pert-section-card">
+            <div class="pert-section-title">Execução do processamento</div>
+            <div class="pert-section-desc">
+                Após validar os arquivos enviados, execute a rotina para aplicar o filtro temporal,
+                eliminar coordenadas inválidas, reprojetar os registros e consolidar a base final.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     pode_processar = (
         st.session_state.perturbacao_arquivo_01_bytes is not None
         and st.session_state.perturbacao_arquivo_02_bytes is not None
     )
 
-    if st.button(
-        "Processar Perturbação ao Sossego Alheio",
-        type="primary",
-        disabled=not pode_processar,
-    ):
+    col_btn1, col_btn2 = st.columns(2)
+
+    with col_btn1:
+        processar = st.button(
+            "Processar Perturbação ao Sossego Alheio",
+            type="primary",
+            disabled=not pode_processar,
+            use_container_width=True,
+            key="btn_processar_perturbacao",
+        )
+
+    with col_btn2:
+        limpar = st.button(
+            "Limpar seleção",
+            use_container_width=True,
+            key="btn_limpar_perturbacao",
+        )
+
+    if limpar:
+        _limpar_estado_perturbacao()
+        st.rerun()
+
+    if processar:
         try:
             arquivo_01_buffer = BytesIO(st.session_state.perturbacao_arquivo_01_bytes)
             arquivo_02_buffer = BytesIO(st.session_state.perturbacao_arquivo_02_bytes)
 
-            df_final, resumo = processar_perturbacao_sossego(
-                arquivo_01_buffer,
-                arquivo_02_buffer,
-            )
-            arquivo_excel_bytes = gerar_excel_em_memoria(df_final)
+            with st.spinner("Processando Perturbação ao Sossego Alheio..."):
+                df_final, resumo = processar_perturbacao_sossego(
+                    arquivo_01_buffer,
+                    arquivo_02_buffer,
+                )
+                arquivo_excel_bytes = gerar_excel_em_memoria(df_final)
 
             st.session_state.perturbacao_resultado_df = df_final
             st.session_state.perturbacao_resumo = resumo
             st.session_state.perturbacao_resultado_excel = arquivo_excel_bytes
 
+            st.success("✅ Processamento concluído com sucesso.")
+
         except Exception as exc:
             st.exception(exc)
 
     if (
-        st.session_state.perturbacao_resultado_df is not None
-        and st.session_state.perturbacao_resumo is not None
+        st.session_state.perturbacao_resultado_df is None
+        or st.session_state.perturbacao_resumo is None
     ):
-        df_final = st.session_state.perturbacao_resultado_df
-        resumo = st.session_state.perturbacao_resumo
+        return
 
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Novos registros adicionados", resumo.get("adicionados", 0))
-        c2.metric("Total final da base", resumo.get("total_final", 0))
-        c3.metric(
-            "Coordenadas inválidas removidas",
-            resumo.get("removidos_coord_invalidas", 0),
+    df_final = st.session_state.perturbacao_resultado_df
+    resumo = st.session_state.perturbacao_resumo
+
+    st.markdown(
+        f"""
+        <div class="pert-section-card">
+            <div class="pert-section-title">Resumo do processamento</div>
+            <div class="pert-section-desc">{resumo.get("situacao", "Processamento concluído.")}</div>
+            <div class="pert-grid-status">
+                <div class="pert-stat">
+                    <div class="pert-stat-label">Registros adicionados</div>
+                    <div class="pert-stat-value">{resumo.get("adicionados", 0)}</div>
+                </div>
+                <div class="pert-stat">
+                    <div class="pert-stat-label">Total final</div>
+                    <div class="pert-stat-value">{resumo.get("total_final", 0)}</div>
+                </div>
+                <div class="pert-stat">
+                    <div class="pert-stat-label">Coord. inválidas removidas</div>
+                    <div class="pert-stat-value">{resumo.get("removidos_coord_invalidas", 0)}</div>
+                </div>
+                <div class="pert-stat">
+                    <div class="pert-stat-label">Filtrados por Data/Hora</div>
+                    <div class="pert-stat-value">{resumo.get("removidos_por_datahora", 0)}</div>
+                </div>
+                <div class="pert-stat">
+                    <div class="pert-stat-label">Última Data/Hora base</div>
+                    <div class="pert-stat-value">{resumo.get("ultima_datahora_base", "-")}</div>
+                </div>
+            </div>
+            <div class="pert-badge-wrap">
+                <span class="pert-badge info">Aba base: {resumo.get("aba_arquivo_01", "-")}</span>
+                <span class="pert-badge info">Aba complemento: {resumo.get("aba_arquivo_02", "-")}</span>
+                <span class="pert-badge warn">Total lido no Arquivo 02: {resumo.get("total_lido_arquivo_02", 0)}</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    with st.expander("Prévia dos dados processados", expanded=False):
+        st.dataframe(df_final.head(200), use_container_width=True, hide_index=True)
+
+    if st.session_state.perturbacao_resultado_excel is not None:
+        st.download_button(
+            label="💾 Baixar arquivo final",
+            data=st.session_state.perturbacao_resultado_excel,
+            file_name=NOME_ARQUIVO_FINAL,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="perturbacao_download_final",
+            use_container_width=True,
         )
-
-        st.info(
-            f"Aba usada no Arquivo 01: {resumo.get('aba_arquivo_01', '-')} | "
-            f"Aba usada no Arquivo 02: {resumo.get('aba_arquivo_02', '-')}"
-        )
-
-        st.info(
-            f"Última Data/Hora da base: {resumo.get('ultima_datahora_base', '-')} | "
-            f"Removidos por filtro temporal: {resumo.get('removidos_por_datahora', 0)}"
-        )
-
-        st.caption(resumo.get("situacao", "Processamento concluído."))
-        st.dataframe(df_final.head(50), use_container_width=True)
-
-        if st.session_state.perturbacao_resultado_excel is not None:
-            st.download_button(
-                label="Baixar arquivo final",
-                data=st.session_state.perturbacao_resultado_excel,
-                file_name=NOME_ARQUIVO_FINAL,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="perturbacao_download_final",
-            )
 
 
 interface_perturbacao_sossego = render
