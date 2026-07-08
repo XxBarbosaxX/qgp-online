@@ -1,29 +1,33 @@
 """
 Módulo CVLI - Crimes Violentos Letais Intencionais
-Processamento e atualização de dados CVLI para QGP Online
+Processamento e atualização de dados CVLI para QGP Online.
 """
+
+from __future__ import annotations
+
+from datetime import datetime
+from io import BytesIO
 
 import pandas as pd
 import streamlit as st
-from datetime import datetime
-import io
 
 
 class ProcessadorCVLI:
-    """Classe para processar dados de CVLI"""
+    """Classe responsável pelo processamento de dados de CVLI."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.nome_arquivo_final = f"1-CVLI-{datetime.now().year}-QGP.xlsx"
 
     @staticmethod
-    def normalizar_colunas(df):
-        """Normaliza os nomes das colunas removendo espaços"""
+    def normalizar_colunas(df: pd.DataFrame) -> pd.DataFrame:
+        """Normaliza os nomes das colunas removendo espaços extras."""
+        df = df.copy()
         df.columns = [str(c).strip() for c in df.columns]
         return df
 
     @staticmethod
-    def encontrar_coluna_data(df):
-        """Encontra a coluna de data no DataFrame"""
+    def encontrar_coluna_data(df: pd.DataFrame) -> str:
+        """Encontra a coluna de data no DataFrame."""
         exatos = [c for c in df.columns if str(c).strip().lower() == "data"]
         if exatos:
             return exatos[0]
@@ -32,25 +36,32 @@ class ProcessadorCVLI:
         if aproximados:
             return aproximados[0]
 
-        raise ValueError("Não foi encontrada a coluna 'Data'. Verifique se existe uma coluna chamada Data.")
+        raise ValueError(
+            "Não foi encontrada a coluna 'Data'. Verifique se existe uma coluna chamada Data."
+        )
 
     @staticmethod
-    def converter_coluna_data(df, coluna_data):
-        """Converte a coluna de data para datetime"""
+    def converter_coluna_data(df: pd.DataFrame, coluna_data: str) -> pd.DataFrame:
+        """Converte a coluna de data para datetime."""
+        df = df.copy()
         df[coluna_data] = pd.to_datetime(df[coluna_data], errors="coerce", dayfirst=True)
         return df
 
     @staticmethod
-    def renomear_colunas_equivalentes(df_base, df_novo):
-        """Renomeia colunas equivalentes do arquivo novo para coincidir com a base"""
+    def renomear_colunas_equivalentes(
+        df_base: pd.DataFrame,
+        df_novo: pd.DataFrame,
+    ) -> pd.DataFrame:
+        """Renomeia colunas equivalentes do arquivo novo para coincidir com a base."""
         mapa_equivalencias = {
-            "AIS": ["AIS Nova", "AIS_Nova", "AISNOVA", "ais nova", "ais_nova"]
+            "AIS": ["AIS Nova", "AIS_Nova", "AISNOVA", "ais nova", "ais_nova"],
         }
 
         colunas_base_map = {str(c).strip().lower(): c for c in df_base.columns}
         colunas_novo_map = {str(c).strip().lower(): c for c in df_novo.columns}
 
-        renomeacoes = {}
+        renomeacoes: dict[str, str] = {}
+
         for coluna_base_oficial, aliases in mapa_equivalencias.items():
             chave_base = coluna_base_oficial.strip().lower()
             if chave_base not in colunas_base_map:
@@ -73,46 +84,48 @@ class ProcessadorCVLI:
         return df_novo
 
     @staticmethod
-    def filtrar_colunas_do_arquivo01(df_base, df_novo):
-        """Filtra e adiciona colunas faltantes no arquivo novo"""
+    def filtrar_colunas_do_arquivo01(
+        df_base: pd.DataFrame,
+        df_novo: pd.DataFrame,
+    ) -> pd.DataFrame:
+        """Filtra e adiciona colunas faltantes no arquivo novo para coincidir com a base."""
         colunas_base = list(df_base.columns)
         faltantes = [col for col in colunas_base if col not in df_novo.columns]
 
+        df_novo = df_novo.copy()
         for col in faltantes:
             df_novo[col] = pd.NA
 
-        df_novo = df_novo[colunas_base]
-        return df_novo
+        return df_novo[colunas_base]
 
     @staticmethod
-    def obter_meses_anos(df, coluna_data):
-        """Obtém pares de (ano, mês) presentes no DataFrame"""
+    def obter_meses_anos(df: pd.DataFrame, coluna_data: str) -> set[tuple[int, int]]:
+        """Obtém pares de (ano, mês) presentes no DataFrame."""
         base_valida = df[df[coluna_data].notna()].copy()
-        pares = set(zip(base_valida[coluna_data].dt.year, base_valida[coluna_data].dt.month))
-        return pares
+        return set(zip(base_valida[coluna_data].dt.year, base_valida[coluna_data].dt.month))
 
-    def atualizar_base(self, df_base, df_novo, coluna_data):
-        """Atualiza a base removendo dados antigos e adicionando novos"""
+    def atualizar_base(
+        self,
+        df_base: pd.DataFrame,
+        df_novo: pd.DataFrame,
+        coluna_data: str,
+    ) -> tuple[pd.DataFrame, int, int, int, bool]:
+        """Atualiza a base removendo dados antigos do mesmo período e adicionando os novos."""
         total_inicial = len(df_base)
 
-        # Renomear colunas equivalentes
         df_novo = self.renomear_colunas_equivalentes(df_base, df_novo)
-
-        # Filtrar colunas
         df_novo = self.filtrar_colunas_do_arquivo01(df_base, df_novo)
 
-        # Obter meses/anos do arquivo novo
         meses_anos_novo = self.obter_meses_anos(df_novo, coluna_data)
 
         if not meses_anos_novo:
             raise ValueError("O Arquivo 02 não possui datas válidas na coluna de data.")
 
-        # Remover registros da base que estejam nos mesmos meses/anos do arquivo novo
         mask_remover = df_base[coluna_data].notna() & df_base[coluna_data].apply(
             lambda x: (x.year, x.month) in meses_anos_novo
         )
 
-        houve_substituicao = mask_remover.any()
+        houve_substituicao = bool(mask_remover.any())
 
         if houve_substituicao:
             df_base_atualizada = df_base.loc[~mask_remover].copy()
@@ -121,45 +134,42 @@ class ProcessadorCVLI:
 
         total_antes_add = len(df_base_atualizada)
 
-        # Concatenar
         df_final = pd.concat([df_base_atualizada, df_novo], ignore_index=True)
-
-        # Ordenar por data
-        df_final = df_final.sort_values(by=coluna_data, ascending=True, na_position="last").reset_index(drop=True)
+        df_final = df_final.sort_values(
+            by=coluna_data,
+            ascending=True,
+            na_position="last",
+        ).reset_index(drop=True)
 
         adicionados = len(df_final) - total_antes_add
         total_final = len(df_final)
 
         return df_final, adicionados, total_final, total_inicial, houve_substituicao
 
-    def processar(self, arquivo01, arquivo02):
-        """Processa os arquivos CVLI"""
+    def processar(self, arquivo01, arquivo02) -> dict:
+        """Processa os arquivos CVLI."""
         try:
-            # Ler arquivos
             df_base = pd.read_excel(arquivo01)
             df_novo = pd.read_excel(arquivo02)
 
-            # Normalizar colunas
             df_base = self.normalizar_colunas(df_base)
             df_novo = self.normalizar_colunas(df_novo)
 
-            # Encontrar coluna de data
             coluna_data_base = self.encontrar_coluna_data(df_base)
             coluna_data_novo = self.encontrar_coluna_data(df_novo)
 
-            # Converter datas
             df_base = self.converter_coluna_data(df_base, coluna_data_base)
             df_novo = self.converter_coluna_data(df_novo, coluna_data_novo)
 
-            # Renomear coluna de data se necessário
             if coluna_data_base != coluna_data_novo:
                 df_novo = df_novo.rename(columns={coluna_data_novo: coluna_data_base})
 
             coluna_data = coluna_data_base
 
-            # Atualizar base
             df_final, adicionados, total_final, total_inicial, houve_substituicao = self.atualizar_base(
-                df_base, df_novo, coluna_data
+                df_base,
+                df_novo,
+                coluna_data,
             )
 
             return {
@@ -169,20 +179,185 @@ class ProcessadorCVLI:
                 "total_final": total_final,
                 "total_inicial": total_inicial,
                 "houve_substituicao": houve_substituicao,
-                "nome_arquivo": self.nome_arquivo_final
+                "nome_arquivo": self.nome_arquivo_final,
+                "situacao": (
+                    "Base atualizada com substituição de períodos coincidentes."
+                    if houve_substituicao
+                    else "Base complementada sem substituição de períodos."
+                ),
             }
 
-        except Exception as e:
+        except Exception as exc:
             return {
                 "sucesso": False,
-                "erro": str(e)
+                "erro": str(exc),
             }
 
 
-def interface_cvli():
-    """Interface Streamlit para processamento CVLI"""
-    st.markdown("### Processamento CVLI")
-    st.markdown("Atualize a base de Crimes Violentos Letais Intencionais")
+def _aplicar_estilo_cvli() -> None:
+    """Aplica o estilo visual do módulo CVLI alinhado ao QGP Online."""
+    st.markdown(
+        """
+        <style>
+            .cvli-shell {
+                display: flex;
+                flex-direction: column;
+                gap: 1rem;
+                margin-bottom: 1rem;
+            }
+
+            .cvli-hero {
+                background: linear-gradient(135deg, rgba(7, 55, 49, 0.96) 0%, rgba(6, 70, 63, 0.96) 100%);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 18px;
+                padding: 1.35rem 1.4rem 1.2rem 1.4rem;
+                box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+            }
+
+            .cvli-kicker {
+                font-size: 0.75rem;
+                text-transform: uppercase;
+                letter-spacing: 0.14em;
+                font-weight: 800;
+                color: #f7b267;
+                margin-bottom: 0.5rem;
+            }
+
+            .cvli-title {
+                font-size: 2rem;
+                line-height: 1.05;
+                font-weight: 900;
+                color: #f8fafc;
+                margin: 0 0 0.55rem 0;
+            }
+
+            .cvli-desc {
+                color: rgba(255, 255, 255, 0.82);
+                font-size: 0.96rem;
+                line-height: 1.6;
+                margin: 0;
+                max-width: 960px;
+            }
+
+            .cvli-card {
+                background: rgba(255, 255, 255, 0.02);
+                border: 1px solid rgba(255, 255, 255, 0.07);
+                border-radius: 18px;
+                padding: 1.05rem 1.1rem 0.95rem 1.1rem;
+                margin: 1rem 0;
+            }
+
+            .cvli-card-title {
+                font-size: 1.05rem;
+                font-weight: 800;
+                color: #f8fafc;
+                margin-bottom: 0.3rem;
+            }
+
+            .cvli-card-desc {
+                font-size: 0.92rem;
+                color: rgba(255, 255, 255, 0.70);
+                line-height: 1.5;
+                margin-bottom: 0.25rem;
+            }
+
+            .cvli-grid-status {
+                display: grid;
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+                gap: 0.85rem;
+                margin-top: 0.9rem;
+            }
+
+            .cvli-stat {
+                background: rgba(255, 255, 255, 0.025);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 16px;
+                padding: 0.95rem 1rem;
+            }
+
+            .cvli-stat-label {
+                font-size: 0.76rem;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                color: rgba(255, 255, 255, 0.58);
+                margin-bottom: 0.35rem;
+                font-weight: 700;
+            }
+
+            .cvli-stat-value {
+                font-size: 1.45rem;
+                font-weight: 900;
+                color: #ffffff;
+                line-height: 1;
+            }
+
+            @media (max-width: 980px) {
+                .cvli-grid-status {
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                }
+            }
+
+            @media (max-width: 640px) {
+                .cvli-grid-status {
+                    grid-template-columns: 1fr;
+                }
+
+                .cvli-title {
+                    font-size: 1.6rem;
+                }
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _render_hero_cvli() -> None:
+    """Renderiza o cabeçalho do módulo CVLI."""
+    st.markdown(
+        """
+        <div class="cvli-shell">
+            <div class="cvli-hero">
+                <div class="cvli-kicker">Módulo ativo</div>
+                <div class="cvli-title">CVLI</div>
+                <p class="cvli-desc">
+                    Atualize a base de Crimes Violentos Letais Intencionais com segurança, mantendo
+                    consistência estrutural entre a base histórica e o arquivo complementar.
+                </p>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _gerar_excel_download(df: pd.DataFrame) -> bytes:
+    """Gera o arquivo Excel para download."""
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="CVLI")
+    output.seek(0)
+    return output.getvalue()
+
+
+def interface_cvli() -> None:
+    """Interface Streamlit para processamento do módulo CVLI."""
+    _aplicar_estilo_cvli()
+    _render_hero_cvli()
+
+    st.markdown(
+        """
+        <div class="cvli-card">
+            <div class="cvli-card-title">Processamento CVLI</div>
+            <div class="cvli-card-desc">
+                Envie a base histórica e o arquivo complementar para atualizar a base do indicador.
+                O sistema identifica períodos coincidentes, substitui os registros necessários e gera
+                o arquivo final pronto para download.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     col1, col2 = st.columns(2)
 
@@ -190,55 +365,104 @@ def interface_cvli():
         arquivo01 = st.file_uploader(
             "📁 Arquivo 01 - Base de dados CVLI",
             type=["xlsx", "xls"],
-            key="cvli_arquivo01"
+            key="cvli_arquivo01",
         )
 
     with col2:
         arquivo02 = st.file_uploader(
             "📁 Arquivo 02 - Dados complementares",
             type=["xlsx", "xls"],
-            key="cvli_arquivo02"
+            key="cvli_arquivo02",
         )
+
+    st.markdown(
+        """
+        <div class="cvli-card">
+            <div class="cvli-card-title">Configuração adicional</div>
+            <div class="cvli-card-desc">
+                Defina opções complementares para o destino do arquivo processado.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     salvar_drive = st.checkbox("💾 Salvar no Google Drive", key="cvli_drive")
 
-    if st.button("▶️ Processar CVLI", key="processar_cvli"):
-        if not arquivo01:
-            st.error("⚠️ Envie o Arquivo 01 (Base de dados)")
-            return
+    processar = st.button(
+        "▶️ Processar CVLI",
+        key="processar_cvli",
+        type="primary",
+        use_container_width=False,
+    )
 
-        if not arquivo02:
-            st.error("⚠️ Envie o Arquivo 02 (Dados complementares)")
-            return
+    if not processar:
+        return
 
-        with st.spinner("Processando dados CVLI..."):
-            processador = ProcessadorCVLI()
-            resultado = processador.processar(arquivo01, arquivo02)
+    if not arquivo01:
+        st.error("⚠️ Envie o Arquivo 01 (Base de dados CVLI).")
+        return
 
-        if resultado["sucesso"]:
-            acao = "atualizado" if resultado["houve_substituicao"] else "complementado"
+    if not arquivo02:
+        st.error("⚠️ Envie o Arquivo 02 (Dados complementares).")
+        return
 
-            st.success("✅ Processo finalizado!")
-            st.info(f"📊 **{resultado['adicionados']}** CVLIs novos adicionados")
-            st.info(f"📈 Total de **{resultado['total_final']}** CVLIs na base")
-            st.info(f"🔄 Arquivo {acao} com sucesso")
+    with st.spinner("Processando dados CVLI..."):
+        processador = ProcessadorCVLI()
+        resultado = processador.processar(arquivo01, arquivo02)
 
-            # Gerar arquivo para download
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine="openpyxl") as writer:
-                resultado["df_final"].to_excel(writer, index=False, sheet_name="CVLI")
+    if not resultado["sucesso"]:
+        st.error(f"❌ Erro no processamento: {resultado['erro']}")
+        return
 
-            output.seek(0)
+    acao = "Atualizado" if resultado["houve_substituicao"] else "Complementado"
+    excel_bytes = _gerar_excel_download(resultado["df_final"])
 
-            st.download_button(
-                label="💾 Download do arquivo processado",
-                data=output,
-                file_name=resultado["nome_arquivo"],
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="download_cvli"
-            )
+    st.success("✅ Processo finalizado com sucesso.")
 
-            if salvar_drive:
-                st.warning("🔄 Integração com Google Drive em desenvolvimento")
-        else:
-            st.error(f"❌ Erro no processamento: {resultado['erro']}")
+    st.markdown(
+        f"""
+        <div class="cvli-card">
+            <div class="cvli-card-title">Resumo do processamento</div>
+            <div class="cvli-card-desc">{resultado["situacao"]}</div>
+            <div class="cvli-grid-status">
+                <div class="cvli-stat">
+                    <div class="cvli-stat-label">Registros adicionados</div>
+                    <div class="cvli-stat-value">{resultado["adicionados"]}</div>
+                </div>
+                <div class="cvli-stat">
+                    <div class="cvli-stat-label">Total final</div>
+                    <div class="cvli-stat-value">{resultado["total_final"]}</div>
+                </div>
+                <div class="cvli-stat">
+                    <div class="cvli-stat-label">Base inicial</div>
+                    <div class="cvli-stat-value">{resultado["total_inicial"]}</div>
+                </div>
+                <div class="cvli-stat">
+                    <div class="cvli-stat-label">Tipo de ação</div>
+                    <div class="cvli-stat-value">{acao}</div>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    with st.expander("Visualizar prévia do resultado", expanded=False):
+        st.dataframe(
+            resultado["df_final"].head(200),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    st.download_button(
+        label="💾 Download do arquivo processado",
+        data=excel_bytes,
+        file_name=resultado["nome_arquivo"],
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        key="download_cvli",
+        use_container_width=True,
+    )
+
+    if salvar_drive:
+        st.warning("🔄 Integração com Google Drive em desenvolvimento.")
