@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 from datetime import datetime
+from pathlib import Path
 
 import streamlit as st
 
@@ -21,17 +23,42 @@ def voltar_inicio() -> None:
     st.session_state.indicador_selecionado = "Selecione um indicador..."
 
 
+def _obter_logo_base64() -> str | None:
+    caminho_logo = Path("assets") / "LXogo DIESP.PNG"
+
+    if not caminho_logo.exists():
+        return None
+
+    try:
+        return base64.b64encode(caminho_logo.read_bytes()).decode("utf-8")
+    except Exception:
+        return None
+
+
 def render_topbar() -> None:
-    st.markdown(
+    logo_base64 = _obter_logo_base64()
+
+    if logo_base64:
+        logo_html = f"""
+        <div class="app-header-logo-wrap">
+            <img
+                src="data:image/png;base64,{logo_base64}"
+                alt="Logo DIESP"
+                class="app-header-logo"
+            >
+        </div>
         """
+    else:
+        logo_html = ""
+
+    st.markdown(
+        f"""
         <div class="app-header app-header-with-logo">
             <div class="app-header-main">
                 <div class="app-title">QGP Online</div>
                 <div class="app-subtitle">SUPESP / CE · Atualizador de Indicadores</div>
             </div>
-            <div class="app-header-logo-wrap">
-                <img src="assets/LXogo%20DIESP.PNG" alt="Logo DIESP" class="app-header-logo">
-            </div>
+            {logo_html}
         </div>
         """,
         unsafe_allow_html=True,
