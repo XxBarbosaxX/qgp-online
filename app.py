@@ -72,7 +72,7 @@ def load_custom_css():
     }
 
     .block-container {
-        padding-top: 1.75rem !important;
+        padding-top: 2.45rem !important;
         padding-bottom: 1.2rem !important;
         max-width: 99% !important;
     }
@@ -81,9 +81,9 @@ def load_custom_css():
         display: flex;
         align-items: center;
         gap: 12px;
-        margin-top: 0;
+        margin-top: 0.28rem;
         margin-bottom: 0.72rem;
-        padding: 0.15rem 0 0.58rem 0;
+        padding: 0.18rem 0 0.58rem 0;
         border-bottom: 1px solid rgba(216, 138, 24, 0.16);
     }
 
