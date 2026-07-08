@@ -127,6 +127,173 @@ INDICADORES_ORDEM = [
 ]
 
 
+def _aplicar_estilo_todos_indicadores() -> None:
+    st.markdown(
+        """
+        <style>
+            .todos-shell {
+                display: flex;
+                flex-direction: column;
+                gap: 1rem;
+                margin-bottom: 1rem;
+            }
+
+            .todos-hero {
+                background: linear-gradient(135deg, rgba(8, 54, 49, 0.92) 0%, rgba(9, 79, 70, 0.92) 100%);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 18px;
+                padding: 1.4rem 1.4rem 1.2rem 1.4rem;
+                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+            }
+
+            .todos-kicker {
+                font-size: 0.78rem;
+                text-transform: uppercase;
+                letter-spacing: 0.14em;
+                font-weight: 800;
+                color: #f7b267;
+                margin-bottom: 0.55rem;
+            }
+
+            .todos-title {
+                font-size: 2rem;
+                line-height: 1.1;
+                font-weight: 900;
+                color: #f8fafc;
+                margin: 0 0 0.5rem 0;
+            }
+
+            .todos-description {
+                color: rgba(255, 255, 255, 0.82);
+                font-size: 0.98rem;
+                line-height: 1.6;
+                margin: 0;
+                max-width: 920px;
+            }
+
+            .todos-section-card {
+                background: rgba(255, 255, 255, 0.02);
+                border: 1px solid rgba(255, 255, 255, 0.07);
+                border-radius: 18px;
+                padding: 1.1rem 1.1rem 0.7rem 1.1rem;
+                margin: 1rem 0;
+            }
+
+            .todos-section-title {
+                font-size: 1.15rem;
+                font-weight: 800;
+                color: #f8fafc;
+                margin-bottom: 0.25rem;
+            }
+
+            .todos-section-desc {
+                font-size: 0.93rem;
+                color: rgba(255, 255, 255, 0.70);
+                margin-bottom: 0.9rem;
+                line-height: 1.5;
+            }
+
+            .todos-grid-status {
+                display: grid;
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+                gap: 0.85rem;
+                margin: 1rem 0 0.2rem 0;
+            }
+
+            .todos-stat {
+                background: rgba(255, 255, 255, 0.025);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 16px;
+                padding: 0.95rem 1rem;
+            }
+
+            .todos-stat-label {
+                font-size: 0.78rem;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                color: rgba(255, 255, 255, 0.58);
+                margin-bottom: 0.35rem;
+                font-weight: 700;
+            }
+
+            .todos-stat-value {
+                font-size: 1.45rem;
+                font-weight: 900;
+                color: #ffffff;
+                line-height: 1;
+            }
+
+            .todos-badge-wrap {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.5rem;
+                margin-top: 0.55rem;
+                margin-bottom: 0.15rem;
+            }
+
+            .todos-badge {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.35rem;
+                padding: 0.5rem 0.72rem;
+                border-radius: 999px;
+                font-size: 0.82rem;
+                font-weight: 700;
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                background: rgba(255, 255, 255, 0.03);
+                color: #e5f3ee;
+            }
+
+            .todos-badge.ok {
+                background: rgba(34, 197, 94, 0.10);
+                color: #b7f7c9;
+                border-color: rgba(34, 197, 94, 0.22);
+            }
+
+            .todos-badge.warn {
+                background: rgba(245, 158, 11, 0.10);
+                color: #fde4b0;
+                border-color: rgba(245, 158, 11, 0.22);
+            }
+
+            .todos-badge.err {
+                background: rgba(239, 68, 68, 0.10);
+                color: #fecaca;
+                border-color: rgba(239, 68, 68, 0.22);
+            }
+
+            .todos-mini-list {
+                margin: 0.6rem 0 0 0;
+                padding-left: 1rem;
+                color: rgba(255,255,255,0.78);
+                font-size: 0.92rem;
+            }
+
+            .todos-divider-space {
+                height: 0.2rem;
+            }
+
+            @media (max-width: 980px) {
+                .todos-grid-status {
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                }
+            }
+
+            @media (max-width: 640px) {
+                .todos-grid-status {
+                    grid-template-columns: 1fr;
+                }
+
+                .todos-title {
+                    font-size: 1.6rem;
+                }
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def _normalizar_texto(texto: str) -> str:
     texto = str(texto).strip().upper()
     texto = unicodedata.normalize("NFKD", texto)
@@ -584,28 +751,107 @@ def _init_state():
         "todos_parar": False,
         "todos_erros_upload": {},
         "todos_duplicados_upload": {},
+        "todos_df_resultados": None,
     }
     for chave, valor in defaults.items():
         if chave not in st.session_state:
             st.session_state[chave] = valor
 
 
+def _render_hero():
+    st.markdown(
+        """
+        <div class="todos-shell">
+            <div class="todos-hero">
+                <div class="todos-kicker">Processamento consolidado</div>
+                <div class="todos-title">Todos os Indicadores</div>
+                <p class="todos-description">
+                    Centralize o processamento dos indicadores em uma única operação. O módulo identifica
+                    automaticamente os arquivos-base, utiliza o Arquivo 02 compartilhado e executa, de forma
+                    sequencial, as regras específicas de cada indicador — inclusive geocodificação quando aplicável.
+                </p>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _render_status_cards(indicadores_prontos: list[str], indicadores_faltantes: list[str], tem_arq02: bool) -> None:
+    total_indicadores = len(INDICADORES_ORDEM)
+    total_prontos = len(indicadores_prontos)
+    total_geocodificaveis = sum(
+        1 for nome in indicadores_prontos if INDICADORES_CONFIG[nome]["geocodifica"]
+    )
+    total_faltantes = len(indicadores_faltantes)
+
+    arq02_status = "Sim" if tem_arq02 else "Não"
+
+    st.markdown(
+        f"""
+        <div class="todos-grid-status">
+            <div class="todos-stat">
+                <div class="todos-stat-label">Indicadores carregados</div>
+                <div class="todos-stat-value">{total_prontos}/{total_indicadores}</div>
+            </div>
+            <div class="todos-stat">
+                <div class="todos-stat-label">Arquivo 02</div>
+                <div class="todos-stat-value">{arq02_status}</div>
+            </div>
+            <div class="todos-stat">
+                <div class="todos-stat-label">Com geocodificação</div>
+                <div class="todos-stat-value">{total_geocodificaveis}</div>
+            </div>
+            <div class="todos-stat">
+                <div class="todos-stat-label">Pendentes</div>
+                <div class="todos-stat-value">{total_faltantes}</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _render_lista_indicadores(titulo: str, indicadores: list[str], tipo: str) -> None:
+    if not indicadores:
+        return
+
+    badges = []
+    for nome in indicadores:
+        cfg = INDICADORES_CONFIG[nome]
+        badges.append(
+            f'<span class="todos-badge {tipo}">{cfg["ordem"]}. {cfg["label"]}</span>'
+        )
+
+    st.markdown(
+        f"""
+        <div class="todos-section-card">
+            <div class="todos-section-title">{titulo}</div>
+            <div class="todos-badge-wrap">
+                {''.join(badges)}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def interface_todos_indicadores():
     _init_state()
+    _aplicar_estilo_todos_indicadores()
+    _render_hero()
 
-    st.title("Processamento Consolidado")
-    st.markdown("### TODOS OS INDICADORES")
-    st.info(
-        "Este módulo processa múltiplos indicadores sequencialmente, "
-        "chamando cada módulo individual com sua lógica completa "
-        "(incluindo geocodificação, quando aplicável)."
-    )
-    st.divider()
-
-    st.subheader("Arquivo 02 - Complemento único (compartilhado por todos)")
-    st.caption(
-        "O Arquivo 02 contém as abas de cada indicador. "
-        "Cada módulo seleciona automaticamente a aba correspondente."
+    st.markdown(
+        """
+        <div class="todos-section-card">
+            <div class="todos-section-title">Arquivo 02 · Complemento único</div>
+            <div class="todos-section-desc">
+                Envie o arquivo consolidado em Excel com múltiplas abas. Cada processador seleciona
+                automaticamente a aba correspondente ao indicador.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
     arquivo_02_upload = st.file_uploader(
@@ -623,14 +869,19 @@ def interface_todos_indicadores():
         st.session_state.todos_arq02_nome = None
 
     if st.session_state.todos_arq02_nome:
-        st.success(f"Arquivo 02 carregado: {st.session_state.todos_arq02_nome}")
+        st.success(f"Arquivo 02 carregado com sucesso: {st.session_state.todos_arq02_nome}")
 
-    st.divider()
-
-    st.subheader("Arquivos 01 - Base Histórica")
-    st.caption(
-        "Selecione todos os arquivos de base histórica de uma só vez. "
-        "O sistema fará a identificação automática pelo nome e, se necessário, pelo conteúdo."
+    st.markdown(
+        """
+        <div class="todos-section-card">
+            <div class="todos-section-title">Arquivos 01 · Base histórica</div>
+            <div class="todos-section-desc">
+                Selecione em lote os arquivos históricos. O sistema tenta identificar automaticamente
+                cada indicador pelo nome do arquivo e, quando necessário, pelo conteúdo da planilha.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
     arquivos_base_upload = st.file_uploader(
@@ -676,18 +927,6 @@ def interface_todos_indicadores():
         st.session_state.todos_erros_upload = {}
         st.session_state.todos_duplicados_upload = {}
 
-    if st.session_state.todos_arq01_nomes:
-        st.markdown("#### Arquivos base identificados")
-        for nome_ind in INDICADORES_ORDEM:
-            if nome_ind in st.session_state.todos_arq01_nomes:
-                cfg = INDICADORES_CONFIG[nome_ind]
-                st.caption(
-                    f"{cfg['ordem']} - {cfg['label']}: "
-                    f"{st.session_state.todos_arq01_nomes[nome_ind]}"
-                )
-
-    st.divider()
-
     indicadores_prontos = [
         nome_ind for nome_ind in INDICADORES_ORDEM
         if nome_ind in st.session_state.todos_arq01_bytes
@@ -698,31 +937,38 @@ def interface_todos_indicadores():
     ]
     tem_arq02 = st.session_state.todos_arq02_bytes is not None
 
-    if indicadores_prontos:
-        indicadores_carregados = [
-            f"{INDICADORES_CONFIG[nome]['ordem']} - {INDICADORES_CONFIG[nome]['label']}"
-            for nome in indicadores_prontos
-        ]
-        st.success(
-            f"{len(indicadores_prontos)} indicador(es) com Arquivo 01 identificado: "
-            + ", ".join(indicadores_carregados)
-        )
-    else:
-        st.warning("Nenhum Arquivo 01 identificado ainda.")
+    _render_status_cards(indicadores_prontos, indicadores_faltantes, tem_arq02)
 
-    if indicadores_faltantes:
-        st.info(
-            "Indicadores ainda sem Arquivo 01: "
-            + ", ".join(
-                f"{INDICADORES_CONFIG[nome]['ordem']} - {INDICADORES_CONFIG[nome]['label']}"
-                for nome in indicadores_faltantes
-            )
-        )
+    if st.session_state.todos_arq01_nomes:
+        with st.expander("Ver arquivos base identificados", expanded=False):
+            for nome_ind in INDICADORES_ORDEM:
+                if nome_ind in st.session_state.todos_arq01_nomes:
+                    cfg = INDICADORES_CONFIG[nome_ind]
+                    st.caption(
+                        f"{cfg['ordem']} - {cfg['label']}: "
+                        f"{st.session_state.todos_arq01_nomes[nome_ind]}"
+                    )
+
+    _render_lista_indicadores("Indicadores prontos para processamento", indicadores_prontos, "ok")
+    _render_lista_indicadores("Indicadores ainda pendentes", indicadores_faltantes, "warn")
 
     if not tem_arq02:
-        st.warning("Arquivo 02 não carregado.")
+        st.warning("O Arquivo 02 ainda não foi carregado.")
 
     pode_processar = len(indicadores_prontos) > 0 and tem_arq02
+
+    st.markdown(
+        """
+        <div class="todos-section-card">
+            <div class="todos-section-title">Execução do processamento</div>
+            <div class="todos-section-desc">
+                Inicie o processamento consolidado após validar os arquivos carregados. O fluxo executa
+                os indicadores em sequência e preserva o resultado individual para download.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     col_btn1, col_btn2 = st.columns(2)
 
@@ -736,18 +982,19 @@ def interface_todos_indicadores():
 
     with col_btn2:
         if st.button(
-            "PARAR PROCESSO",
+            "Parar Processo",
             type="secondary",
             use_container_width=True,
             disabled=not st.session_state.todos_processando,
         ):
             st.session_state.todos_parar = True
-            st.warning("Sinalizando parada...")
+            st.warning("Sinalização de parada enviada ao processamento.")
 
     if iniciar:
         st.session_state.todos_resultados_excel = {}
         st.session_state.todos_resumos = {}
         st.session_state.todos_erros = {}
+        st.session_state.todos_df_resultados = None
         st.session_state.todos_processando = True
         st.session_state.todos_parar = False
 
@@ -765,8 +1012,8 @@ def interface_todos_indicadores():
 
             cfg = INDICADORES_CONFIG[nome_ind]
             status.info(
-                f"[{idx + 1}/{total}] Processando: {cfg['label']}..."
-                + (" (geocodificando, aguarde)" if cfg["geocodifica"] else "")
+                f"[{idx + 1}/{total}] Processando {cfg['label']}"
+                + (" · executando geocodificação" if cfg["geocodifica"] else "")
             )
 
             try:
@@ -797,7 +1044,7 @@ def interface_todos_indicadores():
                 resultados_linha.append({
                     "Ordem": cfg["ordem"],
                     "Indicador": cfg["label"],
-                    "Status": "ERRO",
+                    "Status": "Erro",
                     "Adicionados": 0,
                     "Total Final": 0,
                     "Geocodificados": 0,
@@ -811,17 +1058,56 @@ def interface_todos_indicadores():
         if interrompido:
             status.warning("Processamento interrompido antes da conclusão.")
         else:
-            status.success("Processamento concluído!")
+            status.success("Processamento concluído com sucesso.")
 
         if resultados_linha:
-            st.divider()
-            st.subheader("Resultados")
-            df_resultados = pd.DataFrame(resultados_linha).sort_values("Ordem").reset_index(drop=True)
-            st.dataframe(df_resultados, use_container_width=True)
+            st.session_state.todos_df_resultados = (
+                pd.DataFrame(resultados_linha)
+                .sort_values("Ordem")
+                .reset_index(drop=True)
+            )
+
+    if st.session_state.todos_df_resultados is not None:
+        st.markdown(
+            """
+            <div class="todos-section-card">
+                <div class="todos-section-title">Painel de resultados</div>
+                <div class="todos-section-desc">
+                    Acompanhe o desempenho por indicador, valide quantidades adicionadas e confira
+                    a situação final de cada processamento.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        df_resultados = st.session_state.todos_df_resultados
+
+        total_ok = int((df_resultados["Status"] == "Sucesso").sum())
+        total_erro = int((df_resultados["Status"] == "Erro").sum())
+        total_adicionados = int(df_resultados["Adicionados"].fillna(0).sum())
+        total_geo = int(df_resultados["Geocodificados"].fillna(0).sum())
+
+        col_r1, col_r2, col_r3, col_r4 = st.columns(4)
+        col_r1.metric("Processados com sucesso", total_ok)
+        col_r2.metric("Com erro", total_erro)
+        col_r3.metric("Registros adicionados", f"{total_adicionados:,}".replace(",", "."))
+        col_r4.metric("Geocodificados", f"{total_geo:,}".replace(",", "."))
+
+        st.dataframe(df_resultados, use_container_width=True, hide_index=True)
 
     if st.session_state.todos_resultados_excel:
-        st.divider()
-        st.subheader("Downloads Individuais")
+        st.markdown(
+            """
+            <div class="todos-section-card">
+                <div class="todos-section-title">Downloads individuais</div>
+                <div class="todos-section-desc">
+                    Baixe os arquivos gerados por indicador ou exporte tudo em um único pacote ZIP.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
         for nome_ind in INDICADORES_ORDEM:
             if nome_ind not in st.session_state.todos_resultados_excel:
@@ -832,20 +1118,24 @@ def interface_todos_indicadores():
             cfg = INDICADORES_CONFIG[nome_ind]
 
             with st.expander(
-                f"{cfg['ordem']} - {cfg['label']} - "
-                f"Adicionados: {resumo.get('adicionados', 0)} | "
-                f"Total: {resumo.get('total_final', 0)}"
+                f"{cfg['ordem']} - {cfg['label']} · "
+                f"Adicionados: {resumo.get('adicionados', 0)} · "
+                f"Total final: {resumo.get('total_final', 0)}",
+                expanded=False,
             ):
                 st.caption(resumo.get("situacao", ""))
+                if resumo.get("geocodificados", 0):
+                    st.caption(f"Geocodificados: {resumo.get('geocodificados', 0)}")
+
                 st.download_button(
                     label=f"Baixar {nome_arq}",
                     data=excel_bytes,
                     file_name=nome_arq,
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     key=f"todos_dl_{cfg['key']}",
+                    use_container_width=True,
                 )
 
-        st.divider()
         zip_buf = BytesIO()
 
         with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -870,8 +1160,17 @@ def interface_todos_indicadores():
         )
 
     if st.session_state.todos_erros:
-        st.divider()
-        st.subheader("Erros")
+        st.markdown(
+            """
+            <div class="todos-section-card">
+                <div class="todos-section-title">Erros identificados</div>
+                <div class="todos-section-desc">
+                    Os indicadores abaixo apresentaram falha durante o processamento e devem ser revisados.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
         for nome_ind in INDICADORES_ORDEM:
             if nome_ind not in st.session_state.todos_erros:
