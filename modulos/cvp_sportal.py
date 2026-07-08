@@ -6,7 +6,6 @@ Processamento e atualização de dados CVP do sistema SPORTAL para QGP Online.
 from __future__ import annotations
 
 import traceback
-from datetime import datetime
 
 import pandas as pd
 import streamlit as st
@@ -35,46 +34,6 @@ def _aplicar_estilo_cvp_sportal() -> None:
     st.markdown(
         """
         <style>
-            .cvp-shell {
-                display: flex;
-                flex-direction: column;
-                gap: 1rem;
-                margin-bottom: 1rem;
-            }
-
-            .cvp-hero {
-                background: linear-gradient(135deg, rgba(8, 54, 49, 0.92) 0%, rgba(9, 79, 70, 0.92) 100%);
-                border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 18px;
-                padding: 1.4rem 1.4rem 1.2rem 1.4rem;
-                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
-            }
-
-            .cvp-kicker {
-                font-size: 0.78rem;
-                text-transform: uppercase;
-                letter-spacing: 0.14em;
-                font-weight: 800;
-                color: #f7b267;
-                margin-bottom: 0.55rem;
-            }
-
-            .cvp-title {
-                font-size: 2rem;
-                line-height: 1.1;
-                font-weight: 900;
-                color: #f8fafc;
-                margin: 0 0 0.5rem 0;
-            }
-
-            .cvp-description {
-                color: rgba(255, 255, 255, 0.82);
-                font-size: 0.98rem;
-                line-height: 1.6;
-                margin: 0;
-                max-width: 920px;
-            }
-
             .cvp-section-card {
                 background: rgba(255, 255, 255, 0.02);
                 border: 1px solid rgba(255, 255, 255, 0.07);
@@ -174,6 +133,13 @@ def _aplicar_estilo_cvp_sportal() -> None:
                 border-color: rgba(239, 68, 68, 0.22);
             }
 
+            .cvp-upload-label {
+                font-size: 0.95rem;
+                font-weight: 700;
+                color: #f8fafc;
+                margin-bottom: 0.35rem;
+            }
+
             @media (max-width: 1180px) {
                 .cvp-grid-status {
                     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -184,31 +150,8 @@ def _aplicar_estilo_cvp_sportal() -> None:
                 .cvp-grid-status {
                     grid-template-columns: 1fr;
                 }
-
-                .cvp-title {
-                    font-size: 1.6rem;
-                }
             }
         </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def _render_hero_cvp_sportal() -> None:
-    """Renderiza o hero principal do módulo."""
-    st.markdown(
-        """
-        <div class="cvp-shell">
-            <div class="cvp-hero">
-                <div class="cvp-kicker">Módulo ativo</div>
-                <div class="cvp-title">CVP (SPORTAL)</div>
-                <p class="cvp-description">
-                    Atualize a base do CVP (SPORTAL) com validação de coordenadas, controle temporal
-                    por Data/Hora e consolidação padronizada para uso no QGP Online.
-                </p>
-            </div>
-        </div>
         """,
         unsafe_allow_html=True,
     )
@@ -514,7 +457,6 @@ def _processar_cvp_sportal(arquivo_base, arquivo_novo) -> dict:
 def interface_cvp_sportal() -> None:
     """Interface Streamlit para CVP SPORTAL."""
     _aplicar_estilo_cvp_sportal()
-    _render_hero_cvp_sportal()
 
     st.markdown(
         """
@@ -525,7 +467,7 @@ def interface_cvp_sportal() -> None:
                 mesmo padrão operacional do QGP Online.
             </div>
             <ul class="cvp-mini-list">
-                <li>Validação de coordenadas válidas.</li>
+                <li>Validação automática de coordenadas válidas.</li>
                 <li>Conversão automática para WGS84 quando necessário.</li>
                 <li>Inclusão apenas de registros posteriores à última DataHora da base.</li>
                 <li>Geração do arquivo final consolidado para download.</li>
@@ -538,17 +480,24 @@ def interface_cvp_sportal() -> None:
     col1, col2 = st.columns(2)
 
     with col1:
+        st.markdown('<div class="cvp-upload-label">📁 Arquivo 01 - Base CVP</div>', unsafe_allow_html=True)
         arquivo_base = st.file_uploader(
-            "📁 Arquivo 01 - Base CVP",
+            "Arquivo base CVP",
             type=["xlsx", "xls"],
             key="cvp_sportal_base",
+            label_visibility="collapsed",
         )
 
     with col2:
+        st.markdown(
+            '<div class="cvp-upload-label">📁 Arquivo 02 - Complemento SPORTAL</div>',
+            unsafe_allow_html=True,
+        )
         arquivo_novo = st.file_uploader(
-            "📁 Arquivo 02 - Complemento SPORTAL",
+            "Arquivo complemento SPORTAL",
             type=["xlsx", "xls"],
             key="cvp_sportal_novo",
+            label_visibility="collapsed",
         )
 
     pode_processar = bool(arquivo_base and arquivo_novo)
