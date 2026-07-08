@@ -347,7 +347,6 @@ def _limpar_estado_cvli() -> None:
     chaves = [
         "cvli_arquivo01",
         "cvli_arquivo02",
-        "cvli_drive",
         "cvli_resultado",
     ]
     for chave in chaves:
@@ -389,20 +388,6 @@ def interface_cvli() -> None:
             type=["xlsx", "xls"],
             key="cvli_arquivo02",
         )
-
-    st.markdown(
-        """
-        <div class="cvli-section-card">
-            <div class="cvli-section-title">Opções adicionais</div>
-            <div class="cvli-section-desc">
-                Defina opções complementares para o destino do arquivo processado.
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    salvar_drive = st.checkbox("💾 Salvar no Google Drive", key="cvli_drive")
 
     pode_processar = arquivo01 is not None and arquivo02 is not None
 
@@ -507,6 +492,3 @@ def interface_cvli() -> None:
         key="download_cvli",
         use_container_width=True,
     )
-
-    if salvar_drive:
-        st.warning("🔄 Integração com Google Drive em desenvolvimento.")
