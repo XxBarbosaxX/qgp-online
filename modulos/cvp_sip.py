@@ -91,46 +91,6 @@ def _aplicar_estilo_cvp_sip() -> None:
     st.markdown(
         """
         <style>
-            .cvp-sip-shell {
-                display: flex;
-                flex-direction: column;
-                gap: 1rem;
-                margin-bottom: 1rem;
-            }
-
-            .cvp-sip-hero {
-                background: linear-gradient(135deg, rgba(8, 54, 49, 0.92) 0%, rgba(9, 79, 70, 0.92) 100%);
-                border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 18px;
-                padding: 1.4rem 1.4rem 1.2rem 1.4rem;
-                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
-            }
-
-            .cvp-sip-kicker {
-                font-size: 0.78rem;
-                text-transform: uppercase;
-                letter-spacing: 0.14em;
-                font-weight: 800;
-                color: #f7b267;
-                margin-bottom: 0.55rem;
-            }
-
-            .cvp-sip-title {
-                font-size: 2rem;
-                line-height: 1.1;
-                font-weight: 900;
-                color: #f8fafc;
-                margin: 0 0 0.5rem 0;
-            }
-
-            .cvp-sip-description {
-                color: rgba(255, 255, 255, 0.82);
-                font-size: 0.98rem;
-                line-height: 1.6;
-                margin: 0;
-                max-width: 920px;
-            }
-
             .cvp-sip-section-card {
                 background: rgba(255, 255, 255, 0.02);
                 border: 1px solid rgba(255, 255, 255, 0.07);
@@ -240,31 +200,8 @@ def _aplicar_estilo_cvp_sip() -> None:
                 .cvp-sip-grid-status {
                     grid-template-columns: 1fr;
                 }
-
-                .cvp-sip-title {
-                    font-size: 1.6rem;
-                }
             }
         </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def _render_hero_cvp_sip() -> None:
-    """Renderiza o hero visual do módulo CVP SIP."""
-    st.markdown(
-        """
-        <div class="cvp-sip-shell">
-            <div class="cvp-sip-hero">
-                <div class="cvp-sip-kicker">Módulo ativo</div>
-                <div class="cvp-sip-title">CVP (SIP)</div>
-                <p class="cvp-sip-description">
-                    Atualize a base do CVP (SIP) com geocodificação por endereço,
-                    validação temporal e consolidação padronizada para uso no QGP Online.
-                </p>
-            </div>
-        </div>
         """,
         unsafe_allow_html=True,
     )
@@ -1026,7 +963,6 @@ def _init_state():
 
 
 def _limpar_estado_cvp_sip() -> None:
-    """Limpa o estado do módulo CVP SIP."""
     chaves = [
         "cvp_sip_arquivo_01_bytes",
         "cvp_sip_arquivo_01_nome",
@@ -1046,7 +982,6 @@ def _limpar_estado_cvp_sip() -> None:
 def render():
     _init_state()
     _aplicar_estilo_cvp_sip()
-    _render_hero_cvp_sip()
 
     st.markdown(
         """
