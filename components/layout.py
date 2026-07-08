@@ -62,7 +62,7 @@ def render_info_chips() -> None:
     )
 
 
-def render_panel_header(kicker: str, titulo: str, descricao: str) -> None:
+def render_panel_text(kicker: str, titulo: str, descricao: str) -> None:
     st.markdown(
         f"""
         <div class="panel-kicker">{kicker}</div>
@@ -74,16 +74,14 @@ def render_panel_header(kicker: str, titulo: str, descricao: str) -> None:
 
 
 def render_panel_atualizacao() -> None:
-    with st.container():
-        st.markdown('<div class="panel-card">', unsafe_allow_html=True)
-
-        render_panel_header(
+    with st.container(key="panel-atualizacao"):
+        render_panel_text(
             "Atualização",
             "Indicadores operacionais",
             "Execute a atualização completa ou selecione um indicador específico para processamento individual.",
         )
 
-        st.markdown('<div class="panel-content">', unsafe_allow_html=True)
+        st.markdown('<div class="panel-divider"></div>', unsafe_allow_html=True)
 
         if st.button("Executar todos os indicadores", key="btn_todos", use_container_width=True):
             selecionar_indicador("TODOS OS INDICADORES")
@@ -113,21 +111,16 @@ def render_panel_atualizacao() -> None:
             unsafe_allow_html=True,
         )
 
-        st.markdown("</div>", unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
-
 
 def render_panel_geocodificacao() -> None:
-    with st.container():
-        st.markdown('<div class="panel-card">', unsafe_allow_html=True)
-
-        render_panel_header(
+    with st.container(key="panel-geocodificacao"):
+        render_panel_text(
             "Geoprocessamento",
             "Geocodificação",
             "Módulo dedicado à geocodificação de ocorrências e endereços para análise espacial.",
         )
 
-        st.markdown('<div class="panel-content panel-content-compact">', unsafe_allow_html=True)
+        st.markdown('<div class="panel-divider"></div>', unsafe_allow_html=True)
 
         if st.button("Abrir módulo de geocodificação", key="btn_geo", use_container_width=True):
             selecionar_indicador("GEOCODIFICAÇÃO")
@@ -142,21 +135,16 @@ def render_panel_geocodificacao() -> None:
             unsafe_allow_html=True,
         )
 
-        st.markdown("</div>", unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
-
 
 def render_panel_consolidacao() -> None:
-    with st.container():
-        st.markdown('<div class="panel-card">', unsafe_allow_html=True)
-
-        render_panel_header(
+    with st.container(key="panel-consolidacao"):
+        render_panel_text(
             "Consolidação",
             "Consolidar indicadores",
             "Organize e unifique resultados em uma base consolidada para consumo analítico.",
         )
 
-        st.markdown('<div class="panel-content panel-content-compact">', unsafe_allow_html=True)
+        st.markdown('<div class="panel-divider"></div>', unsafe_allow_html=True)
 
         if st.button("Abrir módulo de consolidação", key="btn_consolidar", use_container_width=True):
             selecionar_indicador("CONSOLIDAR INDICADORES")
@@ -170,9 +158,6 @@ def render_panel_consolidacao() -> None:
             """,
             unsafe_allow_html=True,
         )
-
-        st.markdown("</div>", unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
 
 
 def render_home() -> None:
@@ -214,11 +199,10 @@ def render_modulo() -> None:
         )
 
     with col_acao:
-        st.markdown('<div class="secondary-button">', unsafe_allow_html=True)
-        if st.button("← Voltar", key="btn_voltar", use_container_width=True):
-            voltar_inicio()
-            st.rerun()
-        st.markdown("</div>", unsafe_allow_html=True)
+        with st.container(key="panel-voltar"):
+            if st.button("← Voltar", key="btn_voltar", use_container_width=True):
+                voltar_inicio()
+                st.rerun()
 
     if indicador in MAPEAMENTO:
         nome_modulo, nome_funcao = MAPEAMENTO[indicador]
