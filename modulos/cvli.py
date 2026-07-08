@@ -37,12 +37,13 @@ class ProcessadorCVLI:
             return aproximados[0]
 
         raise ValueError(
-            "Não foi encontrada a coluna 'Data'. Verifique se existe uma coluna chamada Data."
+            "Não foi encontrada a coluna 'Data'. "
+            "Verifique se existe uma coluna chamada Data na base e no arquivo complementar."
         )
 
     @staticmethod
     def converter_coluna_data(df: pd.DataFrame, coluna_data: str) -> pd.DataFrame:
-        """Converte a coluna de data para datetime."""
+        """Converte a coluna de data para datetime, assumindo padrão dia/mês/ano."""
         df = df.copy()
         df[coluna_data] = pd.to_datetime(df[coluna_data], errors="coerce", dayfirst=True)
         return df
@@ -52,7 +53,11 @@ class ProcessadorCVLI:
         df_base: pd.DataFrame,
         df_novo: pd.DataFrame,
     ) -> pd.DataFrame:
-        """Renomeia colunas equivalentes do arquivo novo para coincidir com a base."""
+        """
+        Renomeia colunas equivalentes do arquivo novo para coincidir com a base.
+
+        Exemplo: AIS Nova -> AIS.
+        """
         mapa_equivalencias = {
             "AIS": ["AIS Nova", "AIS_Nova", "AISNOVA", "ais nova", "ais_nova"],
         }
@@ -88,7 +93,10 @@ class ProcessadorCVLI:
         df_base: pd.DataFrame,
         df_novo: pd.DataFrame,
     ) -> pd.DataFrame:
-        """Filtra e adiciona colunas faltantes no arquivo novo para coincidir com a base."""
+        """
+        Garante que o arquivo novo possua as mesmas colunas da base,
+        adicionando colunas faltantes com valores nulos.
+        """
         colunas_base = list(df_base.columns)
         faltantes = [col for col in colunas_base if col not in df_novo.columns]
 
@@ -100,7 +108,7 @@ class ProcessadorCVLI:
 
     @staticmethod
     def obter_meses_anos(df: pd.DataFrame, coluna_data: str) -> set[tuple[int, int]]:
-        """Obtém pares de (ano, mês) presentes no DataFrame."""
+        """Obtém pares de (ano, mês) presentes no DataFrame, considerando apenas datas válidas."""
         base_valida = df[df[coluna_data].notna()].copy()
         return set(zip(base_valida[coluna_data].dt.year, base_valida[coluna_data].dt.month))
 
@@ -110,14 +118,16 @@ class ProcessadorCVLI:
         df_novo: pd.DataFrame,
         coluna_data: str,
     ) -> tuple[pd.DataFrame, int, int, int, bool]:
-        """Atualiza a base removendo dados antigos do mesmo período e adicionando os novos."""
+        """
+        Atualiza a base removendo dados antigos dos mesmos meses/anos do arquivo novo
+        e adicionando os registros complementares.
+        """
         total_inicial = len(df_base)
 
         df_novo = self.renomear_colunas_equivalentes(df_base, df_novo)
         df_novo = self.filtrar_colunas_do_arquivo01(df_base, df_novo)
 
         meses_anos_novo = self.obter_meses_anos(df_novo, coluna_data)
-
         if not meses_anos_novo:
             raise ValueError("O Arquivo 02 não possui datas válidas na coluna de data.")
 
@@ -147,7 +157,7 @@ class ProcessadorCVLI:
         return df_final, adicionados, total_final, total_inicial, houve_substituicao
 
     def processar(self, arquivo01, arquivo02) -> dict:
-        """Processa os arquivos CVLI."""
+        """Orquestra a leitura, normalização, atualização e retorno do resultado CVLI."""
         try:
             df_base = pd.read_excel(arquivo01)
             df_novo = pd.read_excel(arquivo02)
@@ -172,6 +182,12 @@ class ProcessadorCVLI:
                 coluna_data,
             )
 
+            situacao = (
+                "Base atualizada com substituição de períodos coincidentes."
+                if houve_substituicao
+                else "Base complementada sem substituição de períodos."
+            )
+
             return {
                 "sucesso": True,
                 "df_final": df_final,
@@ -180,11 +196,7 @@ class ProcessadorCVLI:
                 "total_inicial": total_inicial,
                 "houve_substituicao": houve_substituicao,
                 "nome_arquivo": self.nome_arquivo_final,
-                "situacao": (
-                    "Base atualizada com substituição de períodos coincidentes."
-                    if houve_substituicao
-                    else "Base complementada sem substituição de períodos."
-                ),
+                "situacao": situacao,
             }
 
         except Exception as exc:
@@ -202,16 +214,18 @@ def _aplicar_estilo_cvli() -> None:
             .cvli-shell {
                 display: flex;
                 flex-direction: column;
-                gap: 1rem;
-                margin-bottom: 1rem;
+                gap: 1.25rem;
+                margin-bottom: 1.25rem;
             }
 
             .cvli-hero {
-                background: linear-gradient(135deg, rgba(7, 55, 49, 0.96) 0%, rgba(6, 70, 63, 0.96) 100%);
+                background:
+                    radial-gradient(circle at top right, rgba(247, 178, 103, 0.12), transparent 22%),
+                    linear-gradient(135deg, rgba(7, 55, 49, 0.96) 0%, rgba(6, 70, 63, 0.96) 100%);
                 border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 18px;
-                padding: 1.35rem 1.4rem 1.2rem 1.4rem;
-                box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+                border-radius: 20px;
+                padding: 1.5rem 1.5rem 1.25rem 1.5rem;
+                box-shadow: 0 14px 32px rgba(0, 0, 0, 0.20);
             }
 
             .cvli-kicker {
@@ -220,7 +234,14 @@ def _aplicar_estilo_cvli() -> None:
                 letter-spacing: 0.14em;
                 font-weight: 800;
                 color: #f7b267;
-                margin-bottom: 0.5rem;
+                margin-bottom: 0.4rem;
+            }
+
+            .cvli-title-row {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 1rem;
             }
 
             .cvli-title {
@@ -228,35 +249,53 @@ def _aplicar_estilo_cvli() -> None:
                 line-height: 1.05;
                 font-weight: 900;
                 color: #f8fafc;
-                margin: 0 0 0.55rem 0;
+                margin: 0;
+            }
+
+            .cvli-back-btn {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                padding: 0.45rem 0.9rem;
+                border-radius: 999px;
+                border: 1px solid rgba(255, 255, 255, 0.16);
+                background: rgba(15, 23, 42, 0.35);
+                color: #e5e7eb;
+                font-size: 0.86rem;
+                font-weight: 600;
+                text-decoration: none;
+            }
+
+            .cvli-back-btn span {
+                margin-left: 0.4rem;
             }
 
             .cvli-desc {
                 color: rgba(255, 255, 255, 0.82);
                 font-size: 0.96rem;
                 line-height: 1.6;
-                margin: 0;
+                margin: 0.55rem 0 0 0;
                 max-width: 960px;
             }
 
             .cvli-card {
-                background: rgba(255, 255, 255, 0.02);
-                border: 1px solid rgba(255, 255, 255, 0.07);
+                background: rgba(2, 6, 23, 0.48);
+                border: 1px solid rgba(148, 163, 184, 0.25);
                 border-radius: 18px;
                 padding: 1.05rem 1.1rem 0.95rem 1.1rem;
-                margin: 1rem 0;
+                margin: 0.75rem 0;
             }
 
             .cvli-card-title {
                 font-size: 1.05rem;
                 font-weight: 800;
-                color: #f8fafc;
+                color: #e5e7eb;
                 margin-bottom: 0.3rem;
             }
 
             .cvli-card-desc {
                 font-size: 0.92rem;
-                color: rgba(255, 255, 255, 0.70);
+                color: rgba(148, 163, 184, 0.95);
                 line-height: 1.5;
                 margin-bottom: 0.25rem;
             }
@@ -269,17 +308,17 @@ def _aplicar_estilo_cvli() -> None:
             }
 
             .cvli-stat {
-                background: rgba(255, 255, 255, 0.025);
-                border: 1px solid rgba(255, 255, 255, 0.08);
+                background: rgba(15, 23, 42, 0.75);
+                border: 1px solid rgba(148, 163, 184, 0.35);
                 border-radius: 16px;
-                padding: 0.95rem 1rem;
+                padding: 0.9rem 1rem;
             }
 
             .cvli-stat-label {
                 font-size: 0.76rem;
                 text-transform: uppercase;
                 letter-spacing: 0.08em;
-                color: rgba(255, 255, 255, 0.58);
+                color: rgba(148, 163, 184, 0.95);
                 margin-bottom: 0.35rem;
                 font-weight: 700;
             }
@@ -287,7 +326,7 @@ def _aplicar_estilo_cvli() -> None:
             .cvli-stat-value {
                 font-size: 1.45rem;
                 font-weight: 900;
-                color: #ffffff;
+                color: #f9fafb;
                 line-height: 1;
             }
 
@@ -305,6 +344,11 @@ def _aplicar_estilo_cvli() -> None:
                 .cvli-title {
                     font-size: 1.6rem;
                 }
+
+                .cvli-title-row {
+                    flex-direction: column-reverse;
+                    align-items: flex-start;
+                }
             }
         </style>
         """,
@@ -313,13 +357,19 @@ def _aplicar_estilo_cvli() -> None:
 
 
 def _render_hero_cvli() -> None:
-    """Renderiza o cabeçalho do módulo CVLI."""
+    """Renderiza o cabeçalho do módulo CVLI, incluindo botão Voltar."""
     st.markdown(
         """
         <div class="cvli-shell">
             <div class="cvli-hero">
                 <div class="cvli-kicker">Módulo ativo</div>
-                <div class="cvli-title">CVLI</div>
+                <div class="cvli-title-row">
+                    <h1 class="cvli-title">CVLI</h1>
+                    <a class="cvli-back-btn" href="#home">
+                        ←
+                        <span>Voltar</span>
+                    </a>
+                </div>
                 <p class="cvli-desc">
                     Atualize a base de Crimes Violentos Letais Intencionais com segurança, mantendo
                     consistência estrutural entre a base histórica e o arquivo complementar.
@@ -352,7 +402,7 @@ def interface_cvli() -> None:
             <div class="cvli-card-desc">
                 Envie a base histórica e o arquivo complementar para atualizar a base do indicador.
                 O sistema identifica períodos coincidentes, substitui os registros necessários e gera
-                o arquivo final pronto para download.
+                o arquivo final pronto para integração com o QGP Online.
             </div>
         </div>
         """,
@@ -378,7 +428,7 @@ def interface_cvli() -> None:
     st.markdown(
         """
         <div class="cvli-card">
-            <div class="cvli-card-title">Configuração adicional</div>
+            <div class="cvli-card-title">Opções adicionais</div>
             <div class="cvli-card-desc">
                 Defina opções complementares para o destino do arquivo processado.
             </div>
@@ -448,7 +498,7 @@ def interface_cvli() -> None:
         unsafe_allow_html=True,
     )
 
-    with st.expander("Visualizar prévia do resultado", expanded=False):
+    with st.expander("Prévia dos dados processados", expanded=False):
         st.dataframe(
             resultado["df_final"].head(200),
             use_container_width=True,
