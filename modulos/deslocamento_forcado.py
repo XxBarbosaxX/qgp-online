@@ -1,4 +1,6 @@
-"""<br>Modulo Deslocamento Forcado<br>Versao Streamlit adaptada para o QGP Online, com logs de auditoria seguros.<br>"""
+"""Modulo Deslocamento Forcado
+Versao Streamlit adaptada para o QGP Online, com logs de auditoria seguros.
+"""
 
 from __future__ import annotations
 
@@ -16,6 +18,127 @@ from modulos.utils import nome_arquivo_padrao
 NOME_ARQUIVO_FINAL = nome_arquivo_padrao(5, "DESLOCAMENTO-FORCADO")
 EPSG_UTM_SIRGAS_24S = 31984
 EPSG_WGS84 = 4326
+
+
+def _aplicar_estilo_deslocamento() -> None:
+    """Aplica estilo visual padronizado ao módulo."""
+    st.markdown(
+        """
+        <style>
+            .desl-section-card {
+                background: rgba(255, 255, 255, 0.02);
+                border: 1px solid rgba(255, 255, 255, 0.07);
+                border-radius: 18px;
+                padding: 1.1rem 1.1rem 0.7rem 1.1rem;
+                margin: 1rem 0;
+            }
+
+            .desl-section-title {
+                font-size: 1.15rem;
+                font-weight: 800;
+                color: #f8fafc;
+                margin-bottom: 0.25rem;
+            }
+
+            .desl-section-desc {
+                font-size: 0.93rem;
+                color: rgba(255, 255, 255, 0.70);
+                margin-bottom: 0.9rem;
+                line-height: 1.5;
+            }
+
+            .desl-mini-list {
+                margin: 0.6rem 0 0 0;
+                padding-left: 1rem;
+                color: rgba(255,255,255,0.78);
+                font-size: 0.92rem;
+            }
+
+            .desl-grid-status {
+                display: grid;
+                grid-template-columns: repeat(5, minmax(0, 1fr));
+                gap: 0.85rem;
+                margin: 1rem 0 0.2rem 0;
+            }
+
+            .desl-stat {
+                background: rgba(255, 255, 255, 0.025);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 16px;
+                padding: 0.95rem 1rem;
+            }
+
+            .desl-stat-label {
+                font-size: 0.78rem;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                color: rgba(255, 255, 255, 0.58);
+                margin-bottom: 0.35rem;
+                font-weight: 700;
+            }
+
+            .desl-stat-value {
+                font-size: 1.20rem;
+                font-weight: 900;
+                color: #ffffff;
+                line-height: 1.15;
+                word-break: break-word;
+            }
+
+            .desl-badge-wrap {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.5rem;
+                margin-top: 0.55rem;
+                margin-bottom: 0.15rem;
+            }
+
+            .desl-badge {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.35rem;
+                padding: 0.5rem 0.72rem;
+                border-radius: 999px;
+                font-size: 0.82rem;
+                font-weight: 700;
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                background: rgba(255, 255, 255, 0.03);
+                color: #e5f3ee;
+            }
+
+            .desl-badge.ok {
+                background: rgba(34, 197, 94, 0.10);
+                color: #b7f7c9;
+                border-color: rgba(34, 197, 94, 0.22);
+            }
+
+            .desl-badge.warn {
+                background: rgba(245, 158, 11, 0.10);
+                color: #fde4b0;
+                border-color: rgba(245, 158, 11, 0.22);
+            }
+
+            .desl-badge.info {
+                background: rgba(59, 130, 246, 0.10);
+                color: #bfdbfe;
+                border-color: rgba(59, 130, 246, 0.22);
+            }
+
+            @media (max-width: 1180px) {
+                .desl-grid-status {
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                }
+            }
+
+            @media (max-width: 640px) {
+                .desl-grid-status {
+                    grid-template-columns: 1fr;
+                }
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def _normalizar_nome_aba(nome: str) -> str:
@@ -501,42 +624,6 @@ def filtrar_apenas_registros_posteriores(
     return df[df[coluna_datahora] > limite_datahora].copy()
 
 
-def colunas_existentes(df: pd.DataFrame, colunas_desejadas: list[str]) -> list[str]:
-    cols = []
-    vistos = set()
-
-    for c in colunas_desejadas:
-        if c in df.columns and c not in vistos:
-            cols.append(c)
-            vistos.add(c)
-
-    return cols
-
-
-def mostrar_amostra_segura(
-    titulo: str,
-    df: pd.DataFrame,
-    colunas_desejadas: list[str],
-    n: int = 10,
-):
-    st.write(titulo)
-
-    cols = colunas_existentes(df, colunas_desejadas)
-
-    if not cols:
-        st.warning("Nenhuma das colunas solicitadas existe nesta etapa.")
-        st.write("Colunas disponiveis:")
-        st.write(list(df.columns))
-        return
-
-    df_preview = df.loc[:, cols].copy()
-
-    if df_preview.columns.duplicated().any():
-        df_preview = df_preview.loc[:, ~df_preview.columns.duplicated()]
-
-    st.dataframe(df_preview.head(n))
-
-
 def gerar_excel_em_memoria(df: pd.DataFrame) -> bytes:
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
@@ -560,39 +647,13 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
     aba_base = _selecionar_aba_arquivo_01(xls_base.sheet_names)
     aba_novo = _selecionar_aba_arquivo_02(xls_novo.sheet_names)
 
-    status.info(f"Usando aba '{aba_base}' no Arquivo 01 e '{aba_novo}' no Arquivo 02.")
-
+    status.info("Carregando as abas de trabalho...")
     df_base = pd.read_excel(xls_base, sheet_name=aba_base)
     df_novo = pd.read_excel(xls_novo, sheet_name=aba_novo)
     progresso.progress(20)
 
     df_base = normalizar_colunas(df_base)
     df_novo = normalizar_colunas(df_novo)
-
-    mostrar_amostra_segura(
-        "Pré-visualização Arquivo 01 (base):",
-        df_base,
-        ["Endereço", "Latitude", "Longitude", "Nome da Ocorrência", "Subnome da Ocorrência"],
-        5,
-    )
-    mostrar_amostra_segura(
-        "Pré-visualização Arquivo 02 (aba Grupo Criminoso):",
-        df_novo,
-        [
-            "Endereço",
-            "Latitude",
-            "Longitude",
-            "Latitude_UTM",
-            "Longitude_UTM",
-            "Nome da Ocorrência",
-            "Subnome da Ocorrência",
-            "Natureza",
-            "Subnatureza",
-            "Regiões",
-            "AISNova",
-        ],
-        5,
-    )
     progresso.progress(30)
 
     col_data_base = encontrar_coluna_data(df_base)
@@ -629,13 +690,6 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
     total_lido_arquivo_02 = len(df_novo)
     df_novo, removidos_invalidos = excluir_coordenadas_invalidas(df_novo, col_lat_novo, col_lon_novo)
 
-    mostrar_amostra_segura(
-        "Arquivo 02 após filtro de coordenadas inválidas:",
-        df_novo,
-        [col_lat_novo, col_lon_novo, "Nome da Ocorrência", "Subnome da Ocorrência", "Natureza", "Subnatureza"],
-        5,
-    )
-
     if df_novo.empty:
         raise ValueError("Apos excluir coordenadas invalidas, o Arquivo 02 ficou sem registros validos.")
 
@@ -645,20 +699,16 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
     df_base = criar_coluna_datahora(df_base, col_data, col_hora, "__datahora__")
     df_novo = criar_coluna_datahora(df_novo, col_data, col_hora, "__datahora__")
     ultimo_datahora_base = obter_ultimo_datahora(df_base, "__datahora__")
-    st.write("Última Data/Hora da base:", ultimo_datahora_base)
     progresso.progress(60)
 
     status.info("Filtrando apenas registros posteriores...")
     total_antes_filtro = len(df_novo)
-    df_novo_filtrado = filtrar_apenas_registros_posteriores(df_novo, "__datahora__", ultimo_datahora_base)
-    removidos_por_datahora = total_antes_filtro - len(df_novo_filtrado)
-
-    mostrar_amostra_segura(
-        "Arquivo 02 após filtro por Data/Hora:",
-        df_novo_filtrado,
-        ["__datahora__", col_lat_novo, col_lon_novo, "Nome da Ocorrência", "Subnome da Ocorrência", "Natureza", "Subnatureza"],
-        5,
+    df_novo_filtrado = filtrar_apenas_registros_posteriores(
+        df_novo,
+        "__datahora__",
+        ultimo_datahora_base,
     )
+    removidos_por_datahora = total_antes_filtro - len(df_novo_filtrado)
     progresso.progress(70)
 
     base_sem_aux = df_base.drop(columns=["__datahora__"], errors="ignore").copy()
@@ -686,48 +736,10 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
             col_lon_destino=col_lon_base,
         )
 
-        if modo_coordenadas == "wgs84_direto":
-            st.info("Arquivo 02 aparenta já estar em WGS84 decimal. A reprojeção foi ignorada.")
-        else:
-            st.info("Arquivo 02 aparenta estar em UTM. Coordenadas reprojetadas para WGS84.")
-
         df_novo_util = preencher_colunas_ocorrencia_grupo_criminoso(df_base, df_novo_util)
 
-        mostrar_amostra_segura(
-            "Complemento após preparação das coordenadas:",
-            df_novo_util,
-            [
-                col_lat_novo,
-                col_lon_novo,
-                col_lat_base,
-                col_lon_base,
-                "Nome da Ocorrência",
-                "Subnome da Ocorrência",
-                "Natureza",
-                "Subnatureza",
-            ],
-            10,
-        )
-
-        status.info("Montando complemento no esquema exato da base...")
+        status.info("Montando complemento no esquema da base...")
         df_novo_saida = alinhar_colunas_arquivo_02_com_base(base_sem_aux, df_novo_util)
-
-        mostrar_amostra_segura(
-            "Complemento final no esquema da base:",
-            df_novo_saida,
-            [
-                "Endereço",
-                col_lat_base,
-                col_lon_base,
-                "Nome da Ocorrência",
-                "Subnome da Ocorrência",
-                "Território",
-                "Município",
-                "Bairro",
-                "AIS",
-            ],
-            10,
-        )
 
         df_final = pd.concat([base_sem_aux, df_novo_saida], ignore_index=True)
         adicionados = len(df_novo_saida)
@@ -750,23 +762,6 @@ def processar_deslocamento_forcado(arquivo_01, arquivo_02):
         df_final = df_final.loc[:, ~df_final.columns.duplicated()].copy()
 
     progresso.progress(100)
-
-    mostrar_amostra_segura(
-        "Resultado final (amostra):",
-        df_final,
-        [
-            "Endereço",
-            col_lat_base,
-            col_lon_base,
-            "Nome da Ocorrência",
-            "Subnome da Ocorrência",
-            "Território",
-            "Município",
-            "Bairro",
-            "AIS",
-        ],
-        20,
-    )
 
     ultima_ref = (
         ultimo_datahora_base.strftime("%d/%m/%Y %H:%M:%S")
@@ -807,23 +802,63 @@ def _init_state():
             st.session_state[chave] = valor
 
 
+def _limpar_estado_deslocamento() -> None:
+    chaves = [
+        "deslocamento_arquivo_01_bytes",
+        "deslocamento_arquivo_01_nome",
+        "deslocamento_arquivo_02_bytes",
+        "deslocamento_arquivo_02_nome",
+        "deslocamento_resultado_excel",
+        "deslocamento_resultado_df",
+        "deslocamento_resumo",
+        "deslocamento_upload_01",
+        "deslocamento_upload_02",
+    ]
+    for chave in chaves:
+        if chave in st.session_state:
+            del st.session_state[chave]
+
+
 def render():
     _init_state()
+    _aplicar_estilo_deslocamento()
 
-    st.subheader("Deslocamento Forcado")
-    st.write("Envie a base historica e o arquivo complementar para atualizar a base com novos registros.")
-
-    arquivo_01 = st.file_uploader(
-        "Arquivo 01 - Base historica de Deslocamento Forcado",
-        type=["xlsx", "xls"],
-        key="deslocamento_upload_01",
+    st.markdown(
+        """
+        <div class="desl-section-card">
+            <div class="desl-section-title">Processamento de Deslocamento Forçado</div>
+            <div class="desl-section-desc">
+                Envie a base histórica e o arquivo complementar para atualizar a base com novos
+                registros, aplicando filtro temporal, validação de coordenadas e tratamento
+                automático entre WGS84 e UTM.
+            </div>
+            <ul class="desl-mini-list">
+                <li>Identificação automática das abas mais adequadas.</li>
+                <li>Renomeação e alinhamento estrutural com a base histórica.</li>
+                <li>Exclusão de coordenadas inválidas no complemento.</li>
+                <li>Detecção automática do formato das coordenadas.</li>
+                <li>Conversão para WGS84 quando necessário e geração do arquivo final.</li>
+            </ul>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-    arquivo_02 = st.file_uploader(
-        "Arquivo 02 - Complemento de Deslocamento Forcado",
-        type=["xlsx", "xls"],
-        key="deslocamento_upload_02",
-    )
+    col1, col2 = st.columns(2)
+
+    with col1:
+        arquivo_01 = st.file_uploader(
+            "📁 Arquivo 01 - Base histórica",
+            type=["xlsx", "xls"],
+            key="deslocamento_upload_01",
+        )
+
+    with col2:
+        arquivo_02 = st.file_uploader(
+            "📁 Arquivo 02 - Complemento",
+            type=["xlsx", "xls"],
+            key="deslocamento_upload_02",
+        )
 
     if arquivo_01 is not None:
         arquivo_01.seek(0)
@@ -835,58 +870,150 @@ def render():
         st.session_state.deslocamento_arquivo_02_bytes = arquivo_02.read()
         st.session_state.deslocamento_arquivo_02_nome = arquivo_02.name
 
+    badges_upload = []
+    if st.session_state.deslocamento_arquivo_01_nome:
+        badges_upload.append(
+            f'<span class="desl-badge ok">Base carregada: {st.session_state.deslocamento_arquivo_01_nome}</span>'
+        )
+    if st.session_state.deslocamento_arquivo_02_nome:
+        badges_upload.append(
+            f'<span class="desl-badge ok">Complemento carregado: {st.session_state.deslocamento_arquivo_02_nome}</span>'
+        )
+
+    if badges_upload:
+        st.markdown(
+            f'<div class="desl-badge-wrap">{"".join(badges_upload)}</div>',
+            unsafe_allow_html=True,
+        )
+
+    st.markdown(
+        """
+        <div class="desl-section-card">
+            <div class="desl-section-title">Execução do processamento</div>
+            <div class="desl-section-desc">
+                Após validar os arquivos enviados, execute a rotina para filtrar registros novos,
+                tratar coordenadas, padronizar a estrutura e consolidar a base final.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
     pode_processar = (
         st.session_state.deslocamento_arquivo_01_bytes is not None
         and st.session_state.deslocamento_arquivo_02_bytes is not None
     )
 
-    if st.button("Processar Deslocamento Forcado", type="primary", disabled=not pode_processar):
+    col_btn1, col_btn2 = st.columns(2)
+
+    with col_btn1:
+        processar = st.button(
+            "Processar Deslocamento Forçado",
+            type="primary",
+            disabled=not pode_processar,
+            use_container_width=True,
+            key="btn_processar_deslocamento",
+        )
+
+    with col_btn2:
+        limpar = st.button(
+            "Limpar seleção",
+            use_container_width=True,
+            key="btn_limpar_deslocamento",
+        )
+
+    if limpar:
+        _limpar_estado_deslocamento()
+        st.rerun()
+
+    if processar:
         try:
             arquivo_01_buffer = BytesIO(st.session_state.deslocamento_arquivo_01_bytes)
             arquivo_02_buffer = BytesIO(st.session_state.deslocamento_arquivo_02_bytes)
 
-            df_final, resumo = processar_deslocamento_forcado(arquivo_01_buffer, arquivo_02_buffer)
-            arquivo_excel_bytes = gerar_excel_em_memoria(df_final)
+            with st.spinner("Processando Deslocamento Forçado..."):
+                df_final, resumo = processar_deslocamento_forcado(
+                    arquivo_01_buffer,
+                    arquivo_02_buffer,
+                )
+                arquivo_excel_bytes = gerar_excel_em_memoria(df_final)
 
             st.session_state.deslocamento_resultado_df = df_final
             st.session_state.deslocamento_resumo = resumo
             st.session_state.deslocamento_resultado_excel = arquivo_excel_bytes
+
+            st.success("✅ Processamento concluído com sucesso.")
+
         except Exception as exc:
             st.exception(exc)
 
     if (
-        st.session_state.deslocamento_resultado_df is not None
-        and st.session_state.deslocamento_resumo is not None
+        st.session_state.deslocamento_resultado_df is None
+        or st.session_state.deslocamento_resumo is None
     ):
-        resumo = st.session_state.deslocamento_resumo
+        return
 
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Novos registros adicionados", resumo.get("adicionados", 0))
-        c2.metric("Total final da base", resumo.get("total_final", 0))
-        c3.metric("Coordenadas invalidas removidas", resumo.get("removidos_coord_invalidas", 0))
+    df_final = st.session_state.deslocamento_resultado_df
+    resumo = st.session_state.deslocamento_resumo
 
-        st.info(
-            f"Aba Arquivo 01: {resumo.get('aba_arquivo_01', '-')} | "
-            f"Aba Arquivo 02: {resumo.get('aba_arquivo_02', '-')}"
+    modo_coordenadas = resumo.get("modo_coordenadas", "-")
+    if modo_coordenadas == "wgs84_direto":
+        modo_legivel = "WGS84 direto"
+    elif modo_coordenadas == "utm_reprojetado":
+        modo_legivel = "UTM reprojetado para WGS84"
+    else:
+        modo_legivel = "Sem novos registros"
+
+    st.markdown(
+        f"""
+        <div class="desl-section-card">
+            <div class="desl-section-title">Resumo do processamento</div>
+            <div class="desl-section-desc">{resumo.get("situacao", "Processamento concluído.")}</div>
+            <div class="desl-grid-status">
+                <div class="desl-stat">
+                    <div class="desl-stat-label">Registros adicionados</div>
+                    <div class="desl-stat-value">{resumo.get("adicionados", 0)}</div>
+                </div>
+                <div class="desl-stat">
+                    <div class="desl-stat-label">Total final</div>
+                    <div class="desl-stat-value">{resumo.get("total_final", 0)}</div>
+                </div>
+                <div class="desl-stat">
+                    <div class="desl-stat-label">Coord. inválidas removidas</div>
+                    <div class="desl-stat-value">{resumo.get("removidos_coord_invalidas", 0)}</div>
+                </div>
+                <div class="desl-stat">
+                    <div class="desl-stat-label">Filtrados por Data/Hora</div>
+                    <div class="desl-stat-value">{resumo.get("removidos_por_datahora", 0)}</div>
+                </div>
+                <div class="desl-stat">
+                    <div class="desl-stat-label">Modo coordenadas</div>
+                    <div class="desl-stat-value">{modo_legivel}</div>
+                </div>
+            </div>
+            <div class="desl-badge-wrap">
+                <span class="desl-badge info">Aba base: {resumo.get("aba_arquivo_01", "-")}</span>
+                <span class="desl-badge info">Aba complemento: {resumo.get("aba_arquivo_02", "-")}</span>
+                <span class="desl-badge warn">Total lido no Arquivo 02: {resumo.get("total_lido_arquivo_02", 0)}</span>
+                <span class="desl-badge info">Última Data/Hora base: {resumo.get("ultima_datahora_base", "-")}</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    with st.expander("Prévia dos dados processados", expanded=False):
+        st.dataframe(df_final.head(200), use_container_width=True, hide_index=True)
+
+    if st.session_state.deslocamento_resultado_excel is not None:
+        st.download_button(
+            label="💾 Baixar arquivo final",
+            data=st.session_state.deslocamento_resultado_excel,
+            file_name=NOME_ARQUIVO_FINAL,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="deslocamento_download_final",
+            use_container_width=True,
         )
-
-        st.info(
-            f"Ultima Data/Hora da base: {resumo.get('ultima_datahora_base', '-')} | "
-            f"Removidos por filtro temporal: {resumo.get('removidos_por_datahora', 0)}"
-        )
-
-        st.info(f"Modo de tratamento das coordenadas: {resumo.get('modo_coordenadas', '-')}")
-
-        st.caption(resumo.get("situacao", "Processamento concluido."))
-
-        if st.session_state.deslocamento_resultado_excel is not None:
-            st.download_button(
-                label="Baixar arquivo final",
-                data=st.session_state.deslocamento_resultado_excel,
-                file_name=NOME_ARQUIVO_FINAL,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="deslocamento_download_final",
-            )
 
 
 interface_deslocamento_forcado = render
