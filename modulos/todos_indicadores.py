@@ -274,9 +274,152 @@ def _aplicar_estilo_todos_indicadores() -> None:
                 border-color: rgba(239, 68, 68, 0.22);
             }
 
-            .todos-subtle {
-                color: rgba(255, 255, 255, 0.70);
-                font-size: 0.92rem;
+            .todos-timeline {
+                display: flex;
+                flex-direction: column;
+                gap: 0.85rem;
+                margin-top: 0.85rem;
+            }
+
+            .todos-timeline-item {
+                position: relative;
+                display: flex;
+                gap: 0.9rem;
+                align-items: flex-start;
+                background: rgba(255, 255, 255, 0.02);
+                border: 1px solid rgba(255, 255, 255, 0.07);
+                border-radius: 16px;
+                padding: 0.95rem 1rem;
+            }
+
+            .todos-timeline-dot {
+                width: 14px;
+                height: 14px;
+                border-radius: 999px;
+                margin-top: 0.32rem;
+                flex-shrink: 0;
+                box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.04);
+            }
+
+            .todos-timeline-dot.ok {
+                background: #22c55e;
+            }
+
+            .todos-timeline-dot.err {
+                background: #ef4444;
+            }
+
+            .todos-timeline-dot.info {
+                background: #38bdf8;
+            }
+
+            .todos-timeline-content {
+                width: 100%;
+            }
+
+            .todos-timeline-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                gap: 0.8rem;
+                margin-bottom: 0.3rem;
+            }
+
+            .todos-timeline-title {
+                color: #f8fafc;
+                font-size: 0.96rem;
+                font-weight: 800;
+                line-height: 1.35;
+            }
+
+            .todos-timeline-meta {
+                color: rgba(255, 255, 255, 0.62);
+                font-size: 0.78rem;
+                white-space: nowrap;
+            }
+
+            .todos-timeline-text {
+                color: rgba(255, 255, 255, 0.76);
+                font-size: 0.9rem;
+                line-height: 1.5;
+            }
+
+            .todos-status-chip {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                padding: 0.28rem 0.62rem;
+                border-radius: 999px;
+                font-size: 0.76rem;
+                font-weight: 800;
+                letter-spacing: 0.03em;
+            }
+
+            .todos-status-chip.ok {
+                background: rgba(34, 197, 94, 0.12);
+                color: #b7f7c9;
+                border: 1px solid rgba(34, 197, 94, 0.22);
+            }
+
+            .todos-status-chip.err {
+                background: rgba(239, 68, 68, 0.12);
+                color: #fecaca;
+                border: 1px solid rgba(239, 68, 68, 0.22);
+            }
+
+            .todos-table-wrap {
+                margin-top: 1rem;
+                overflow-x: auto;
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 18px;
+            }
+
+            .todos-table {
+                width: 100%;
+                border-collapse: collapse;
+                min-width: 920px;
+                background: rgba(255, 255, 255, 0.02);
+            }
+
+            .todos-table thead th {
+                text-align: left;
+                padding: 0.9rem 0.95rem;
+                font-size: 0.78rem;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+                color: rgba(255, 255, 255, 0.62);
+                background: rgba(255, 255, 255, 0.03);
+                border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            }
+
+            .todos-table tbody td {
+                padding: 0.9rem 0.95rem;
+                color: rgba(255, 255, 255, 0.86);
+                font-size: 0.9rem;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+                vertical-align: top;
+            }
+
+            .todos-table tbody tr:last-child td {
+                border-bottom: none;
+            }
+
+            .todos-table tbody tr:hover {
+                background: rgba(255, 255, 255, 0.025);
+            }
+
+            .todos-indicador-cell {
+                min-width: 220px;
+            }
+
+            .todos-situacao-cell {
+                min-width: 280px;
+                color: rgba(255, 255, 255, 0.72);
+            }
+
+            .todos-number-cell {
+                white-space: nowrap;
+                font-variant-numeric: tabular-nums;
             }
 
             @media (max-width: 980px) {
@@ -292,6 +435,11 @@ def _aplicar_estilo_todos_indicadores() -> None:
 
                 .todos-title {
                     font-size: 1.6rem;
+                }
+
+                .todos-timeline-header {
+                    flex-direction: column;
+                    align-items: flex-start;
                 }
             }
         </style>
@@ -744,6 +892,118 @@ def _df_para_excel(df: pd.DataFrame, sheet_name: str = "Dados") -> bytes:
     return buf.getvalue()
 
 
+def _registrar_evento_timeline(
+    nome_indicador: str,
+    status: str,
+    mensagem: str,
+    etapa: str,
+) -> None:
+    cfg = INDICADORES_CONFIG[nome_indicador]
+    st.session_state.todos_timeline_execucao.append(
+        {
+            "ordem": cfg["ordem"],
+            "indicador": cfg["label"],
+            "status": status,
+            "mensagem": mensagem,
+            "etapa": etapa,
+            "timestamp": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+        }
+    )
+
+
+def _render_timeline_execucao() -> None:
+    timeline = st.session_state.get("todos_timeline_execucao", [])
+
+    if not timeline:
+        return
+
+    html_items = []
+    for item in timeline:
+        status_class = "info"
+        if item["status"] == "Sucesso":
+            status_class = "ok"
+        elif item["status"] == "Erro":
+            status_class = "err"
+
+        html_items.append(
+            f"""
+            <div class="todos-timeline-item">
+                <div class="todos-timeline-dot {status_class}"></div>
+                <div class="todos-timeline-content">
+                    <div class="todos-timeline-header">
+                        <div class="todos-timeline-title">
+                            {item["ordem"]}. {item["indicador"]} · {item["etapa"]}
+                        </div>
+                        <div class="todos-timeline-meta">{item["timestamp"]}</div>
+                    </div>
+                    <div class="todos-timeline-text">{item["mensagem"]}</div>
+                </div>
+            </div>
+            """
+        )
+
+    st.markdown(
+        f"""
+        <div class="todos-section-card">
+            <div class="todos-section-title">Linha do tempo da execução</div>
+            <div class="todos-section-desc">
+                Visualize a sequência operacional do processamento consolidado e identifique rapidamente
+                indicadores concluídos ou interrompidos com erro.
+            </div>
+            <div class="todos-timeline">
+                {''.join(html_items)}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _render_tabela_resultados_html(df_resultados: pd.DataFrame) -> None:
+    linhas_html = []
+
+    for _, row in df_resultados.iterrows():
+        status = str(row.get("Status", ""))
+        chip_class = "ok" if status == "Sucesso" else "err"
+
+        linhas_html.append(
+            f"""
+            <tr>
+                <td class="todos-number-cell">{int(row.get("Ordem", 0))}</td>
+                <td class="todos-indicador-cell">{row.get("Indicador", "")}</td>
+                <td><span class="todos-status-chip {chip_class}">{status}</span></td>
+                <td class="todos-number-cell">{int(row.get("Adicionados", 0)):,}</td>
+                <td class="todos-number-cell">{int(row.get("Total Final", 0)):,}</td>
+                <td class="todos-number-cell">{int(row.get("Geocodificados", 0)):,}</td>
+                <td class="todos-situacao-cell">{row.get("Situação", "")}</td>
+            </tr>
+            """
+        )
+
+    tabela_html = f"""
+    <div class="todos-table-wrap">
+        <table class="todos-table">
+            <thead>
+                <tr>
+                    <th>Ordem</th>
+                    <th>Indicador</th>
+                    <th>Status</th>
+                    <th>Adicionados</th>
+                    <th>Total Final</th>
+                    <th>Geocodificados</th>
+                    <th>Situação</th>
+                </tr>
+            </thead>
+            <tbody>
+                {''.join(linhas_html)}
+            </tbody>
+        </table>
+    </div>
+    """
+
+    st.markdown(tabela_html, unsafe_allow_html=True)
+
+
 def _init_state():
     defaults = {
         "todos_arq01_bytes": {},
@@ -758,6 +1018,7 @@ def _init_state():
         "todos_erros_upload": {},
         "todos_duplicados_upload": {},
         "todos_df_resultados": None,
+        "todos_timeline_execucao": [],
     }
     for chave, valor in defaults.items():
         if chave not in st.session_state:
@@ -1005,6 +1266,7 @@ def interface_todos_indicadores():
         st.session_state.todos_resumos = {}
         st.session_state.todos_erros = {}
         st.session_state.todos_df_resultados = None
+        st.session_state.todos_timeline_execucao = []
         st.session_state.todos_processando = True
         st.session_state.todos_parar = False
 
@@ -1018,12 +1280,28 @@ def interface_todos_indicadores():
             if st.session_state.todos_parar:
                 interrompido = True
                 status.warning("Processo interrompido pelo usuário.")
+                _registrar_evento_timeline(
+                    nome_indicador=nome_ind,
+                    status="Erro",
+                    mensagem="Processamento interrompido manualmente pelo usuário.",
+                    etapa="Interrupção",
+                )
                 break
 
             cfg = INDICADORES_CONFIG[nome_ind]
             status.info(
                 f"[{idx + 1}/{total}] Processando {cfg['label']}"
                 + (" · executando geocodificação" if cfg["geocodifica"] else "")
+            )
+
+            _registrar_evento_timeline(
+                nome_indicador=nome_ind,
+                status="Em andamento",
+                mensagem=(
+                    f"Início do processamento do indicador {cfg['label']}"
+                    + (" com etapa de geocodificação habilitada." if cfg["geocodifica"] else ".")
+                ),
+                etapa="Início",
             )
 
             try:
@@ -1049,6 +1327,18 @@ def interface_todos_indicadores():
                     "Situação": resumo.get("situacao", ""),
                 })
 
+                _registrar_evento_timeline(
+                    nome_indicador=nome_ind,
+                    status="Sucesso",
+                    mensagem=(
+                        f"Processamento concluído com sucesso. "
+                        f"Adicionados: {resumo.get('adicionados', 0)} | "
+                        f"Total final: {resumo.get('total_final', 0)} | "
+                        f"Geocodificados: {resumo.get('geocodificados', 0)}."
+                    ),
+                    etapa="Conclusão",
+                )
+
             except Exception as exc:
                 st.session_state.todos_erros[nome_ind] = str(exc)
                 resultados_linha.append({
@@ -1060,6 +1350,13 @@ def interface_todos_indicadores():
                     "Geocodificados": 0,
                     "Situação": str(exc),
                 })
+
+                _registrar_evento_timeline(
+                    nome_indicador=nome_ind,
+                    status="Erro",
+                    mensagem=f"Falha no processamento: {str(exc)}",
+                    etapa="Erro",
+                )
 
             progresso.progress((idx + 1) / total)
 
@@ -1104,7 +1401,8 @@ def interface_todos_indicadores():
         col_r3.metric("Registros adicionados", f"{total_adicionados:,}".replace(",", "."))
         col_r4.metric("Geocodificados", f"{total_geo:,}".replace(",", "."))
 
-        st.dataframe(df_resultados, use_container_width=True, hide_index=True)
+        _render_tabela_resultados_html(df_resultados)
+        _render_timeline_execucao()
 
     if st.session_state.todos_resultados_excel:
         st.markdown(
