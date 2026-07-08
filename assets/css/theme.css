@@ -61,6 +61,36 @@ section[data-testid="stSidebar"] {
     border-radius: 0 !important;
 }
 
+.app-header-with-logo {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.2rem;
+}
+
+.app-header-main {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+}
+
+.app-header-logo-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-shrink: 0;
+}
+
+.app-header-logo {
+    height: 68px;
+    width: auto;
+    max-width: 220px;
+    object-fit: contain;
+    display: block;
+    filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.18));
+}
+
 .app-title {
     margin: 0;
     padding-top: 0.2rem;
@@ -341,6 +371,11 @@ hr {
         font-size: 2.05rem;
     }
 
+    .app-header-logo {
+        height: 58px;
+        max-width: 190px;
+    }
+
     .section-title {
         font-size: 1.8rem;
     }
@@ -357,6 +392,11 @@ hr {
         padding-right: 0.9rem !important;
     }
 
+    .app-header-with-logo {
+        align-items: flex-start;
+        gap: 0.9rem;
+    }
+
     .app-title {
         font-size: 1.8rem;
     }
@@ -364,6 +404,11 @@ hr {
     .app-subtitle {
         font-size: 0.78rem;
         letter-spacing: 0.08em;
+    }
+
+    .app-header-logo {
+        height: 48px;
+        max-width: 140px;
     }
 
     .section-title {
