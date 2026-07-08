@@ -53,11 +53,7 @@ class ProcessadorCVLI:
         df_base: pd.DataFrame,
         df_novo: pd.DataFrame,
     ) -> pd.DataFrame:
-        """
-        Renomeia colunas equivalentes do arquivo novo para coincidir com a base.
-
-        Exemplo: AIS Nova -> AIS.
-        """
+        """Renomeia colunas equivalentes do arquivo novo para coincidir com a base."""
         mapa_equivalencias = {
             "AIS": ["AIS Nova", "AIS_Nova", "AISNOVA", "ais nova", "ais_nova"],
         }
@@ -93,10 +89,7 @@ class ProcessadorCVLI:
         df_base: pd.DataFrame,
         df_novo: pd.DataFrame,
     ) -> pd.DataFrame:
-        """
-        Garante que o arquivo novo possua as mesmas colunas da base,
-        adicionando colunas faltantes com valores nulos.
-        """
+        """Garante que o arquivo novo possua as mesmas colunas da base."""
         colunas_base = list(df_base.columns)
         faltantes = [col for col in colunas_base if col not in df_novo.columns]
 
@@ -108,7 +101,7 @@ class ProcessadorCVLI:
 
     @staticmethod
     def obter_meses_anos(df: pd.DataFrame, coluna_data: str) -> set[tuple[int, int]]:
-        """Obtém pares de (ano, mês) presentes no DataFrame, considerando apenas datas válidas."""
+        """Obtém pares de (ano, mês) presentes no DataFrame."""
         base_valida = df[df[coluna_data].notna()].copy()
         return set(zip(base_valida[coluna_data].dt.year, base_valida[coluna_data].dt.month))
 
@@ -118,10 +111,7 @@ class ProcessadorCVLI:
         df_novo: pd.DataFrame,
         coluna_data: str,
     ) -> tuple[pd.DataFrame, int, int, int, bool]:
-        """
-        Atualiza a base removendo dados antigos dos mesmos meses/anos do arquivo novo
-        e adicionando os registros complementares.
-        """
+        """Atualiza a base removendo períodos coincidentes e adicionando os registros novos."""
         total_inicial = len(df_base)
 
         df_novo = self.renomear_colunas_equivalentes(df_base, df_novo)
@@ -157,7 +147,7 @@ class ProcessadorCVLI:
         return df_final, adicionados, total_final, total_inicial, houve_substituicao
 
     def processar(self, arquivo01, arquivo02) -> dict:
-        """Orquestra a leitura, normalização, atualização e retorno do resultado CVLI."""
+        """Executa o processamento completo do módulo CVLI."""
         try:
             df_base = pd.read_excel(arquivo01)
             df_novo = pd.read_excel(arquivo02)
@@ -237,37 +227,12 @@ def _aplicar_estilo_cvli() -> None:
                 margin-bottom: 0.4rem;
             }
 
-            .cvli-title-row {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                gap: 1rem;
-            }
-
             .cvli-title {
                 font-size: 2rem;
                 line-height: 1.05;
                 font-weight: 900;
                 color: #f8fafc;
                 margin: 0;
-            }
-
-            .cvli-back-btn {
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                padding: 0.45rem 0.9rem;
-                border-radius: 999px;
-                border: 1px solid rgba(255, 255, 255, 0.16);
-                background: rgba(15, 23, 42, 0.35);
-                color: #e5e7eb;
-                font-size: 0.86rem;
-                font-weight: 600;
-                text-decoration: none;
-            }
-
-            .cvli-back-btn span {
-                margin-left: 0.4rem;
             }
 
             .cvli-desc {
@@ -344,11 +309,6 @@ def _aplicar_estilo_cvli() -> None:
                 .cvli-title {
                     font-size: 1.6rem;
                 }
-
-                .cvli-title-row {
-                    flex-direction: column-reverse;
-                    align-items: flex-start;
-                }
             }
         </style>
         """,
@@ -357,19 +317,13 @@ def _aplicar_estilo_cvli() -> None:
 
 
 def _render_hero_cvli() -> None:
-    """Renderiza o cabeçalho do módulo CVLI, incluindo botão Voltar."""
+    """Renderiza o cabeçalho visual do módulo CVLI."""
     st.markdown(
         """
         <div class="cvli-shell">
             <div class="cvli-hero">
                 <div class="cvli-kicker">Módulo ativo</div>
-                <div class="cvli-title-row">
-                    <h1 class="cvli-title">CVLI</h1>
-                    <a class="cvli-back-btn" href="#home">
-                        ←
-                        <span>Voltar</span>
-                    </a>
-                </div>
+                <h1 class="cvli-title">CVLI</h1>
                 <p class="cvli-desc">
                     Atualize a base de Crimes Violentos Letais Intencionais com segurança, mantendo
                     consistência estrutural entre a base histórica e o arquivo complementar.
@@ -382,7 +336,7 @@ def _render_hero_cvli() -> None:
 
 
 def _gerar_excel_download(df: pd.DataFrame) -> bytes:
-    """Gera o arquivo Excel para download."""
+    """Gera o arquivo Excel final para download."""
     output = BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name="CVLI")
@@ -439,12 +393,18 @@ def interface_cvli() -> None:
 
     salvar_drive = st.checkbox("💾 Salvar no Google Drive", key="cvli_drive")
 
-    processar = st.button(
-        "▶️ Processar CVLI",
-        key="processar_cvli",
-        type="primary",
-        use_container_width=False,
-    )
+    col_btn1, col_btn2 = st.columns(2)
+
+    with col_btn1:
+        processar = st.button(
+            "Processar CVLI",
+            key="processar_cvli",
+            type="primary",
+            use_container_width=True,
+        )
+
+    with col_btn2:
+        st.empty()
 
     if not processar:
         return
