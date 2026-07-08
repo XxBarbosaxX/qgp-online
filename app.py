@@ -129,14 +129,11 @@ def load_custom_css():
 
     .section-wrap {
         height: 100%;
-        border: 1px solid rgba(243,154,31,0.16);
-        border-radius: 22px;
-        padding: 0.82rem 0.82rem 0.95rem 0.82rem;
-        background: linear-gradient(180deg, rgba(5, 48, 42, 0.76) 0%, rgba(4, 31, 28, 0.82) 100%);
-        box-shadow:
-            0 0 0 1px rgba(18, 77, 67, 0.34),
-            0 10px 24px rgba(0, 0, 0, 0.14),
-            inset 0 1px 0 rgba(255,255,255,0.02);
+        padding: 0;
+        margin: 0;
+        background: transparent;
+        border: none;
+        box-shadow: none;
         display: flex;
         flex-direction: column;
         justify-content: flex-start;
@@ -153,6 +150,10 @@ def load_custom_css():
         display: flex;
         flex-direction: column;
         justify-content: center;
+        box-shadow:
+            0 0 0 1px rgba(18, 77, 67, 0.20),
+            0 8px 18px rgba(0, 0, 0, 0.10),
+            inset 0 1px 0 rgba(255,255,255,0.02);
     }
 
     .section-title {
