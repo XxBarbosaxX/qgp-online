@@ -166,11 +166,13 @@ class ProcessadorCVLI:
 
             coluna_data = coluna_data_base
 
-            df_final, adicionados, total_final, total_inicial, houve_substituicao = self.atualizar_base(
-                df_base,
-                df_novo,
-                coluna_data,
-            )
+            (
+                df_final,
+                adicionados,
+                total_final,
+                total_inicial,
+                houve_substituicao,
+            ) = self.atualizar_base(df_base, df_novo, coluna_data)
 
             situacao = (
                 "Base atualizada com substituição de períodos coincidentes."
@@ -197,7 +199,7 @@ class ProcessadorCVLI:
 
 
 def _aplicar_estilo_cvli() -> None:
-    """Aplica o estilo visual do módulo CVLI alinhado ao QGP Online."""
+    """Aplica o estilo visual do módulo CVLI alinhado ao padrão do sistema."""
     st.markdown(
         """
         <style>
@@ -315,7 +317,7 @@ def _aplicar_estilo_cvli() -> None:
 
 
 def _render_hero_cvli() -> None:
-    """Renderiza o cabeçalho visual do módulo CVLI."""
+    """Renderiza o hero interno do módulo CVLI."""
     st.markdown(
         """
         <div class="cvli-shell">
