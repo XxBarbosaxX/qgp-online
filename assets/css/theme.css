@@ -53,7 +53,7 @@ section[data-testid="stSidebar"] {
 
 /* Header */
 .app-header {
-    padding: 0.2rem 0 0.95rem 0;
+    padding: 0.7rem 0 1rem 0;
     margin-bottom: 1rem;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     background: transparent !important;
@@ -63,7 +63,7 @@ section[data-testid="stSidebar"] {
 
 .app-header-with-logo {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
     gap: 1.2rem;
 }
@@ -73,13 +73,15 @@ section[data-testid="stSidebar"] {
     flex-direction: column;
     justify-content: center;
     min-width: 0;
+    padding-top: 0.48rem;
 }
 
 .app-header-logo-wrap {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: flex-end;
     flex-shrink: 0;
+    padding-top: 0.48rem;
 }
 
 .app-header-logo {
@@ -93,7 +95,7 @@ section[data-testid="stSidebar"] {
 
 .app-title {
     margin: 0;
-    padding-top: 0.2rem;
+    padding-top: 0.12rem;
     color: #ffffff;
     font-size: 2.4rem;
     font-weight: 800;
@@ -371,6 +373,14 @@ hr {
         font-size: 2.05rem;
     }
 
+    .app-header-main {
+        padding-top: 0.38rem;
+    }
+
+    .app-header-logo-wrap {
+        padding-top: 0.38rem;
+    }
+
     .app-header-logo {
         height: 58px;
         max-width: 190px;
@@ -392,9 +402,21 @@ hr {
         padding-right: 0.9rem !important;
     }
 
+    .app-header {
+        padding: 0.55rem 0 0.9rem 0;
+    }
+
     .app-header-with-logo {
         align-items: flex-start;
         gap: 0.9rem;
+    }
+
+    .app-header-main {
+        padding-top: 0.24rem;
+    }
+
+    .app-header-logo-wrap {
+        padding-top: 0.24rem;
     }
 
     .app-title {
