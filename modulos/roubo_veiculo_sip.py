@@ -87,6 +87,142 @@ TIPOS = ("Rua", "Avenida", "Travessa", "Praca", "Rodovia", "Alameda", "Passeio")
 ROOFTOP = ("pointaddress", "streetaddress", "subaddress", "pointaddressvd")
 
 
+def _aplicar_estilo_roubo_veiculo_sip() -> None:
+    """Aplica estilo visual padronizado ao módulo."""
+    st.markdown(
+        """
+        <style>
+            .rvsip-section-card {
+                background: rgba(255, 255, 255, 0.02);
+                border: 1px solid rgba(255, 255, 255, 0.07);
+                border-radius: 18px;
+                padding: 1.1rem 1.1rem 0.7rem 1.1rem;
+                margin: 1rem 0;
+            }
+
+            .rvsip-section-title {
+                font-size: 1.15rem;
+                font-weight: 800;
+                color: #f8fafc;
+                margin-bottom: 0.25rem;
+            }
+
+            .rvsip-section-desc {
+                font-size: 0.93rem;
+                color: rgba(255, 255, 255, 0.70);
+                margin-bottom: 0.9rem;
+                line-height: 1.5;
+            }
+
+            .rvsip-mini-list {
+                margin: 0.6rem 0 0 0;
+                padding-left: 1rem;
+                color: rgba(255,255,255,0.78);
+                font-size: 0.92rem;
+            }
+
+            .rvsip-grid-status {
+                display: grid;
+                grid-template-columns: repeat(5, minmax(0, 1fr));
+                gap: 0.85rem;
+                margin: 1rem 0 0.2rem 0;
+            }
+
+            .rvsip-grid-levels {
+                display: grid;
+                grid-template-columns: repeat(5, minmax(0, 1fr));
+                gap: 0.85rem;
+                margin: 1rem 0 0.2rem 0;
+            }
+
+            .rvsip-stat {
+                background: rgba(255, 255, 255, 0.025);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 16px;
+                padding: 0.95rem 1rem;
+            }
+
+            .rvsip-stat-label {
+                font-size: 0.78rem;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                color: rgba(255, 255, 255, 0.58);
+                margin-bottom: 0.35rem;
+                font-weight: 700;
+            }
+
+            .rvsip-stat-value {
+                font-size: 1.20rem;
+                font-weight: 900;
+                color: #ffffff;
+                line-height: 1.15;
+                word-break: break-word;
+            }
+
+            .rvsip-badge-wrap {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.5rem;
+                margin-top: 0.55rem;
+                margin-bottom: 0.15rem;
+            }
+
+            .rvsip-badge {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.35rem;
+                padding: 0.5rem 0.72rem;
+                border-radius: 999px;
+                font-size: 0.82rem;
+                font-weight: 700;
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                background: rgba(255, 255, 255, 0.03);
+                color: #e5f3ee;
+            }
+
+            .rvsip-badge.ok {
+                background: rgba(34, 197, 94, 0.10);
+                color: #b7f7c9;
+                border-color: rgba(34, 197, 94, 0.22);
+            }
+
+            .rvsip-badge.warn {
+                background: rgba(245, 158, 11, 0.10);
+                color: #fde4b0;
+                border-color: rgba(245, 158, 11, 0.22);
+            }
+
+            .rvsip-badge.info {
+                background: rgba(59, 130, 246, 0.10);
+                color: #bfdbfe;
+                border-color: rgba(59, 130, 246, 0.22);
+            }
+
+            .rvsip-badge.error {
+                background: rgba(239, 68, 68, 0.10);
+                color: #fecaca;
+                border-color: rgba(239, 68, 68, 0.22);
+            }
+
+            @media (max-width: 1180px) {
+                .rvsip-grid-status,
+                .rvsip-grid-levels {
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                }
+            }
+
+            @media (max-width: 640px) {
+                .rvsip-grid-status,
+                .rvsip-grid-levels {
+                    grid-template-columns: 1fr;
+                }
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def sem_acento(texto: str) -> str:
     normalizado = unicodedata.normalize("NFKD", str(texto or ""))
     return "".join(c for c in normalizado if not unicodedata.combining(c)).upper().strip()
@@ -874,40 +1010,115 @@ def _init_state():
             st.session_state[chave] = valor
 
 
+def _limpar_estado_roubo_veiculo_sip() -> None:
+    chaves = [
+        "roubo_veiculo_sip_arquivo_01_bytes",
+        "roubo_veiculo_sip_arquivo_01_nome",
+        "roubo_veiculo_sip_arquivo_02_bytes",
+        "roubo_veiculo_sip_arquivo_02_nome",
+        "roubo_veiculo_sip_resultado_excel",
+        "roubo_veiculo_sip_resultado_df",
+        "roubo_veiculo_sip_resumo",
+        "roubo_veiculo_sip_upload_01",
+        "roubo_veiculo_sip_upload_02",
+    ]
+    for chave in chaves:
+        if chave in st.session_state:
+            del st.session_state[chave]
+
+
 def render():
     _init_state()
+    _aplicar_estilo_roubo_veiculo_sip()
 
-    st.subheader("Roubo de Veículo (SIP) - Geocodificação por Endereço")
-    st.write(
-        "Envie a base histórica e o complemento SIP para atualizar a base com geocodificação."
+    st.markdown(
+        """
+        <div class="rvsip-section-card">
+            <div class="rvsip-section-title">Processamento de Roubo de Veículo (SIP)</div>
+            <div class="rvsip-section-desc">
+                Envie a base histórica e o complemento SIP para atualizar a base com
+                geocodificação por endereço, validação temporal e consolidação final no
+                padrão do QGP Online.
+            </div>
+            <ul class="rvsip-mini-list">
+                <li>Identificação automática das abas de base e complemento.</li>
+                <li>Filtro por Natureza = ROUBO DE VEICULO.</li>
+                <li>Geocodificação híbrida com base enxuta + ArcGIS.</li>
+                <li>Classificação por nível de geocodificação.</li>
+                <li>Geração do arquivo final consolidado para download.</li>
+            </ul>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-
-    st.caption(f"Base geográfica utilizada na raiz do projeto: {CAMINHO_BASE_ENXUTA}")
 
     try:
         base_geo = carregar_base_geografica()
+
         if base_geo is not None and not base_geo.empty:
-            st.success(
-                f"Base geográfica carregada com sucesso: {len(base_geo):,} registros em {CAMINHO_BASE_ENXUTA}"
+            st.markdown(
+                f"""
+                <div class="rvsip-section-card">
+                    <div class="rvsip-section-title">Base geográfica disponível</div>
+                    <div class="rvsip-section-desc">
+                        A base auxiliar foi carregada com sucesso e está pronta para apoiar
+                        a geocodificação dos novos registros.
+                    </div>
+                    <div class="rvsip-badge-wrap">
+                        <span class="rvsip-badge ok">Arquivo: {CAMINHO_BASE_ENXUTA}</span>
+                        <span class="rvsip-badge info">Registros: {len(base_geo):,}</span>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
         else:
-            st.warning(
-                f"A base geográfica não foi carregada. Verifique o arquivo {CAMINHO_BASE_ENXUTA}."
+            st.markdown(
+                f"""
+                <div class="rvsip-section-card">
+                    <div class="rvsip-section-title">Base geográfica indisponível</div>
+                    <div class="rvsip-section-desc">
+                        A base auxiliar não foi carregada. Verifique se o arquivo está
+                        presente e íntegro na raiz do projeto.
+                    </div>
+                    <div class="rvsip-badge-wrap">
+                        <span class="rvsip-badge error">Arquivo esperado: {CAMINHO_BASE_ENXUTA}</span>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
     except Exception as exc:
-        st.error(f"Erro ao carregar base geográfica: {exc}")
+        st.markdown(
+            f"""
+            <div class="rvsip-section-card">
+                <div class="rvsip-section-title">Erro ao carregar base geográfica</div>
+                <div class="rvsip-section-desc">
+                    Ocorreu uma falha ao validar a base auxiliar do processo.
+                </div>
+                <div class="rvsip-badge-wrap">
+                    <span class="rvsip-badge error">{str(exc)}</span>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-    arquivo_01 = st.file_uploader(
-        "Arquivo 01 - Base histórica de Roubo de Veículo",
-        type=["xlsx", "xls"],
-        key="roubo_veiculo_sip_upload_01",
-    )
+    col1, col2 = st.columns(2)
 
-    arquivo_02 = st.file_uploader(
-        "Arquivo 02 - Complemento SIP",
-        type=["xlsx", "xls"],
-        key="roubo_veiculo_sip_upload_02",
-    )
+    with col1:
+        arquivo_01 = st.file_uploader(
+            "📁 Arquivo 01 - Base histórica",
+            type=["xlsx", "xls"],
+            key="roubo_veiculo_sip_upload_01",
+        )
+
+    with col2:
+        arquivo_02 = st.file_uploader(
+            "📁 Arquivo 02 - Complemento SIP",
+            type=["xlsx", "xls"],
+            key="roubo_veiculo_sip_upload_02",
+        )
 
     if arquivo_01 is not None:
         arquivo_01.seek(0)
@@ -919,97 +1130,179 @@ def render():
         st.session_state.roubo_veiculo_sip_arquivo_02_bytes = arquivo_02.read()
         st.session_state.roubo_veiculo_sip_arquivo_02_nome = arquivo_02.name
 
+    badges_upload = []
     if st.session_state.roubo_veiculo_sip_arquivo_01_nome:
-        st.info(f"Arquivo 01 carregado: {st.session_state.roubo_veiculo_sip_arquivo_01_nome}")
-
+        badges_upload.append(
+            f'<span class="rvsip-badge ok">Base carregada: {st.session_state.roubo_veiculo_sip_arquivo_01_nome}</span>'
+        )
     if st.session_state.roubo_veiculo_sip_arquivo_02_nome:
-        st.info(f"Arquivo 02 carregado: {st.session_state.roubo_veiculo_sip_arquivo_02_nome}")
+        badges_upload.append(
+            f'<span class="rvsip-badge ok">Complemento carregado: {st.session_state.roubo_veiculo_sip_arquivo_02_nome}</span>'
+        )
+
+    if badges_upload:
+        st.markdown(
+            f'<div class="rvsip-badge-wrap">{"".join(badges_upload)}</div>',
+            unsafe_allow_html=True,
+        )
+
+    st.markdown(
+        """
+        <div class="rvsip-section-card">
+            <div class="rvsip-section-title">Execução do processamento</div>
+            <div class="rvsip-section-desc">
+                Após validar os arquivos enviados, execute a rotina para filtrar os registros,
+                geocodificar os novos eventos e consolidar a base final.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     pode_processar = (
         st.session_state.roubo_veiculo_sip_arquivo_01_bytes is not None
         and st.session_state.roubo_veiculo_sip_arquivo_02_bytes is not None
     )
 
-    if st.button("Processar Roubo de Veículo (SIP)", type="primary", disabled=not pode_processar):
+    col_btn1, col_btn2 = st.columns(2)
+
+    with col_btn1:
+        processar = st.button(
+            "Processar Roubo de Veículo (SIP)",
+            type="primary",
+            disabled=not pode_processar,
+            use_container_width=True,
+            key="btn_processar_roubo_veiculo_sip",
+        )
+
+    with col_btn2:
+        limpar = st.button(
+            "Limpar seleção",
+            use_container_width=True,
+            key="btn_limpar_roubo_veiculo_sip",
+        )
+
+    if limpar:
+        _limpar_estado_roubo_veiculo_sip()
+        st.rerun()
+
+    if processar:
         try:
             arquivo_01_buffer = BytesIO(st.session_state.roubo_veiculo_sip_arquivo_01_bytes)
             arquivo_02_buffer = BytesIO(st.session_state.roubo_veiculo_sip_arquivo_02_bytes)
 
             with st.spinner("Processando e geocodificando registros..."):
-                df_final, resumo = processar_roubo_veiculo_sip(arquivo_01_buffer, arquivo_02_buffer)
+                df_final, resumo = processar_roubo_veiculo_sip(
+                    arquivo_01_buffer,
+                    arquivo_02_buffer,
+                )
                 arquivo_excel_bytes = gerar_excel_em_memoria(df_final)
 
             st.session_state.roubo_veiculo_sip_resultado_df = df_final
             st.session_state.roubo_veiculo_sip_resumo = resumo
             st.session_state.roubo_veiculo_sip_resultado_excel = arquivo_excel_bytes
 
-            st.success("Processamento concluído com sucesso.")
+            st.success("✅ Processamento concluído com sucesso.")
 
         except Exception as exc:
             st.exception(exc)
 
     if (
-        st.session_state.roubo_veiculo_sip_resultado_df is not None
-        and st.session_state.roubo_veiculo_sip_resumo is not None
+        st.session_state.roubo_veiculo_sip_resultado_df is None
+        or st.session_state.roubo_veiculo_sip_resumo is None
     ):
-        df_final = st.session_state.roubo_veiculo_sip_resultado_df
-        resumo = st.session_state.roubo_veiculo_sip_resumo
+        return
 
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Novos registros adicionados", resumo["adicionados"])
-        c2.metric("Total final da base", resumo["total_final"])
-        c3.metric("Registros geocodificados", resumo["geocodificados"])
+    df_final = st.session_state.roubo_veiculo_sip_resultado_df
+    resumo = st.session_state.roubo_veiculo_sip_resumo
 
-        contagens_nivel = resumo.get("contagens_nivel", {})
-        if contagens_nivel:
-            st.subheader("Resumo dos níveis de geocodificação")
+    st.markdown(
+        f"""
+        <div class="rvsip-section-card">
+            <div class="rvsip-section-title">Resumo do processamento</div>
+            <div class="rvsip-section-desc">{resumo.get("situacao", "Processamento concluído.")}</div>
+            <div class="rvsip-grid-status">
+                <div class="rvsip-stat">
+                    <div class="rvsip-stat-label">Registros adicionados</div>
+                    <div class="rvsip-stat-value">{resumo.get("adicionados", 0)}</div>
+                </div>
+                <div class="rvsip-stat">
+                    <div class="rvsip-stat-label">Total final</div>
+                    <div class="rvsip-stat-value">{resumo.get("total_final", 0)}</div>
+                </div>
+                <div class="rvsip-stat">
+                    <div class="rvsip-stat-label">Geocodificados</div>
+                    <div class="rvsip-stat-value">{resumo.get("geocodificados", 0)}</div>
+                </div>
+                <div class="rvsip-stat">
+                    <div class="rvsip-stat-label">Removidos por natureza</div>
+                    <div class="rvsip-stat-value">{resumo.get("removidos_por_tipo", 0)}</div>
+                </div>
+                <div class="rvsip-stat">
+                    <div class="rvsip-stat-label">Sem geocodificação</div>
+                    <div class="rvsip-stat-value">{resumo.get("removidos_sem_geocodificacao", 0)}</div>
+                </div>
+            </div>
+            <div class="rvsip-badge-wrap">
+                <span class="rvsip-badge info">Aba base: {resumo.get("aba_arquivo_01", "-")}</span>
+                <span class="rvsip-badge info">Aba complemento: {resumo.get("aba_arquivo_02", "-")}</span>
+                <span class="rvsip-badge info">Coluna Natureza: {resumo.get("coluna_natureza", "-")}</span>
+                <span class="rvsip-badge warn">Filtrados por Data/Hora: {resumo.get("removidos_por_datahora", 0)}</span>
+                <span class="rvsip-badge info">Última Data/Hora base: {resumo.get("ultima_datahora_base", "-")}</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-            exato_numero = contagens_nivel.get("Exato (Numero)", 0)
-            centroide_rua = contagens_nivel.get("Centroide de Rua", 0)
-            centroide_bairro = contagens_nivel.get("Centroide de Bairro", 0)
-            centroide_cidade = contagens_nivel.get("Centroide de Cidade", 0)
-            nao_encontrado = contagens_nivel.get("Nao Encontrado", 0)
-
-            n1, n2, n3 = st.columns(3)
-            n1.metric("Exato (Numero)", exato_numero)
-            n2.metric("Centroide de Rua", centroide_rua)
-            n3.metric("Centroide de Bairro", centroide_bairro)
-
-            n4, n5 = st.columns(2)
-            n4.metric("Centroide de Cidade", centroide_cidade)
-            n5.metric("Nao Encontrado", nao_encontrado)
-
-            st.caption(
-                "Os valores acima mostram quantos registros caíram em cada nível de geocodificação."
-            )
-
-        st.info(
-            f"Aba usada no Arquivo 01: {resumo['aba_arquivo_01']} | "
-            f"Aba usada no Arquivo 02: {resumo['aba_arquivo_02']}"
+    contagens_nivel = resumo.get("contagens_nivel", {})
+    if contagens_nivel:
+        st.markdown(
+            f"""
+            <div class="rvsip-section-card">
+                <div class="rvsip-section-title">Níveis de geocodificação</div>
+                <div class="rvsip-section-desc">
+                    Distribuição dos registros processados conforme o nível de precisão da geocodificação.
+                </div>
+                <div class="rvsip-grid-levels">
+                    <div class="rvsip-stat">
+                        <div class="rvsip-stat-label">Exato (Número)</div>
+                        <div class="rvsip-stat-value">{contagens_nivel.get("Exato (Numero)", 0)}</div>
+                    </div>
+                    <div class="rvsip-stat">
+                        <div class="rvsip-stat-label">Centroide de Rua</div>
+                        <div class="rvsip-stat-value">{contagens_nivel.get("Centroide de Rua", 0)}</div>
+                    </div>
+                    <div class="rvsip-stat">
+                        <div class="rvsip-stat-label">Centroide de Bairro</div>
+                        <div class="rvsip-stat-value">{contagens_nivel.get("Centroide de Bairro", 0)}</div>
+                    </div>
+                    <div class="rvsip-stat">
+                        <div class="rvsip-stat-label">Centroide de Cidade</div>
+                        <div class="rvsip-stat-value">{contagens_nivel.get("Centroide de Cidade", 0)}</div>
+                    </div>
+                    <div class="rvsip-stat">
+                        <div class="rvsip-stat-label">Não Encontrado</div>
+                        <div class="rvsip-stat-value">{contagens_nivel.get("Nao Encontrado", 0)}</div>
+                    </div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
 
-        st.info(
-            f"Coluna Natureza utilizada: {resumo['coluna_natureza']} | "
-            f"Última Data/Hora da base: {resumo['ultima_datahora_base']}"
+    with st.expander("Prévia dos dados processados", expanded=False):
+        st.dataframe(df_final.head(200), use_container_width=True, hide_index=True)
+
+    if st.session_state.roubo_veiculo_sip_resultado_excel is not None:
+        st.download_button(
+            label="💾 Baixar arquivo final",
+            data=st.session_state.roubo_veiculo_sip_resultado_excel,
+            file_name=NOME_ARQUIVO_FINAL,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="roubo_veiculo_sip_download_final",
+            use_container_width=True,
         )
-
-        st.info(
-            f"Removidos por Natureza: {resumo['removidos_por_tipo']} | "
-            f"Removidos por filtro temporal: {resumo['removidos_por_datahora']} | "
-            f"Removidos sem geocodificação: {resumo['removidos_sem_geocodificacao']}"
-        )
-
-        st.caption(resumo["situacao"])
-        st.dataframe(df_final.head(50), use_container_width=True)
-
-        if st.session_state.roubo_veiculo_sip_resultado_excel is not None:
-            st.download_button(
-                label="Baixar arquivo final",
-                data=st.session_state.roubo_veiculo_sip_resultado_excel,
-                file_name=NOME_ARQUIVO_FINAL,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="roubo_veiculo_sip_download_final",
-            )
 
 
 interface_roubo_veiculo_sip = render
