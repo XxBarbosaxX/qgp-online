@@ -137,35 +137,42 @@ def load_custom_css():
             0 0 0 1px rgba(18, 77, 67, 0.38),
             0 16px 34px rgba(0, 0, 0, 0.18),
             inset 0 1px 0 rgba(255,255,255,0.02);
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-start;
     }
 
     .section-card {
         background: rgba(255,255,255,0.03);
         border: 1px solid rgba(243,154,31,0.12);
         border-radius: 18px;
-        padding: 1.15rem 1.15rem 1.1rem 1.15rem;
+        padding: 1.15rem 1.15rem 1.05rem 1.15rem;
         margin-top: 0.1rem;
         margin-bottom: 0.15rem;
-        min-height: 116px;
+        min-height: 118px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
     }
 
     .section-title {
-        font-size: 1.08rem;
+        font-size: 1.14rem;
         font-weight: 900;
         color: #ffffff;
-        margin-bottom: 0.25rem;
+        margin-bottom: 0.42rem;
         letter-spacing: 0.01em;
+        text-transform: uppercase;
     }
 
     .section-subtitle {
-        color: #cdd8d2;
+        color: #d8e3de;
         font-size: 0.95rem;
         margin-bottom: 0;
         line-height: 1.45;
     }
 
     .section-spacer {
-        height: 0.9rem;
+        height: 0.95rem;
     }
 
     .btn-gap-strong {
@@ -236,9 +243,9 @@ def load_custom_css():
     }
 
     .todos-btn .stButton > button {
-        background: linear-gradient(135deg, #7ff0a0 0%, #63de89 100%) !important;
+        background: linear-gradient(135deg, #8df5ab 0%, #6ce592 100%) !important;
         color: #f39a1f !important;
-        border: 2px solid rgba(171, 255, 193, 0.95) !important;
+        border: 2px solid rgba(183, 255, 203, 0.95) !important;
         border-radius: 15px !important;
         font-size: 1.02rem !important;
         min-height: 3.8rem !important;
@@ -252,7 +259,7 @@ def load_custom_css():
     }
 
     .todos-btn .stButton > button:hover {
-        background: linear-gradient(135deg, #90f7ae 0%, #73e394 100%) !important;
+        background: linear-gradient(135deg, #9af7b5 0%, #7ae89c 100%) !important;
         color: #ff9f1a !important;
         transform: translateY(-3px) scale(1.018) !important;
         box-shadow:
@@ -393,7 +400,7 @@ def voltar_inicio():
 def render_header_bloco(titulo: str, subtitulo: str):
     st.markdown(f"""
     <div class="section-card">
-        <div class="section-title">{titulo}</div>
+        <div class="section-title"><strong>{titulo}</strong></div>
         <div class="section-subtitle">{subtitulo}</div>
     </div>
     """, unsafe_allow_html=True)
@@ -441,7 +448,7 @@ def render_home():
 
     with col_esq:
         render_bloco_completo(
-            "Atualização dos Indicadores",
+            "ATUALIZAÇÃO DOS INDICADORES",
             "Selecione um indicador para processamento individual ou execução completa.",
             INDICADORES_ATUALIZACAO,
             "atualizacao"
@@ -449,7 +456,7 @@ def render_home():
 
     with col_centro:
         render_bloco_completo(
-            "Geocodificação",
+            "GEOCODIFICAÇÃO",
             "Módulo dedicado à geocodificação de ocorrências e endereços.",
             MODULOS_GEO,
             "geocodificacao"
@@ -457,7 +464,7 @@ def render_home():
 
     with col_dir:
         render_bloco_completo(
-            "Consolidar Indicadores",
+            "CONSOLIDAR INDICADORES",
             "Área reservada para o módulo de consolidação de indicadores.",
             MODULOS_CONSOLIDACAO,
             "consolidacao"
