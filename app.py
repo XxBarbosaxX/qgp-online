@@ -57,9 +57,9 @@ def load_custom_css():
     st.markdown("""
     <style>
     @keyframes pulse-border {
-        0%   { box-shadow: 0 0 0 0 rgba(52,168,83,0.36), 0 4px 18px rgba(52,168,83,0.16); }
-        70%  { box-shadow: 0 0 0 8px rgba(52,168,83,0.00), 0 4px 18px rgba(52,168,83,0.08); }
-        100% { box-shadow: 0 0 0 0 rgba(52,168,83,0.00), 0 4px 18px rgba(52,168,83,0.16); }
+        0%   { box-shadow: 0 0 0 0 rgba(118, 255, 159, 0.30), 0 6px 24px rgba(72, 201, 120, 0.16); }
+        70%  { box-shadow: 0 0 0 10px rgba(118, 255, 159, 0.00), 0 6px 24px rgba(72, 201, 120, 0.08); }
+        100% { box-shadow: 0 0 0 0 rgba(118, 255, 159, 0.00), 0 6px 24px rgba(72, 201, 120, 0.16); }
     }
 
     .stApp {
@@ -129,15 +129,23 @@ def load_custom_css():
 
     .section-wrap {
         height: 100%;
+        border: 1px solid rgba(243,154,31,0.18);
+        border-radius: 24px;
+        padding: 1rem 1rem 1.15rem 1rem;
+        background: linear-gradient(180deg, rgba(5, 48, 42, 0.78) 0%, rgba(4, 31, 28, 0.84) 100%);
+        box-shadow:
+            0 0 0 1px rgba(18, 77, 67, 0.38),
+            0 16px 34px rgba(0, 0, 0, 0.18),
+            inset 0 1px 0 rgba(255,255,255,0.02);
     }
 
     .section-card {
-        background: rgba(255,255,255,0.035);
-        border: 1px solid rgba(243,154,31,0.14);
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(243,154,31,0.12);
         border-radius: 18px;
         padding: 1.15rem 1.15rem 1.1rem 1.15rem;
-        margin-top: 0.25rem;
-        margin-bottom: 0.2rem;
+        margin-top: 0.1rem;
+        margin-bottom: 0.15rem;
         min-height: 116px;
     }
 
@@ -157,14 +165,15 @@ def load_custom_css():
     }
 
     .section-spacer {
-        height: 0.75rem;
+        height: 0.9rem;
     }
 
-    .button-stack {
-        display: flex;
-        flex-direction: column;
-        gap: 0.72rem;
-        margin-top: 0.2rem;
+    .btn-gap-strong {
+        height: 1.05rem;
+    }
+
+    .btn-gap-normal {
+        height: 0.72rem;
     }
 
     .info-row {
@@ -189,7 +198,7 @@ def load_custom_css():
         background: linear-gradient(135deg, #f39a1f 0%, #e08010 100%) !important;
         color: #16211d !important;
         border: 1px solid rgba(243,154,31,0.35) !important;
-        border-radius: 12px !important;
+        border-radius: 14px !important;
         font-weight: 900 !important;
         font-size: 0.95rem !important;
         padding: 0.82rem 0.95rem !important;
@@ -227,30 +236,35 @@ def load_custom_css():
     }
 
     .todos-btn .stButton > button {
-        background: #2f9e44 !important;
+        background: linear-gradient(135deg, #7ff0a0 0%, #63de89 100%) !important;
         color: #f39a1f !important;
-        border: 2px solid #78d08b !important;
-        border-radius: 14px !important;
+        border: 2px solid rgba(171, 255, 193, 0.95) !important;
+        border-radius: 15px !important;
         font-size: 1.02rem !important;
-        min-height: 3.7rem !important;
+        min-height: 3.8rem !important;
         animation: pulse-border 2.2s ease-in-out infinite !important;
         letter-spacing: 0.02em !important;
         text-shadow: none !important;
-        box-shadow: 0 4px 18px rgba(52,168,83,0.22) !important;
+        box-shadow:
+            0 6px 20px rgba(72, 201, 120, 0.22),
+            inset 0 1px 0 rgba(255,255,255,0.22) !important;
         font-weight: 900 !important;
     }
 
     .todos-btn .stButton > button:hover {
-        background: #37b24d !important;
-        color: #ffb347 !important;
+        background: linear-gradient(135deg, #90f7ae 0%, #73e394 100%) !important;
+        color: #ff9f1a !important;
         transform: translateY(-3px) scale(1.018) !important;
-        box-shadow: 0 8px 26px rgba(52,168,83,0.28), 0 0 0 3px rgba(129,221,124,0.16) !important;
-        filter: brightness(1.03) !important;
+        box-shadow:
+            0 10px 28px rgba(72, 201, 120, 0.28),
+            0 0 0 3px rgba(171,255,193,0.18),
+            inset 0 1px 0 rgba(255,255,255,0.24) !important;
+        filter: brightness(1.02) !important;
     }
 
     .todos-btn .stButton > button:active {
         transform: translateY(0px) scale(0.97) !important;
-        filter: brightness(0.95) !important;
+        filter: brightness(0.97) !important;
     }
 
     .secondary-button .stButton > button {
@@ -386,17 +400,21 @@ def render_header_bloco(titulo: str, subtitulo: str):
     st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)
 
 def render_lista_botoes(itens: list[str], key_prefix: str):
-    for item in itens:
+    for i, item in enumerate(itens):
         if item == "TODOS OS INDICADORES":
             st.markdown('<div class="todos-btn">', unsafe_allow_html=True)
             if st.button(item, key=f"{key_prefix}_{item}", use_container_width=True):
                 selecionar_indicador(item)
                 st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown('<div class="btn-gap-strong"></div>', unsafe_allow_html=True)
         else:
             if st.button(item, key=f"{key_prefix}_{item}", use_container_width=True):
                 selecionar_indicador(item)
                 st.rerun()
+
+            if i < len(itens) - 1:
+                st.markdown('<div class="btn-gap-normal"></div>', unsafe_allow_html=True)
 
 def render_bloco_completo(titulo: str, subtitulo: str, itens: list[str], key_prefix: str):
     st.markdown('<div class="section-wrap">', unsafe_allow_html=True)
@@ -417,7 +435,7 @@ def render_home():
     """, unsafe_allow_html=True)
 
     st.markdown("### Módulos disponíveis")
-    st.markdown("<div style='height: 0.35rem;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height: 0.45rem;'></div>", unsafe_allow_html=True)
 
     col_esq, col_centro, col_dir = st.columns([1.45, 1.0, 1.0], gap="large")
 
