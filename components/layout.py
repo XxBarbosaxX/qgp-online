@@ -104,7 +104,7 @@ def render_panel_atualizacao() -> None:
 
         st.markdown(
             f"""
-            <div class="panel-footer">
+            <div class="panel-footer panel-footer-tight">
                 {len(INDICADORES_ATUALIZACAO)} indicadores disponíveis para processamento individual.
             </div>
             """,
@@ -129,7 +129,8 @@ def render_panel_geocodificacao() -> None:
         st.markdown(
             """
             <div class="panel-footer">
-                Recomendado para rotinas de qualificação territorial e estudos de distribuição espacial.
+                Recomendado para rotinas de qualificação territorial
+                e estudos de distribuição espacial.
             </div>
             """,
             unsafe_allow_html=True,
