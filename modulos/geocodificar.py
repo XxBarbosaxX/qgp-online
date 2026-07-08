@@ -111,6 +111,124 @@ TIPOS = ("Rua", "Avenida", "Travessa", "Praca", "Rodovia", "Alameda", "Passeio")
 ROOFTOP = ("pointaddress", "streetaddress", "subaddress", "pointaddressvd")
 
 
+def _aplicar_estilo_geocodificacao() -> None:
+    st.markdown(
+        """
+        <style>
+            .geo-card {
+                background: rgba(255, 255, 255, 0.02);
+                border: 1px solid rgba(255, 255, 255, 0.07);
+                border-radius: 18px;
+                padding: 1.1rem 1.1rem 0.85rem 1.1rem;
+                margin: 1rem 0;
+            }
+
+            .geo-title {
+                font-size: 1.15rem;
+                font-weight: 800;
+                color: #f8fafc;
+                margin-bottom: 0.25rem;
+            }
+
+            .geo-desc {
+                font-size: 0.93rem;
+                color: rgba(255, 255, 255, 0.72);
+                margin-bottom: 0.8rem;
+                line-height: 1.55;
+            }
+
+            .geo-list {
+                margin: 0.55rem 0 0 0;
+                padding-left: 1rem;
+                color: rgba(255, 255, 255, 0.78);
+                font-size: 0.92rem;
+            }
+
+            .geo-grid {
+                display: grid;
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+                gap: 0.85rem;
+                margin-top: 1rem;
+            }
+
+            .geo-stat {
+                background: rgba(255, 255, 255, 0.025);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 16px;
+                padding: 0.95rem 1rem;
+            }
+
+            .geo-stat-label {
+                font-size: 0.78rem;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                color: rgba(255, 255, 255, 0.58);
+                margin-bottom: 0.35rem;
+                font-weight: 700;
+            }
+
+            .geo-stat-value {
+                font-size: 1.18rem;
+                font-weight: 900;
+                color: #ffffff;
+                line-height: 1.15;
+            }
+
+            .geo-badges {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.5rem;
+                margin-top: 0.65rem;
+            }
+
+            .geo-badge {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.35rem;
+                padding: 0.5rem 0.72rem;
+                border-radius: 999px;
+                font-size: 0.82rem;
+                font-weight: 700;
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                background: rgba(255, 255, 255, 0.03);
+                color: #e5f3ee;
+            }
+
+            .geo-badge.ok {
+                background: rgba(34, 197, 94, 0.10);
+                color: #b7f7c9;
+                border-color: rgba(34, 197, 94, 0.22);
+            }
+
+            .geo-badge.info {
+                background: rgba(59, 130, 246, 0.10);
+                color: #bfdbfe;
+                border-color: rgba(59, 130, 246, 0.22);
+            }
+
+            .geo-badge.warn {
+                background: rgba(245, 158, 11, 0.10);
+                color: #fde4b0;
+                border-color: rgba(245, 158, 11, 0.22);
+            }
+
+            @media (max-width: 1200px) {
+                .geo-grid {
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                }
+            }
+
+            @media (max-width: 640px) {
+                .geo-grid {
+                    grid-template-columns: 1fr;
+                }
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def sem_acento(s: Any) -> str:
     n = unicodedata.normalize("NFKD", str(s or ""))
     return "".join(c for c in n if not unicodedata.combining(c)).upper().strip()
@@ -266,6 +384,7 @@ class GeocodificadorDIESP:
                     continue
 
                 try:
+                    from shapely.geometry import shape
                     geom = shape(f["geometry"])
                     c = geom.centroid
                     lon, lat = tr.transform(c.x, c.y)
@@ -410,7 +529,9 @@ class GeocodificadorDIESP:
             return False, None
 
         nomes = self.gnome[ix]
-        msk = np.array([fuzz.token_set_ratio(rua_norm, n) >= self.config.limiar_nome for n in nomes])
+        msk = np.array(
+            [fuzz.token_set_ratio(rua_norm, n) >= self.config.limiar_nome for n in nomes]
+        )
         if not msk.any():
             return False, None
 
@@ -531,7 +652,9 @@ class GeocodificadorDIESP:
         lats, lons, nivel, fonte, conf, dists, temnum = [], [], [], [], [], [], []
         total = len(df)
 
-        self._log(f"[COLUNAS] logradouro={c_log} numero={c_num} bairro={c_bai} municipio={c_mun}")
+        self._log(
+            f"[COLUNAS] logradouro={c_log} numero={c_num} bairro={c_bai} municipio={c_mun}"
+        )
 
         for i, row in df.iterrows():
             num = limpar_numero(row.get(c_num)) if c_num else ""
@@ -697,18 +820,54 @@ def _df_to_excel_bytes(df: pd.DataFrame) -> bytes:
     return buffer.read()
 
 
+def _init_state_geocodificacao() -> None:
+    defaults = {
+        "geo_df_entrada": None,
+        "geo_nome_upload": None,
+        "geo_df_saida": None,
+        "geo_resumo": None,
+        "geo_nome_arquivo": None,
+        "geo_logs": [],
+    }
+    for chave, valor in defaults.items():
+        if chave not in st.session_state:
+            st.session_state[chave] = valor
+
+
+def _limpar_estado_geocodificacao() -> None:
+    chaves = [
+        "geo_df_entrada",
+        "geo_nome_upload",
+        "geo_df_saida",
+        "geo_resumo",
+        "geo_nome_arquivo",
+        "geo_logs",
+        "geo_upload_arquivo",
+    ]
+    for chave in chaves:
+        if chave in st.session_state:
+            del st.session_state[chave]
+
+
 def interface_geocodificar() -> None:
+    _init_state_geocodificacao()
+    _aplicar_estilo_geocodificacao()
+
     st.markdown(
         """
-        <div class="module-shell">
-            <div class="module-shell-header">
-                <div class="module-shell-kicker">Geoprocessamento · Módulo</div>
-                <div class="module-shell-title">Geocodificação de ocorrências</div>
-                <p class="module-shell-description">
-                    Execute o processo de geocodificação de bases de ocorrências com apoio da base oficial,
-                    validação espacial e fallback externo quando habilitado.
-                </p>
+        <div class="geo-card">
+            <div class="geo-title">Geocodificação de ocorrências</div>
+            <div class="geo-desc">
+                Execute o processo de geocodificação de bases de ocorrências com apoio da base oficial,
+                validação espacial, classificação por nível de precisão e fallback externo quando habilitado.
             </div>
+            <ul class="geo-list">
+                <li>Leitura de arquivos CSV, XLSX, XLS e Parquet.</li>
+                <li>Detecção automática ou seleção manual das colunas principais.</li>
+                <li>Geocodificação com base espacial local e ArcGIS como apoio.</li>
+                <li>Diagnóstico de pontos repetidos e localização aproximada.</li>
+                <li>Exportação final em CSV e Excel.</li>
+            </ul>
         </div>
         """,
         unsafe_allow_html=True,
@@ -747,39 +906,52 @@ def interface_geocodificar() -> None:
         "Enviar arquivo de ocorrências",
         type=["csv", "xlsx", "xls", "parquet"],
         help="Formatos suportados: CSV, Excel e Parquet.",
+        key="geo_upload_arquivo",
     )
 
-    if uploaded_file is None:
+    if uploaded_file is not None:
+        try:
+            df = _ler_arquivo_upload(uploaded_file)
+            st.session_state["geo_df_entrada"] = df
+            st.session_state["geo_nome_upload"] = uploaded_file.name
+        except Exception as exc:
+            st.error(f"Falha ao ler o arquivo enviado: {exc}")
+            return
+
+    df = st.session_state.get("geo_df_entrada")
+    nome_upload = st.session_state.get("geo_nome_upload")
+
+    if df is None:
         st.info("Envie um arquivo para iniciar a geocodificação.")
         return
 
-    try:
-        df = _ler_arquivo_upload(uploaded_file)
-    except Exception as exc:
-        st.error(f"Falha ao ler o arquivo enviado: {exc}")
-        return
-
-    st.markdown('<div class="module-shell-separator"></div>', unsafe_allow_html=True)
-
-    col_m1, col_m2, col_m3 = st.columns(3, gap="large")
-    with col_m1:
-        st.metric("Registros carregados", f"{len(df):,}".replace(",", "."))
-    with col_m2:
-        st.metric("Colunas detectadas", len(df.columns))
-    with col_m3:
-        st.metric("Formato", uploaded_file.name.split(".")[-1].upper())
-
     st.markdown(
-        """
-        <div class="module-shell-section-title">Pré-visualização da base</div>
-        <p class="module-shell-section-subtitle">
-            Revise os dados antes do processamento e confirme o mapeamento das colunas principais.
-        </p>
+        f"""
+        <div class="geo-badges">
+            <span class="geo-badge ok">Arquivo carregado: {nome_upload}</span>
+            <span class="geo-badge info">Registros: {len(df):,}</span>
+            <span class="geo-badge info">Colunas: {len(df.columns)}</span>
+            <span class="geo-badge info">Formato: {nome_upload.split('.')[-1].upper()}</span>
+        </div>
         """,
         unsafe_allow_html=True,
     )
 
-    st.dataframe(df.head(20), use_container_width=True)
+    st.markdown(
+        """
+        <div class="geo-card">
+            <div class="geo-title">Pré-validação da base</div>
+            <div class="geo-desc">
+                Revise o layout dos dados antes do processamento e confirme o mapeamento
+                das colunas utilizadas pelo geocodificador.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    with st.expander("Pré-visualização da base carregada", expanded=False):
+        st.dataframe(df.head(50), use_container_width=True, hide_index=True)
 
     colunas = list(df.columns)
     c_log_auto = detectar(df, ["logradouro", "endereco", "rua"])
@@ -787,14 +959,14 @@ def interface_geocodificar() -> None:
     c_bai_auto = detectar(df, ["bairro"])
     c_mun_auto = detectar(df, ["municipio", "cidade"])
 
-    st.markdown('<div class="module-shell-separator"></div>', unsafe_allow_html=True)
-
     st.markdown(
         """
-        <div class="module-shell-section-title">Mapeamento de colunas</div>
-        <p class="module-shell-section-subtitle">
-            Ajuste manualmente caso a detecção automática não corresponda ao layout da planilha.
-        </p>
+        <div class="geo-card">
+            <div class="geo-title">Mapeamento de colunas</div>
+            <div class="geo-desc">
+                Ajuste manualmente os campos caso a detecção automática não corresponda ao layout da planilha.
+            </div>
+        </div>
         """,
         unsafe_allow_html=True,
     )
@@ -829,9 +1001,41 @@ def interface_geocodificar() -> None:
             index=colunas.index(c_mun_auto) if c_mun_auto in colunas else 0,
         )
 
-    st.markdown('<div class="module-shell-separator"></div>', unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div class="geo-card">
+            <div class="geo-title">Execução do processamento</div>
+            <div class="geo-desc">
+                Inicie a geocodificação para gerar latitude, longitude, nível de geocodificação
+                e metadados auxiliares da base processada.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    if st.button("Iniciar geocodificação", use_container_width=True, key="geo_processar"):
+    col_btn1, col_btn2 = st.columns(2)
+
+    with col_btn1:
+        processar = st.button(
+            "Iniciar geocodificação",
+            use_container_width=True,
+            type="primary",
+            key="geo_processar",
+        )
+
+    with col_btn2:
+        limpar = st.button(
+            "Limpar seleção",
+            use_container_width=True,
+            key="geo_limpar",
+        )
+
+    if limpar:
+        _limpar_estado_geocodificacao()
+        st.rerun()
+
+    if processar:
         logs = []
 
         def logger(msg: str) -> None:
@@ -866,19 +1070,23 @@ def interface_geocodificar() -> None:
                 for item in logs[-10:]:
                     status.write(item)
 
-                status.update(label="Geocodificação concluída com sucesso.", state="complete")
+                status.update(
+                    label="Geocodificação concluída com sucesso.",
+                    state="complete",
+                )
 
             st.session_state["geo_df_saida"] = df_saida
             st.session_state["geo_resumo"] = resumo
-            st.session_state["geo_nome_arquivo"] = os.path.splitext(uploaded_file.name)[0]
+            st.session_state["geo_nome_arquivo"] = os.path.splitext(nome_upload)[0]
+            st.session_state["geo_logs"] = logs
 
-            st.success("Processamento concluído.")
+            st.success("✅ Processamento concluído.")
 
         except Exception as exc:
             st.error(f"Erro ao executar geocodificação: {exc}")
             return
 
-    if "geo_df_saida" not in st.session_state:
+    if "geo_df_saida" not in st.session_state or st.session_state["geo_df_saida"] is None:
         return
 
     df_saida = st.session_state["geo_df_saida"]
@@ -886,29 +1094,43 @@ def interface_geocodificar() -> None:
     nome_arquivo = st.session_state.get("geo_nome_arquivo", "resultado_geocodificacao")
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    st.markdown('<div class="module-shell-separator"></div>', unsafe_allow_html=True)
-
-    col_r1, col_r2, col_r3, col_r4 = st.columns(4, gap="large")
-    with col_r1:
-        st.metric("Total", f"{resumo['total']:,}".replace(",", "."))
-    with col_r2:
-        st.metric("Geocodificadas", f"{resumo['geocodificadas']:,}".replace(",", "."))
-    with col_r3:
-        st.metric("Taxa de sucesso", f"{resumo['perc_geocodificadas']}%")
-    with col_r4:
-        st.metric("Não encontrado", f"{resumo['nao_encontrado']:,}".replace(",", "."))
-
     st.markdown(
-        """
-        <div class="module-shell-section-title">Resultado processado</div>
-        <p class="module-shell-section-subtitle">
-            Visualize a base tratada, valide os campos de geocodificação e exporte os dados para uso analítico.
-        </p>
+        f"""
+        <div class="geo-card">
+            <div class="geo-title">Resumo executivo</div>
+            <div class="geo-desc">
+                Resultado consolidado da geocodificação executada sobre a base enviada.
+            </div>
+            <div class="geo-grid">
+                <div class="geo-stat">
+                    <div class="geo-stat-label">Total</div>
+                    <div class="geo-stat-value">{resumo['total']:,}</div>
+                </div>
+                <div class="geo-stat">
+                    <div class="geo-stat-label">Geocodificadas</div>
+                    <div class="geo-stat-value">{resumo['geocodificadas']:,}</div>
+                </div>
+                <div class="geo-stat">
+                    <div class="geo-stat-label">Taxa de sucesso</div>
+                    <div class="geo-stat-value">{resumo['perc_geocodificadas']}%</div>
+                </div>
+                <div class="geo-stat">
+                    <div class="geo-stat-label">Não encontrado</div>
+                    <div class="geo-stat-value">{resumo['nao_encontrado']:,}</div>
+                </div>
+            </div>
+            <div class="geo-badges">
+                <span class="geo-badge ok">Exato (Número): {resumo['exato_numero']:,}</span>
+                <span class="geo-badge info">Arquivo base: {nome_upload}</span>
+                <span class="geo-badge warn">Campos gerados: lat, lon, nível, fonte e diagnóstico</span>
+            </div>
+        </div>
         """,
         unsafe_allow_html=True,
     )
 
-    st.dataframe(df_saida, use_container_width=True)
+    with st.expander("Resultado processado", expanded=False):
+        st.dataframe(df_saida, use_container_width=True, hide_index=True)
 
     col_d1, col_d2 = st.columns(2, gap="large")
 
