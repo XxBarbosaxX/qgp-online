@@ -72,59 +72,59 @@ def load_custom_css():
     }
 
     .block-container {
-        padding-top: 2.15rem !important;
-        padding-bottom: 1.8rem;
-        max-width: 97%;
+        padding-top: 1.9rem !important;
+        padding-bottom: 1.4rem;
+        max-width: 98%;
     }
 
     .topbar {
         display: flex;
         align-items: center;
         gap: 12px;
-        margin-top: 0.2rem;
-        margin-bottom: 1rem;
-        padding: 0.65rem 0 0.9rem 0;
+        margin-top: 0;
+        margin-bottom: 0.85rem;
+        padding: 0.25rem 0 0.7rem 0;
         border-bottom: 1px solid rgba(216, 138, 24, 0.16);
     }
 
     .topbar-title {
-        font-size: 2.05rem;
+        font-size: 2rem;
         font-weight: 900;
         color: #ffffff;
-        line-height: 1.1;
+        line-height: 1.05;
         margin: 0;
     }
 
     .topbar-subtitle {
-        font-size: 0.94rem;
+        font-size: 0.92rem;
         font-weight: 800;
         color: #f39a1f;
         text-transform: uppercase;
         letter-spacing: 0.07em;
-        margin-top: 0.28rem;
+        margin-top: 0.22rem;
     }
 
     .home-card {
         background: rgba(255,255,255,0.025);
         border: 1px solid rgba(243,154,31,0.12);
         border-radius: 18px;
-        padding: 1rem 1.05rem 0.9rem 1.05rem;
-        margin-top: 0.45rem;
-        margin-bottom: 0.85rem;
+        padding: 0.9rem 1rem 0.85rem 1rem;
+        margin-top: 0.35rem;
+        margin-bottom: 0.7rem;
     }
 
     .home-title {
-        font-size: 1.26rem;
+        font-size: 1.2rem;
         font-weight: 800;
         color: #ffffff;
-        margin-bottom: 0.28rem;
+        margin-bottom: 0.22rem;
     }
 
     .home-subtitle {
         color: #cdd8d2;
-        font-size: 0.94rem;
-        margin-bottom: 0.22rem;
-        line-height: 1.42;
+        font-size: 0.92rem;
+        margin-bottom: 0.16rem;
+        line-height: 1.36;
     }
 
     .section-wrap {
@@ -137,16 +137,16 @@ def load_custom_css():
         display: flex;
         flex-direction: column;
         justify-content: flex-start;
+        align-items: stretch;
     }
 
     .section-card {
         background: rgba(255,255,255,0.028);
         border: 1px solid rgba(243,154,31,0.11);
         border-radius: 16px;
-        padding: 0.95rem 0.95rem 0.9rem 0.95rem;
-        margin-top: 0;
-        margin-bottom: 0;
-        min-height: 108px;
+        padding: 0.82rem 0.95rem 0.78rem 0.95rem;
+        margin: 0;
+        min-height: 96px;
         display: flex;
         flex-direction: column;
         justify-content: center;
@@ -157,36 +157,36 @@ def load_custom_css():
     }
 
     .section-title {
-        font-size: 1.03rem;
+        font-size: 1rem;
         font-weight: 900;
         color: #ffffff;
-        margin-bottom: 0.34rem;
+        margin-bottom: 0.24rem;
         letter-spacing: 0.01em;
         text-transform: uppercase;
     }
 
     .section-subtitle {
         color: #d8e3de;
-        font-size: 0.91rem;
+        font-size: 0.89rem;
         margin-bottom: 0;
-        line-height: 1.38;
+        line-height: 1.32;
     }
 
     .section-spacer {
-        height: 0.72rem;
+        height: 0.42rem;
     }
 
     .btn-gap-strong {
-        height: 0.82rem;
+        height: 0.34rem;
     }
 
     .btn-gap-normal {
-        height: 0.52rem;
+        height: 0.22rem;
     }
 
     .info-row {
-        margin-top: 1rem;
-        margin-bottom: 0.8rem;
+        margin-top: 0.85rem;
+        margin-bottom: 0.7rem;
     }
 
     .metric-chip {
@@ -195,11 +195,15 @@ def load_custom_css():
         color: #ffd089;
         border: 1px solid rgba(243,154,31,0.2);
         border-radius: 999px;
-        padding: 0.32rem 0.72rem;
-        font-size: 0.82rem;
+        padding: 0.30rem 0.68rem;
+        font-size: 0.8rem;
         font-weight: 700;
-        margin-right: 0.42rem;
-        margin-bottom: 0.42rem;
+        margin-right: 0.38rem;
+        margin-bottom: 0.38rem;
+    }
+
+    .stButton {
+        margin: 0 !important;
     }
 
     .stButton > button {
@@ -208,17 +212,18 @@ def load_custom_css():
         border: 1px solid rgba(243,154,31,0.32) !important;
         border-radius: 13px !important;
         font-weight: 900 !important;
-        font-size: 0.92rem !important;
-        padding: 0.72rem 0.85rem !important;
+        font-size: 0.9rem !important;
+        padding: 0.62rem 0.82rem !important;
         width: 100% !important;
-        min-height: 3rem !important;
+        min-height: 2.8rem !important;
         text-align: center !important;
         transition: transform 0.15s ease, box-shadow 0.18s ease,
                     background 0.18s ease, filter 0.15s ease !important;
         box-shadow: 0 2px 7px rgba(243,154,31,0.16) !important;
         letter-spacing: 0.01em !important;
         white-space: normal !important;
-        line-height: 1.15 !important;
+        line-height: 1.1 !important;
+        margin: 0 !important;
     }
 
     .stButton > button p,
@@ -226,13 +231,13 @@ def load_custom_css():
     .stButton > button div {
         font-weight: 900 !important;
         white-space: normal !important;
-        line-height: 1.15 !important;
+        line-height: 1.1 !important;
     }
 
     .stButton > button:hover {
         background: linear-gradient(135deg, #ffb83a 0%, #f39a1f 100%) !important;
         color: #0d1a16 !important;
-        transform: translateY(-2px) scale(1.01) !important;
+        transform: translateY(-1px) scale(1.005) !important;
         box-shadow: 0 5px 16px rgba(243,154,31,0.28) !important;
         filter: brightness(1.05) !important;
     }
@@ -248,8 +253,8 @@ def load_custom_css():
         color: #f39a1f !important;
         border: 2px solid rgba(183, 255, 203, 0.92) !important;
         border-radius: 14px !important;
-        font-size: 0.98rem !important;
-        min-height: 3.35rem !important;
+        font-size: 0.95rem !important;
+        min-height: 3rem !important;
         animation: pulse-border 2.2s ease-in-out infinite !important;
         letter-spacing: 0.02em !important;
         text-shadow: none !important;
@@ -262,7 +267,7 @@ def load_custom_css():
     .todos-btn .stButton > button:hover {
         background: linear-gradient(135deg, #9af7b5 0%, #7ae89c 100%) !important;
         color: #ff9f1a !important;
-        transform: translateY(-2px) scale(1.01) !important;
+        transform: translateY(-1px) scale(1.005) !important;
         box-shadow:
             0 8px 22px rgba(72, 201, 120, 0.24),
             0 0 0 2px rgba(171,255,193,0.16),
@@ -298,13 +303,16 @@ def load_custom_css():
 
     .footer-note {
         color: #b8c3bd;
-        font-size: 0.88rem;
-        margin-top: 0.95rem;
+        font-size: 0.86rem;
+        margin-top: 0.8rem;
         text-align: center;
     }
 
     div[data-testid="column"] > div {
         height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-start;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -415,12 +423,12 @@ def render_lista_botoes(itens: list[str], key_prefix: str):
                 selecionar_indicador(item)
                 st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
-            st.markdown('<div class="btn-gap-strong"></div>', unsafe_allow_html=True)
+            if i < len(itens) - 1:
+                st.markdown('<div class="btn-gap-strong"></div>', unsafe_allow_html=True)
         else:
             if st.button(item, key=f"{key_prefix}_{item}", use_container_width=True):
                 selecionar_indicador(item)
                 st.rerun()
-
             if i < len(itens) - 1:
                 st.markdown('<div class="btn-gap-normal"></div>', unsafe_allow_html=True)
 
@@ -443,9 +451,9 @@ def render_home():
     """, unsafe_allow_html=True)
 
     st.markdown("### Módulos disponíveis")
-    st.markdown("<div style='height: 0.25rem;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height: 0.15rem;'></div>", unsafe_allow_html=True)
 
-    col_esq, col_centro, col_dir = st.columns(3, gap="small")
+    col_esq, col_centro, col_dir = st.columns([1, 1, 1], gap="small")
 
     with col_esq:
         render_bloco_completo(
