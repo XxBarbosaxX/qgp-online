@@ -57,9 +57,9 @@ def load_custom_css():
     st.markdown("""
     <style>
     @keyframes pulse-border {
-        0%   { box-shadow: 0 0 0 0 rgba(118, 255, 159, 0.26), 0 4px 18px rgba(72, 201, 120, 0.14); }
-        70%  { box-shadow: 0 0 0 8px rgba(118, 255, 159, 0.00), 0 4px 18px rgba(72, 201, 120, 0.07); }
-        100% { box-shadow: 0 0 0 0 rgba(118, 255, 159, 0.00), 0 4px 18px rgba(72, 201, 120, 0.14); }
+        0%   { box-shadow: 0 0 0 0 rgba(118, 255, 159, 0.24), 0 4px 14px rgba(72, 201, 120, 0.12); }
+        70%  { box-shadow: 0 0 0 7px rgba(118, 255, 159, 0.00), 0 4px 14px rgba(72, 201, 120, 0.06); }
+        100% { box-shadow: 0 0 0 0 rgba(118, 255, 159, 0.00), 0 4px 14px rgba(72, 201, 120, 0.12); }
     }
 
     .stApp {
@@ -72,9 +72,9 @@ def load_custom_css():
     }
 
     .block-container {
-        padding-top: 1.9rem !important;
-        padding-bottom: 1.4rem;
-        max-width: 98%;
+        padding-top: 1.75rem !important;
+        padding-bottom: 1.2rem !important;
+        max-width: 99% !important;
     }
 
     .topbar {
@@ -82,52 +82,65 @@ def load_custom_css():
         align-items: center;
         gap: 12px;
         margin-top: 0;
-        margin-bottom: 0.85rem;
-        padding: 0.25rem 0 0.7rem 0;
+        margin-bottom: 0.72rem;
+        padding: 0.15rem 0 0.58rem 0;
         border-bottom: 1px solid rgba(216, 138, 24, 0.16);
     }
 
     .topbar-title {
-        font-size: 2rem;
+        font-size: 1.95rem;
         font-weight: 900;
         color: #ffffff;
-        line-height: 1.05;
+        line-height: 1.04;
         margin: 0;
     }
 
     .topbar-subtitle {
-        font-size: 0.92rem;
+        font-size: 0.90rem;
         font-weight: 800;
         color: #f39a1f;
         text-transform: uppercase;
         letter-spacing: 0.07em;
-        margin-top: 0.22rem;
+        margin-top: 0.18rem;
     }
 
     .home-card {
         background: rgba(255,255,255,0.025);
-        border: 1px solid rgba(243,154,31,0.12);
-        border-radius: 18px;
-        padding: 0.9rem 1rem 0.85rem 1rem;
-        margin-top: 0.35rem;
-        margin-bottom: 0.7rem;
+        border: 1px solid rgba(243,154,31,0.11);
+        border-radius: 16px;
+        padding: 0.82rem 0.95rem 0.78rem 0.95rem;
+        margin-top: 0.28rem;
+        margin-bottom: 0.58rem;
     }
 
     .home-title {
-        font-size: 1.2rem;
+        font-size: 1.16rem;
         font-weight: 800;
         color: #ffffff;
-        margin-bottom: 0.22rem;
+        margin-bottom: 0.18rem;
     }
 
     .home-subtitle {
         color: #cdd8d2;
-        font-size: 0.92rem;
-        margin-bottom: 0.16rem;
-        line-height: 1.36;
+        font-size: 0.90rem;
+        margin-bottom: 0.14rem;
+        line-height: 1.32;
+    }
+
+    .modules-row {
+        width: 100%;
+    }
+
+    .module-shell {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: flex-start;
     }
 
     .section-wrap {
+        width: 100%;
         height: 100%;
         padding: 0;
         margin: 0;
@@ -141,52 +154,53 @@ def load_custom_css():
     }
 
     .section-card {
+        width: 100%;
         background: rgba(255,255,255,0.028);
-        border: 1px solid rgba(243,154,31,0.11);
-        border-radius: 16px;
-        padding: 0.82rem 0.95rem 0.78rem 0.95rem;
+        border: 1px solid rgba(243,154,31,0.10);
+        border-radius: 15px;
+        padding: 0.72rem 0.88rem 0.68rem 0.88rem;
         margin: 0;
-        min-height: 96px;
+        min-height: 86px;
         display: flex;
         flex-direction: column;
         justify-content: center;
         box-shadow:
-            0 0 0 1px rgba(18, 77, 67, 0.20),
-            0 8px 18px rgba(0, 0, 0, 0.10),
+            0 0 0 1px rgba(18, 77, 67, 0.18),
+            0 6px 14px rgba(0, 0, 0, 0.08),
             inset 0 1px 0 rgba(255,255,255,0.02);
     }
 
     .section-title {
-        font-size: 1rem;
+        font-size: 0.98rem;
         font-weight: 900;
         color: #ffffff;
-        margin-bottom: 0.24rem;
+        margin-bottom: 0.18rem;
         letter-spacing: 0.01em;
         text-transform: uppercase;
     }
 
     .section-subtitle {
         color: #d8e3de;
-        font-size: 0.89rem;
+        font-size: 0.88rem;
         margin-bottom: 0;
-        line-height: 1.32;
+        line-height: 1.28;
     }
 
     .section-spacer {
-        height: 0.42rem;
+        height: 0.18rem;
     }
 
     .btn-gap-strong {
-        height: 0.34rem;
+        height: 0.16rem;
     }
 
     .btn-gap-normal {
-        height: 0.22rem;
+        height: 0.12rem;
     }
 
     .info-row {
-        margin-top: 0.85rem;
-        margin-bottom: 0.7rem;
+        margin-top: 0.72rem;
+        margin-bottom: 0.6rem;
     }
 
     .metric-chip {
@@ -195,34 +209,36 @@ def load_custom_css():
         color: #ffd089;
         border: 1px solid rgba(243,154,31,0.2);
         border-radius: 999px;
-        padding: 0.30rem 0.68rem;
-        font-size: 0.8rem;
+        padding: 0.28rem 0.62rem;
+        font-size: 0.78rem;
         font-weight: 700;
-        margin-right: 0.38rem;
-        margin-bottom: 0.38rem;
+        margin-right: 0.34rem;
+        margin-bottom: 0.34rem;
     }
 
     .stButton {
+        width: 100% !important;
         margin: 0 !important;
     }
 
     .stButton > button {
+        width: 100% !important;
+        display: block !important;
         background: linear-gradient(135deg, #f39a1f 0%, #e08010 100%) !important;
         color: #16211d !important;
-        border: 1px solid rgba(243,154,31,0.32) !important;
-        border-radius: 13px !important;
+        border: 1px solid rgba(243,154,31,0.30) !important;
+        border-radius: 12px !important;
         font-weight: 900 !important;
-        font-size: 0.9rem !important;
-        padding: 0.62rem 0.82rem !important;
-        width: 100% !important;
-        min-height: 2.8rem !important;
+        font-size: 0.88rem !important;
+        padding: 0.48rem 0.74rem !important;
+        min-height: 2.35rem !important;
         text-align: center !important;
         transition: transform 0.15s ease, box-shadow 0.18s ease,
                     background 0.18s ease, filter 0.15s ease !important;
-        box-shadow: 0 2px 7px rgba(243,154,31,0.16) !important;
+        box-shadow: 0 2px 6px rgba(243,154,31,0.14) !important;
         letter-spacing: 0.01em !important;
         white-space: normal !important;
-        line-height: 1.1 !important;
+        line-height: 1.05 !important;
         margin: 0 !important;
     }
 
@@ -231,68 +247,69 @@ def load_custom_css():
     .stButton > button div {
         font-weight: 900 !important;
         white-space: normal !important;
-        line-height: 1.1 !important;
+        line-height: 1.05 !important;
     }
 
     .stButton > button:hover {
         background: linear-gradient(135deg, #ffb83a 0%, #f39a1f 100%) !important;
         color: #0d1a16 !important;
-        transform: translateY(-1px) scale(1.005) !important;
-        box-shadow: 0 5px 16px rgba(243,154,31,0.28) !important;
-        filter: brightness(1.05) !important;
+        transform: translateY(-1px) !important;
+        box-shadow: 0 4px 12px rgba(243,154,31,0.22) !important;
+        filter: brightness(1.03) !important;
     }
 
     .stButton > button:active {
         transform: translateY(0px) scale(0.985) !important;
-        box-shadow: 0 1px 4px rgba(243,154,31,0.14) !important;
-        filter: brightness(0.97) !important;
+        box-shadow: 0 1px 3px rgba(243,154,31,0.12) !important;
+        filter: brightness(0.98) !important;
     }
 
     .todos-btn .stButton > button {
         background: linear-gradient(135deg, #8df5ab 0%, #6ce592 100%) !important;
         color: #f39a1f !important;
-        border: 2px solid rgba(183, 255, 203, 0.92) !important;
-        border-radius: 14px !important;
-        font-size: 0.95rem !important;
-        min-height: 3rem !important;
+        border: 2px solid rgba(183, 255, 203, 0.90) !important;
+        border-radius: 13px !important;
+        font-size: 0.93rem !important;
+        min-height: 2.5rem !important;
         animation: pulse-border 2.2s ease-in-out infinite !important;
-        letter-spacing: 0.02em !important;
+        letter-spacing: 0.015em !important;
         text-shadow: none !important;
         box-shadow:
-            0 5px 16px rgba(72, 201, 120, 0.18),
-            inset 0 1px 0 rgba(255,255,255,0.2) !important;
+            0 4px 12px rgba(72, 201, 120, 0.15),
+            inset 0 1px 0 rgba(255,255,255,0.18) !important;
         font-weight: 900 !important;
     }
 
     .todos-btn .stButton > button:hover {
         background: linear-gradient(135deg, #9af7b5 0%, #7ae89c 100%) !important;
         color: #ff9f1a !important;
-        transform: translateY(-1px) scale(1.005) !important;
+        transform: translateY(-1px) !important;
         box-shadow:
-            0 8px 22px rgba(72, 201, 120, 0.24),
-            0 0 0 2px rgba(171,255,193,0.16),
-            inset 0 1px 0 rgba(255,255,255,0.22) !important;
-        filter: brightness(1.02) !important;
+            0 6px 16px rgba(72, 201, 120, 0.20),
+            0 0 0 2px rgba(171,255,193,0.14),
+            inset 0 1px 0 rgba(255,255,255,0.20) !important;
+        filter: brightness(1.01) !important;
     }
 
     .todos-btn .stButton > button:active {
-        transform: translateY(0px) scale(0.98) !important;
+        transform: translateY(0px) scale(0.985) !important;
         filter: brightness(0.98) !important;
     }
 
     .secondary-button .stButton > button {
         background: transparent !important;
         color: #f3f4ef !important;
-        border: 1px solid rgba(243,154,31,0.26) !important;
+        border: 1px solid rgba(243,154,31,0.24) !important;
         font-weight: 800 !important;
         box-shadow: none !important;
+        min-height: 2.3rem !important;
         transition: transform 0.14s ease, background 0.16s ease, border-color 0.16s ease !important;
     }
 
     .secondary-button .stButton > button:hover {
         background: rgba(243,154,31,0.08) !important;
         color: #ffffff !important;
-        border-color: rgba(243,154,31,0.5) !important;
+        border-color: rgba(243,154,31,0.46) !important;
         transform: translateY(-1px) !important;
         box-shadow: 0 3px 8px rgba(243,154,31,0.08) !important;
     }
@@ -303,16 +320,23 @@ def load_custom_css():
 
     .footer-note {
         color: #b8c3bd;
-        font-size: 0.86rem;
-        margin-top: 0.8rem;
+        font-size: 0.84rem;
+        margin-top: 0.72rem;
         text-align: center;
     }
 
+    div[data-testid="column"] {
+        display: flex !important;
+        align-items: stretch !important;
+    }
+
     div[data-testid="column"] > div {
+        width: 100% !important;
         height: 100%;
         display: flex;
         flex-direction: column;
         justify-content: flex-start;
+        align-items: stretch;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -413,10 +437,12 @@ def render_header_bloco(titulo: str, subtitulo: str):
         <div class="section-subtitle">{subtitulo}</div>
     </div>
     """, unsafe_allow_html=True)
-    st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)
 
 def render_lista_botoes(itens: list[str], key_prefix: str):
     for i, item in enumerate(itens):
+        if i == 0:
+            st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)
+
         if item == "TODOS OS INDICADORES":
             st.markdown('<div class="todos-btn">', unsafe_allow_html=True)
             if st.button(item, key=f"{key_prefix}_{item}", use_container_width=True):
@@ -433,9 +459,11 @@ def render_lista_botoes(itens: list[str], key_prefix: str):
                 st.markdown('<div class="btn-gap-normal"></div>', unsafe_allow_html=True)
 
 def render_bloco_completo(titulo: str, subtitulo: str, itens: list[str], key_prefix: str):
+    st.markdown('<div class="module-shell">', unsafe_allow_html=True)
     st.markdown('<div class="section-wrap">', unsafe_allow_html=True)
     render_header_bloco(titulo, subtitulo)
     render_lista_botoes(itens, key_prefix)
+    st.markdown('</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
 # =========================
@@ -451,8 +479,9 @@ def render_home():
     """, unsafe_allow_html=True)
 
     st.markdown("### Módulos disponíveis")
-    st.markdown("<div style='height: 0.15rem;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height: 0.08rem;'></div>", unsafe_allow_html=True)
 
+    st.markdown('<div class="modules-row">', unsafe_allow_html=True)
     col_esq, col_centro, col_dir = st.columns([1, 1, 1], gap="small")
 
     with col_esq:
@@ -478,6 +507,7 @@ def render_home():
             MODULOS_CONSOLIDACAO,
             "consolidacao"
         )
+    st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="info-row">', unsafe_allow_html=True)
     st.markdown('<div class="metric-chip">Versão 1.0.0</div>', unsafe_allow_html=True)
