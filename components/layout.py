@@ -76,7 +76,7 @@ def render_panel_text(kicker: str, titulo: str, descricao: str) -> None:
 def render_panel_atualizacao() -> None:
     with st.container(key="panel-atualizacao"):
         render_panel_text(
-            "Atualização",
+            "🔄Atualização",
             "Indicadores operacionais",
             "Execute a atualização completa ou selecione um indicador específico para processamento individual.",
         )
@@ -115,7 +115,7 @@ def render_panel_atualizacao() -> None:
 def render_panel_geocodificacao() -> None:
     with st.container(key="panel-geocodificacao"):
         render_panel_text(
-            "Geoprocessamento",
+            "🌐Geoprocessamento",
             "Geocodificação",
             "Módulo dedicado à geocodificação de ocorrências e endereços para análise espacial.",
         )
@@ -140,7 +140,7 @@ def render_panel_geocodificacao() -> None:
 def render_panel_consolidacao() -> None:
     with st.container(key="panel-consolidacao"):
         render_panel_text(
-            "Consolidação",
+            "✅Consolidação",
             "Consolidar indicadores",
             "Organize e unifique os indicadores de fechamento em uma base consolidada para consumo analítico.",
         )
