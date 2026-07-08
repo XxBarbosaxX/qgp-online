@@ -212,9 +212,102 @@ def _aplicar_estilo_geocodificacao() -> None:
                 border-color: rgba(245, 158, 11, 0.22);
             }
 
+            .geo-field-label {
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+                margin-bottom: 0.45rem;
+                margin-top: 0.2rem;
+            }
+
+            .geo-field-label-text {
+                font-size: 0.92rem;
+                font-weight: 700;
+                color: rgba(255, 255, 255, 0.90);
+                line-height: 1.2;
+            }
+
+            .geo-tooltip {
+                position: relative;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 18px;
+                height: 18px;
+                border-radius: 999px;
+                border: 1px solid rgba(255, 255, 255, 0.16);
+                background: rgba(255, 255, 255, 0.05);
+                color: #dbeafe;
+                font-size: 0.72rem;
+                font-weight: 800;
+                cursor: help;
+                flex-shrink: 0;
+            }
+
+            .geo-tooltip-box {
+                position: absolute;
+                left: calc(100% + 10px);
+                top: 50%;
+                transform: translateY(-50%);
+                width: 300px;
+                background: #0f172a;
+                color: #e5eefb;
+                border: 1px solid rgba(148, 163, 184, 0.28);
+                border-radius: 12px;
+                padding: 0.75rem 0.85rem;
+                font-size: 0.82rem;
+                line-height: 1.45;
+                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.30);
+                opacity: 0;
+                visibility: hidden;
+                pointer-events: none;
+                transition: opacity 0.18s ease, transform 0.18s ease;
+                z-index: 9999;
+            }
+
+            .geo-tooltip-box::before {
+                content: "";
+                position: absolute;
+                left: -6px;
+                top: 50%;
+                width: 10px;
+                height: 10px;
+                background: #0f172a;
+                border-left: 1px solid rgba(148, 163, 184, 0.28);
+                border-bottom: 1px solid rgba(148, 163, 184, 0.28);
+                transform: translateY(-50%) rotate(45deg);
+            }
+
+            .geo-tooltip:hover .geo-tooltip-box {
+                opacity: 1;
+                visibility: visible;
+                transform: translateY(-50%) translateX(2px);
+            }
+
             @media (max-width: 1200px) {
                 .geo-grid {
                     grid-template-columns: repeat(2, minmax(0, 1fr));
+                }
+
+                .geo-tooltip-box {
+                    left: auto;
+                    right: 0;
+                    top: calc(100% + 10px);
+                    transform: none;
+                    width: min(300px, 80vw);
+                }
+
+                .geo-tooltip-box::before {
+                    left: auto;
+                    right: 10px;
+                    top: -6px;
+                    transform: rotate(135deg);
+                    border-left: 1px solid rgba(148, 163, 184, 0.28);
+                    border-bottom: 1px solid rgba(148, 163, 184, 0.28);
+                }
+
+                .geo-tooltip:hover .geo-tooltip-box {
+                    transform: translateY(2px);
                 }
             }
 
@@ -224,6 +317,21 @@ def _aplicar_estilo_geocodificacao() -> None:
                 }
             }
         </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _render_label_flutuante(label: str, tooltip: str) -> None:
+    st.markdown(
+        f"""
+        <div class="geo-field-label">
+            <span class="geo-field-label-text">{label}</span>
+            <span class="geo-tooltip">
+                ?
+                <span class="geo-tooltip-box">{tooltip}</span>
+            </span>
+        </div>
         """,
         unsafe_allow_html=True,
     )
@@ -876,34 +984,62 @@ def interface_geocodificar() -> None:
         col_c1, col_c2 = st.columns(2, gap="large")
 
         with col_c1:
-            usar_externo = st.toggle(
+            _render_label_flutuante(
                 "Usar ArcGIS como fallback",
-                value=True,
-                help=(
+                (
                     "Quando marcado, o sistema tenta geocodificar primeiro usando a base "
                     "oficial (faces de quadra / arruamento) e, se não encontrar ou tiver "
                     "baixa similaridade, faz uma busca complementar via serviço ArcGIS."
                 ),
             )
+            usar_externo = st.toggle(
+                "Usar ArcGIS como fallback",
+                value=True,
+                label_visibility="collapsed",
+            )
+
+            _render_label_flutuante(
+                "Caminho do GPKG",
+                "Informe o caminho do arquivo GPKG contendo a base oficial de arruamento/faces de quadra utilizada na validação espacial.",
+            )
             caminho_gpkg = st.text_input(
                 "Caminho do GPKG",
                 value="bases/Faces_de_Quadra_-_Ceara_ARRUAMENTO.gpkg",
+                label_visibility="collapsed",
+            )
+
+            _render_label_flutuante(
+                "Caminho da base enxuta (.parquet)",
+                "Arquivo parquet otimizado com a base já preparada para acelerar a carga e a geocodificação.",
             )
             caminho_base_enxuta = st.text_input(
                 "Caminho da base enxuta (.parquet)",
                 value="bases/faces_quadras_ce.parquet",
+                label_visibility="collapsed",
             )
 
         with col_c2:
+            _render_label_flutuante(
+                "Limiar de similaridade",
+                (
+                    "É o valor (no seu caso 88, em uma escala de 70 a 100) que define "
+                    "o quão parecido o texto do logradouro da ocorrência precisa ser com "
+                    "o logradouro da base oficial para ser considerado “match” válido."
+                ),
+            )
             limiar_nome = st.slider(
                 "Limiar de similaridade",
                 70,
                 100,
                 88,
-                help=(
-                    "É o valor (no seu caso 88, em uma escala de 70 a 100) que define "
-                    "o quão parecido o texto do logradouro da ocorrência precisa ser com "
-                    "o logradouro da base oficial para ser considerado “match” válido."
+                label_visibility="collapsed",
+            )
+
+            _render_label_flutuante(
+                "Raio de confirmação (m)",
+                (
+                    "É a distância em metros usada para confirmar se o ponto proposto "
+                    "está próximo da face de quadra ou da referência espacial esperada."
                 ),
             )
             raio_confirma_m = st.number_input(
@@ -911,9 +1047,14 @@ def interface_geocodificar() -> None:
                 min_value=10.0,
                 value=100.0,
                 step=10.0,
-                help=(
-                    "É a distância em metros usada para confirmar se o ponto proposto "
-                    "está próximo da face de quadra ou da referência espacial esperada."
+                label_visibility="collapsed",
+            )
+
+            _render_label_flutuante(
+                "Raio do município (km)",
+                (
+                    "Define um raio máximo (em quilômetros) em torno do centro/limite de "
+                    "um município para validar se o ponto geocodificado faz sentido espacialmente."
                 ),
             )
             raio_municipio_km = st.number_input(
@@ -921,10 +1062,7 @@ def interface_geocodificar() -> None:
                 min_value=1.0,
                 value=8.0,
                 step=1.0,
-                help=(
-                    "Define um raio máximo (em quilômetros) em torno do centro/limite de "
-                    "um município para validar se o ponto geocodificado faz sentido espacialmente."
-                ),
+                label_visibility="collapsed",
             )
 
     uploaded_file = st.file_uploader(
