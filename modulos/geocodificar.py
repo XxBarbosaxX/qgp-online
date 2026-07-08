@@ -384,7 +384,6 @@ class GeocodificadorDIESP:
                     continue
 
                 try:
-                    from shapely.geometry import shape
                     geom = shape(f["geometry"])
                     c = geom.centroid
                     lon, lat = tr.transform(c.x, c.y)
@@ -877,7 +876,15 @@ def interface_geocodificar() -> None:
         col_c1, col_c2 = st.columns(2, gap="large")
 
         with col_c1:
-            usar_externo = st.toggle("Usar ArcGIS como fallback", value=True)
+            usar_externo = st.toggle(
+                "Usar ArcGIS como fallback",
+                value=True,
+                help=(
+                    "Quando marcado, o sistema tenta geocodificar primeiro usando a base "
+                    "oficial (faces de quadra / arruamento) e, se não encontrar ou tiver "
+                    "baixa similaridade, faz uma busca complementar via serviço ArcGIS."
+                ),
+            )
             caminho_gpkg = st.text_input(
                 "Caminho do GPKG",
                 value="bases/Faces_de_Quadra_-_Ceara_ARRUAMENTO.gpkg",
@@ -888,18 +895,36 @@ def interface_geocodificar() -> None:
             )
 
         with col_c2:
-            limiar_nome = st.slider("Limiar de similaridade", 70, 100, 88)
+            limiar_nome = st.slider(
+                "Limiar de similaridade",
+                70,
+                100,
+                88,
+                help=(
+                    "É o valor (no seu caso 88, em uma escala de 70 a 100) que define "
+                    "o quão parecido o texto do logradouro da ocorrência precisa ser com "
+                    "o logradouro da base oficial para ser considerado “match” válido."
+                ),
+            )
             raio_confirma_m = st.number_input(
                 "Raio de confirmação (m)",
                 min_value=10.0,
                 value=100.0,
                 step=10.0,
+                help=(
+                    "É a distância em metros usada para confirmar se o ponto proposto "
+                    "está próximo da face de quadra ou da referência espacial esperada."
+                ),
             )
             raio_municipio_km = st.number_input(
                 "Raio do município (km)",
                 min_value=1.0,
                 value=8.0,
                 step=1.0,
+                help=(
+                    "Define um raio máximo (em quilômetros) em torno do centro/limite de "
+                    "um município para validar se o ponto geocodificado faz sentido espacialmente."
+                ),
             )
 
     uploaded_file = st.file_uploader(
