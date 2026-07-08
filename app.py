@@ -200,15 +200,15 @@ def load_custom_css():
     }
 
     .section-spacer {
-        height: 0.12rem;
-    }
-
-    .btn-gap-strong {
         height: 0.08rem;
     }
 
+    .btn-gap-strong {
+        height: 0.02rem;
+    }
+
     .btn-gap-normal {
-        height: 0.06rem;
+        height: 0.02rem;
     }
 
     .info-row {
@@ -243,15 +243,15 @@ def load_custom_css():
         border-radius: 12px !important;
         font-weight: 900 !important;
         font-size: 0.88rem !important;
-        padding: 0.38rem 0.74rem !important;
-        min-height: 2.08rem !important;
+        padding: 0.48rem 0.74rem !important;
+        min-height: 2.35rem !important;
         text-align: center !important;
         transition: transform 0.15s ease, box-shadow 0.18s ease,
                     background 0.18s ease, filter 0.15s ease !important;
         box-shadow: 0 2px 6px rgba(243,154,31,0.14) !important;
         letter-spacing: 0.01em !important;
         white-space: normal !important;
-        line-height: 1.02 !important;
+        line-height: 1.05 !important;
         margin: 0 !important;
     }
 
@@ -260,7 +260,7 @@ def load_custom_css():
     .stButton > button div {
         font-weight: 900 !important;
         white-space: normal !important;
-        line-height: 1.02 !important;
+        line-height: 1.05 !important;
     }
 
     .stButton > button:hover {
@@ -283,8 +283,8 @@ def load_custom_css():
         border: 2px solid rgba(183, 255, 203, 0.90) !important;
         border-radius: 13px !important;
         font-size: 0.93rem !important;
-        min-height: 2.2rem !important;
-        padding: 0.36rem 0.74rem !important;
+        min-height: 2.5rem !important;
+        padding: 0.48rem 0.74rem !important;
         animation: pulse-border 2.2s ease-in-out infinite !important;
         letter-spacing: 0.015em !important;
         text-shadow: none !important;
@@ -495,7 +495,7 @@ def render_home():
     st.markdown('<div class="modules-heading">Módulos disponíveis</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="modules-row">', unsafe_allow_html=True)
-    col_esq, col_centro, col_dir = st.columns([1, 1, 1], gap="small")
+    col_esq, col_centro, col_dir = st.columns([1, 1, 1], gap="medium")
 
     with col_esq:
         render_bloco_completo(
