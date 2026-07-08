@@ -141,7 +141,7 @@ def render_panel_consolidacao() -> None:
         render_panel_text(
             "Consolidação",
             "Consolidar indicadores",
-            "Organize e unifique resultados em uma base consolidada para consumo analítico.",
+            "Organize e unifique os indicadores de fechamento em uma base consolidada para consumo analítico.",
         )
 
         st.markdown('<div class="panel-divider"></div>', unsafe_allow_html=True)
@@ -153,7 +153,7 @@ def render_panel_consolidacao() -> None:
         st.markdown(
             """
             <div class="panel-footer">
-                Ideal para fechamento de rotinas e preparação de saídas institucionais.
+                Ideal para consolidação de bases de arquivos de indicadores separados.
             </div>
             """,
             unsafe_allow_html=True,
