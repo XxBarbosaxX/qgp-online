@@ -139,11 +139,13 @@ def _aplicar_estilo_todos_indicadores() -> None:
             }
 
             .todos-hero {
-                background: linear-gradient(135deg, rgba(8, 54, 49, 0.92) 0%, rgba(9, 79, 70, 0.92) 100%);
+                background:
+                    radial-gradient(circle at top right, rgba(247, 178, 103, 0.10), transparent 22%),
+                    linear-gradient(135deg, rgba(8, 54, 49, 0.96) 0%, rgba(7, 74, 67, 0.94) 100%);
                 border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 18px;
-                padding: 1.4rem 1.4rem 1.2rem 1.4rem;
-                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+                border-radius: 20px;
+                padding: 1.5rem 1.5rem 1.25rem 1.5rem;
+                box-shadow: 0 14px 34px rgba(0, 0, 0, 0.18);
             }
 
             .todos-kicker {
@@ -157,40 +159,40 @@ def _aplicar_estilo_todos_indicadores() -> None:
 
             .todos-title {
                 font-size: 2rem;
-                line-height: 1.1;
+                line-height: 1.05;
                 font-weight: 900;
                 color: #f8fafc;
-                margin: 0 0 0.5rem 0;
+                margin: 0 0 0.55rem 0;
             }
 
             .todos-description {
                 color: rgba(255, 255, 255, 0.82);
                 font-size: 0.98rem;
-                line-height: 1.6;
+                line-height: 1.65;
                 margin: 0;
-                max-width: 920px;
+                max-width: 980px;
             }
 
             .todos-section-card {
                 background: rgba(255, 255, 255, 0.02);
                 border: 1px solid rgba(255, 255, 255, 0.07);
                 border-radius: 18px;
-                padding: 1.1rem 1.1rem 0.7rem 1.1rem;
+                padding: 1.1rem 1.1rem 0.9rem 1.1rem;
                 margin: 1rem 0;
             }
 
             .todos-section-title {
-                font-size: 1.15rem;
+                font-size: 1.08rem;
                 font-weight: 800;
                 color: #f8fafc;
-                margin-bottom: 0.25rem;
+                margin-bottom: 0.3rem;
             }
 
             .todos-section-desc {
                 font-size: 0.93rem;
-                color: rgba(255, 255, 255, 0.70);
-                margin-bottom: 0.9rem;
-                line-height: 1.5;
+                color: rgba(255, 255, 255, 0.72);
+                margin-bottom: 0.35rem;
+                line-height: 1.55;
             }
 
             .todos-grid-status {
@@ -201,41 +203,51 @@ def _aplicar_estilo_todos_indicadores() -> None:
             }
 
             .todos-stat {
-                background: rgba(255, 255, 255, 0.025);
+                background: rgba(255, 255, 255, 0.028);
                 border: 1px solid rgba(255, 255, 255, 0.08);
                 border-radius: 16px;
-                padding: 0.95rem 1rem;
+                padding: 1rem;
+                min-height: 100px;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
             }
 
             .todos-stat-label {
-                font-size: 0.78rem;
+                font-size: 0.76rem;
                 text-transform: uppercase;
                 letter-spacing: 0.08em;
                 color: rgba(255, 255, 255, 0.58);
-                margin-bottom: 0.35rem;
+                margin-bottom: 0.4rem;
                 font-weight: 700;
             }
 
             .todos-stat-value {
-                font-size: 1.45rem;
+                font-size: 1.55rem;
                 font-weight: 900;
                 color: #ffffff;
                 line-height: 1;
+            }
+
+            .todos-stat-helper {
+                margin-top: 0.35rem;
+                font-size: 0.82rem;
+                color: rgba(255, 255, 255, 0.62);
             }
 
             .todos-badge-wrap {
                 display: flex;
                 flex-wrap: wrap;
                 gap: 0.5rem;
-                margin-top: 0.55rem;
-                margin-bottom: 0.15rem;
+                margin-top: 0.65rem;
+                margin-bottom: 0.1rem;
             }
 
             .todos-badge {
                 display: inline-flex;
                 align-items: center;
                 gap: 0.35rem;
-                padding: 0.5rem 0.72rem;
+                padding: 0.55rem 0.78rem;
                 border-radius: 999px;
                 font-size: 0.82rem;
                 font-weight: 700;
@@ -262,15 +274,9 @@ def _aplicar_estilo_todos_indicadores() -> None:
                 border-color: rgba(239, 68, 68, 0.22);
             }
 
-            .todos-mini-list {
-                margin: 0.6rem 0 0 0;
-                padding-left: 1rem;
-                color: rgba(255,255,255,0.78);
+            .todos-subtle {
+                color: rgba(255, 255, 255, 0.70);
                 font-size: 0.92rem;
-            }
-
-            .todos-divider-space {
-                height: 0.2rem;
             }
 
             @media (max-width: 980px) {
@@ -768,7 +774,7 @@ def _render_hero():
                 <p class="todos-description">
                     Centralize o processamento dos indicadores em uma única operação. O módulo identifica
                     automaticamente os arquivos-base, utiliza o Arquivo 02 compartilhado e executa, de forma
-                    sequencial, as regras específicas de cada indicador — inclusive geocodificação quando aplicável.
+                    sequencial, as regras específicas de cada indicador, inclusive geocodificação quando aplicável.
                 </p>
             </div>
         </div>
@@ -785,7 +791,7 @@ def _render_status_cards(indicadores_prontos: list[str], indicadores_faltantes: 
     )
     total_faltantes = len(indicadores_faltantes)
 
-    arq02_status = "Sim" if tem_arq02 else "Não"
+    arq02_status = "Carregado" if tem_arq02 else "Pendente"
 
     st.markdown(
         f"""
@@ -793,18 +799,22 @@ def _render_status_cards(indicadores_prontos: list[str], indicadores_faltantes: 
             <div class="todos-stat">
                 <div class="todos-stat-label">Indicadores carregados</div>
                 <div class="todos-stat-value">{total_prontos}/{total_indicadores}</div>
+                <div class="todos-stat-helper">Bases históricas reconhecidas.</div>
             </div>
             <div class="todos-stat">
                 <div class="todos-stat-label">Arquivo 02</div>
                 <div class="todos-stat-value">{arq02_status}</div>
+                <div class="todos-stat-helper">Arquivo complementar compartilhado.</div>
             </div>
             <div class="todos-stat">
                 <div class="todos-stat-label">Com geocodificação</div>
                 <div class="todos-stat-value">{total_geocodificaveis}</div>
+                <div class="todos-stat-helper">Indicadores prontos com etapa espacial.</div>
             </div>
             <div class="todos-stat">
                 <div class="todos-stat-label">Pendentes</div>
                 <div class="todos-stat-value">{total_faltantes}</div>
+                <div class="todos-stat-helper">Indicadores ainda sem Arquivo 01.</div>
             </div>
         </div>
         """,
