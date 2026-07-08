@@ -19,6 +19,127 @@ from modulos.utils import nome_arquivo_padrao
 NOME_ARQUIVO_FINAL = nome_arquivo_padrao(8, "ACIDENTE-DE-TRANSITO-SPORTAL-QGP")
 
 
+def _aplicar_estilo_acidente_transito() -> None:
+    """Aplica estilo visual padronizado ao módulo."""
+    st.markdown(
+        """
+        <style>
+            .at-section-card {
+                background: rgba(255, 255, 255, 0.02);
+                border: 1px solid rgba(255, 255, 255, 0.07);
+                border-radius: 18px;
+                padding: 1.1rem 1.1rem 0.7rem 1.1rem;
+                margin: 1rem 0;
+            }
+
+            .at-section-title {
+                font-size: 1.15rem;
+                font-weight: 800;
+                color: #f8fafc;
+                margin-bottom: 0.25rem;
+            }
+
+            .at-section-desc {
+                font-size: 0.93rem;
+                color: rgba(255, 255, 255, 0.70);
+                margin-bottom: 0.9rem;
+                line-height: 1.5;
+            }
+
+            .at-mini-list {
+                margin: 0.6rem 0 0 0;
+                padding-left: 1rem;
+                color: rgba(255,255,255,0.78);
+                font-size: 0.92rem;
+            }
+
+            .at-grid-status {
+                display: grid;
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+                gap: 0.85rem;
+                margin: 1rem 0 0.2rem 0;
+            }
+
+            .at-stat {
+                background: rgba(255, 255, 255, 0.025);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 16px;
+                padding: 0.95rem 1rem;
+            }
+
+            .at-stat-label {
+                font-size: 0.78rem;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                color: rgba(255, 255, 255, 0.58);
+                margin-bottom: 0.35rem;
+                font-weight: 700;
+            }
+
+            .at-stat-value {
+                font-size: 1.20rem;
+                font-weight: 900;
+                color: #ffffff;
+                line-height: 1.15;
+                word-break: break-word;
+            }
+
+            .at-badge-wrap {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.5rem;
+                margin-top: 0.55rem;
+                margin-bottom: 0.15rem;
+            }
+
+            .at-badge {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.35rem;
+                padding: 0.5rem 0.72rem;
+                border-radius: 999px;
+                font-size: 0.82rem;
+                font-weight: 700;
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                background: rgba(255, 255, 255, 0.03);
+                color: #e5f3ee;
+            }
+
+            .at-badge.ok {
+                background: rgba(34, 197, 94, 0.10);
+                color: #b7f7c9;
+                border-color: rgba(34, 197, 94, 0.22);
+            }
+
+            .at-badge.warn {
+                background: rgba(245, 158, 11, 0.10);
+                color: #fde4b0;
+                border-color: rgba(245, 158, 11, 0.22);
+            }
+
+            .at-badge.info {
+                background: rgba(59, 130, 246, 0.10);
+                color: #bfdbfe;
+                border-color: rgba(59, 130, 246, 0.22);
+            }
+
+            @media (max-width: 1180px) {
+                .at-grid-status {
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                }
+            }
+
+            @media (max-width: 640px) {
+                .at-grid-status {
+                    grid-template-columns: 1fr;
+                }
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def _normalizar_nome_aba(nome: str) -> str:
     nome = str(nome or "").strip()
     nome = unicodedata.normalize("NFKD", nome)
@@ -86,7 +207,9 @@ def encontrar_coluna_por_nomes(df, nomes_possiveis, obrigatoria=True):
                 return c
 
     if obrigatoria:
-        raise ValueError(f"Nao foi possivel localizar nenhuma das colunas esperadas: {nomes_possiveis}")
+        raise ValueError(
+            f"Nao foi possivel localizar nenhuma das colunas esperadas: {nomes_possiveis}"
+        )
     return None
 
 
@@ -321,7 +444,10 @@ def processar_acidente_transito(arquivo_01, arquivo_02):
         df_final = base_sem_aux.copy()
 
     df_final = criar_coluna_datahora(df_final, col_data, col_hora)
-    df_final = df_final.sort_values(by="__datahora__", ascending=True, na_position="last").reset_index(drop=True)
+    df_final = (
+        df_final.sort_values(by="__datahora__", ascending=True, na_position="last")
+        .reset_index(drop=True)
+    )
     df_final = df_final.drop(columns=["__datahora__"], errors="ignore")
 
     total_final = len(df_final)
@@ -360,25 +486,63 @@ def _init_state():
             st.session_state[chave] = valor
 
 
+def _limpar_estado_acidente_transito() -> None:
+    chaves = [
+        "acidente_transito_arquivo_01_bytes",
+        "acidente_transito_arquivo_01_nome",
+        "acidente_transito_arquivo_02_bytes",
+        "acidente_transito_arquivo_02_nome",
+        "acidente_transito_resultado_excel",
+        "acidente_transito_resultado_df",
+        "acidente_transito_resumo",
+        "acidente_transito_upload_01",
+        "acidente_transito_upload_02",
+    ]
+    for chave in chaves:
+        if chave in st.session_state:
+            del st.session_state[chave]
+
+
 def render():
     _init_state()
+    _aplicar_estilo_acidente_transito()
 
-    st.subheader("Acidente de Transito (SPORTAL)")
-    st.write(
-        "Envie a base historica e o complemento SPORTAL para atualizar a base."
+    st.markdown(
+        """
+        <div class="at-section-card">
+            <div class="at-section-title">Processamento de Acidente de Trânsito (SPORTAL)</div>
+            <div class="at-section-desc">
+                Envie a base histórica e o complemento SPORTAL para atualizar a base
+                consolidada, aplicando validação temporal, tratamento de coordenadas
+                e padronização final no formato do QGP Online.
+            </div>
+            <ul class="at-mini-list">
+                <li>Identificação automática da aba do complemento.</li>
+                <li>Validação e exclusão de coordenadas inválidas.</li>
+                <li>Reprojeção de coordenadas UTM para WGS84.</li>
+                <li>Inclusão apenas de registros posteriores à última Data/Hora da base.</li>
+                <li>Geração de arquivo final consolidado para download.</li>
+            </ul>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-    arquivo_01 = st.file_uploader(
-        "Arquivo 01 - Base historica de Acidente de Transito",
-        type=["xlsx", "xls"],
-        key="acidente_transito_upload_01",
-    )
+    col1, col2 = st.columns(2)
 
-    arquivo_02 = st.file_uploader(
-        "Arquivo 02 - Complemento SPORTAL",
-        type=["xlsx", "xls"],
-        key="acidente_transito_upload_02",
-    )
+    with col1:
+        arquivo_01 = st.file_uploader(
+            "📁 Arquivo 01 - Base histórica",
+            type=["xlsx", "xls"],
+            key="acidente_transito_upload_01",
+        )
+
+    with col2:
+        arquivo_02 = st.file_uploader(
+            "📁 Arquivo 02 - Complemento SPORTAL",
+            type=["xlsx", "xls"],
+            key="acidente_transito_upload_02",
+        )
 
     if arquivo_01 is not None:
         arquivo_01.seek(0)
@@ -390,68 +554,137 @@ def render():
         st.session_state.acidente_transito_arquivo_02_bytes = arquivo_02.read()
         st.session_state.acidente_transito_arquivo_02_nome = arquivo_02.name
 
+    badges_upload = []
     if st.session_state.acidente_transito_arquivo_01_nome:
-        st.info(f"Arquivo 01 carregado: {st.session_state.acidente_transito_arquivo_01_nome}")
-
+        badges_upload.append(
+            f'<span class="at-badge ok">Base carregada: {st.session_state.acidente_transito_arquivo_01_nome}</span>'
+        )
     if st.session_state.acidente_transito_arquivo_02_nome:
-        st.info(f"Arquivo 02 carregado: {st.session_state.acidente_transito_arquivo_02_nome}")
+        badges_upload.append(
+            f'<span class="at-badge ok">Complemento carregado: {st.session_state.acidente_transito_arquivo_02_nome}</span>'
+        )
+
+    if badges_upload:
+        st.markdown(
+            f'<div class="at-badge-wrap">{"".join(badges_upload)}</div>',
+            unsafe_allow_html=True,
+        )
+
+    st.markdown(
+        """
+        <div class="at-section-card">
+            <div class="at-section-title">Execução do processamento</div>
+            <div class="at-section-desc">
+                Após validar os arquivos enviados, execute a rotina para consolidar os
+                registros novos e gerar o arquivo final do indicador.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     pode_processar = (
         st.session_state.acidente_transito_arquivo_01_bytes is not None
         and st.session_state.acidente_transito_arquivo_02_bytes is not None
     )
 
-    if st.button("Processar Acidente de Transito", type="primary", disabled=not pode_processar):
+    col_btn1, col_btn2 = st.columns(2)
+
+    with col_btn1:
+        processar = st.button(
+            "Processar Acidente de Trânsito",
+            type="primary",
+            disabled=not pode_processar,
+            use_container_width=True,
+            key="btn_processar_acidente_transito",
+        )
+
+    with col_btn2:
+        limpar = st.button(
+            "Limpar seleção",
+            use_container_width=True,
+            key="btn_limpar_acidente_transito",
+        )
+
+    if limpar:
+        _limpar_estado_acidente_transito()
+        st.rerun()
+
+    if processar:
         try:
             arquivo_01_buffer = BytesIO(st.session_state.acidente_transito_arquivo_01_bytes)
             arquivo_02_buffer = BytesIO(st.session_state.acidente_transito_arquivo_02_bytes)
 
-            with st.spinner("Processando registros..."):
-                df_final, resumo = processar_acidente_transito(arquivo_01_buffer, arquivo_02_buffer)
+            with st.spinner("Processando registros de acidente de trânsito..."):
+                df_final, resumo = processar_acidente_transito(
+                    arquivo_01_buffer,
+                    arquivo_02_buffer,
+                )
                 arquivo_excel_bytes = gerar_excel_em_memoria(df_final)
 
             st.session_state.acidente_transito_resultado_df = df_final
             st.session_state.acidente_transito_resumo = resumo
             st.session_state.acidente_transito_resultado_excel = arquivo_excel_bytes
 
-            st.success("Processamento concluido com sucesso.")
+            st.success("✅ Processamento concluído com sucesso.")
 
         except Exception as exc:
             st.exception(exc)
 
     if (
-        st.session_state.acidente_transito_resultado_df is not None
-        and st.session_state.acidente_transito_resumo is not None
+        st.session_state.acidente_transito_resultado_df is None
+        or st.session_state.acidente_transito_resumo is None
     ):
-        df_final = st.session_state.acidente_transito_resultado_df
-        resumo = st.session_state.acidente_transito_resumo
+        return
 
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Novos registros adicionados", resumo["adicionados"])
-        c2.metric("Total final da base", resumo["total_final"])
-        c3.metric("Removidos por coordenadas invalidas", resumo["removidos_invalidos"])
+    df_final = st.session_state.acidente_transito_resultado_df
+    resumo = st.session_state.acidente_transito_resumo
 
-        st.info(
-            f"Aba usada no Arquivo 01: {resumo['aba_arquivo_01']} | "
-            f"Aba usada no Arquivo 02: {resumo['aba_arquivo_02']}"
+    st.markdown(
+        f"""
+        <div class="at-section-card">
+            <div class="at-section-title">Resumo do processamento</div>
+            <div class="at-section-desc">{resumo.get("situacao", "Processamento concluído.")}</div>
+            <div class="at-grid-status">
+                <div class="at-stat">
+                    <div class="at-stat-label">Registros adicionados</div>
+                    <div class="at-stat-value">{resumo.get("adicionados", 0)}</div>
+                </div>
+                <div class="at-stat">
+                    <div class="at-stat-label">Total final</div>
+                    <div class="at-stat-value">{resumo.get("total_final", 0)}</div>
+                </div>
+                <div class="at-stat">
+                    <div class="at-stat-label">Coord. inválidas removidas</div>
+                    <div class="at-stat-value">{resumo.get("removidos_invalidos", 0)}</div>
+                </div>
+                <div class="at-stat">
+                    <div class="at-stat-label">Filtrados por Data/Hora</div>
+                    <div class="at-stat-value">{resumo.get("removidos_por_datahora", 0)}</div>
+                </div>
+            </div>
+            <div class="at-badge-wrap">
+                <span class="at-badge info">Aba base: {resumo.get("aba_arquivo_01", "-")}</span>
+                <span class="at-badge info">Aba complemento: {resumo.get("aba_arquivo_02", "-")}</span>
+                <span class="at-badge info">Última Data/Hora base: {resumo.get("ultima_datahora_base", "-")}</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    with st.expander("Prévia dos dados processados", expanded=False):
+        st.dataframe(df_final.head(200), use_container_width=True, hide_index=True)
+
+    if st.session_state.acidente_transito_resultado_excel is not None:
+        st.download_button(
+            label="💾 Baixar arquivo final",
+            data=st.session_state.acidente_transito_resultado_excel,
+            file_name=NOME_ARQUIVO_FINAL,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="acidente_transito_download_final",
+            use_container_width=True,
         )
-
-        st.info(
-            f"Ultima Data/Hora da base: {resumo['ultima_datahora_base']} | "
-            f"Removidos por filtro temporal: {resumo['removidos_por_datahora']}"
-        )
-
-        st.caption(resumo["situacao"])
-        st.dataframe(df_final.head(50), use_container_width=True)
-
-        if st.session_state.acidente_transito_resultado_excel is not None:
-            st.download_button(
-                label="Baixar arquivo final",
-                data=st.session_state.acidente_transito_resultado_excel,
-                file_name=NOME_ARQUIVO_FINAL,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="acidente_transito_download_final",
-            )
 
 
 interface_acidente_transito = render
