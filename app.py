@@ -57,9 +57,9 @@ def load_custom_css():
     st.markdown("""
     <style>
     @keyframes pulse-border {
-        0%   { box-shadow: 0 0 0 0 rgba(52,168,83,0.42), 0 4px 18px rgba(52,168,83,0.18); }
-        70%  { box-shadow: 0 0 0 8px rgba(52,168,83,0.00), 0 4px 18px rgba(52,168,83,0.10); }
-        100% { box-shadow: 0 0 0 0 rgba(52,168,83,0.00), 0 4px 18px rgba(52,168,83,0.18); }
+        0%   { box-shadow: 0 0 0 0 rgba(52,168,83,0.36), 0 4px 18px rgba(52,168,83,0.16); }
+        70%  { box-shadow: 0 0 0 8px rgba(52,168,83,0.00), 0 4px 18px rgba(52,168,83,0.08); }
+        100% { box-shadow: 0 0 0 0 rgba(52,168,83,0.00), 0 4px 18px rgba(52,168,83,0.16); }
     }
 
     .stApp {
@@ -72,16 +72,17 @@ def load_custom_css():
     }
 
     .block-container {
-        padding-top: 2.6rem !important;
-        padding-bottom: 2rem;
+        padding-top: 2.5rem !important;
+        padding-bottom: 2.2rem;
+        max-width: 96%;
     }
 
     .topbar {
         display: flex;
         align-items: center;
         gap: 14px;
-        margin-top: 0.4rem;
-        margin-bottom: 1.2rem;
+        margin-top: 0.35rem;
+        margin-bottom: 1.35rem;
         padding: 0.8rem 0 1rem 0;
         border-bottom: 1px solid rgba(216, 138, 24, 0.18);
     }
@@ -107,9 +108,9 @@ def load_custom_css():
         background: rgba(255,255,255,0.03);
         border: 1px solid rgba(243,154,31,0.14);
         border-radius: 18px;
-        padding: 1.2rem;
-        margin-top: 1rem;
-        margin-bottom: 1rem;
+        padding: 1.2rem 1.2rem 1rem 1.2rem;
+        margin-top: 0.8rem;
+        margin-bottom: 1.2rem;
     }
 
     .home-title {
@@ -126,13 +127,18 @@ def load_custom_css():
         line-height: 1.5;
     }
 
+    .section-wrap {
+        height: 100%;
+    }
+
     .section-card {
-        background: rgba(255,255,255,0.03);
+        background: rgba(255,255,255,0.035);
         border: 1px solid rgba(243,154,31,0.14);
         border-radius: 18px;
-        padding: 1.15rem 1.15rem 1rem 1.15rem;
-        margin-top: 1rem;
-        margin-bottom: 1rem;
+        padding: 1.15rem 1.15rem 1.1rem 1.15rem;
+        margin-top: 0.25rem;
+        margin-bottom: 0.2rem;
+        min-height: 116px;
     }
 
     .section-title {
@@ -146,12 +152,23 @@ def load_custom_css():
     .section-subtitle {
         color: #cdd8d2;
         font-size: 0.95rem;
-        margin-bottom: 0.9rem;
+        margin-bottom: 0;
         line-height: 1.45;
     }
 
+    .section-spacer {
+        height: 0.75rem;
+    }
+
+    .button-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 0.72rem;
+        margin-top: 0.2rem;
+    }
+
     .info-row {
-        margin-top: 0.8rem;
+        margin-top: 1.35rem;
         margin-bottom: 1rem;
     }
 
@@ -174,8 +191,8 @@ def load_custom_css():
         border: 1px solid rgba(243,154,31,0.35) !important;
         border-radius: 12px !important;
         font-weight: 900 !important;
-        font-size: 0.96rem !important;
-        padding: 0.82rem 1rem !important;
+        font-size: 0.95rem !important;
+        padding: 0.82rem 0.95rem !important;
         width: 100% !important;
         min-height: 3.15rem !important;
         text-align: center !important;
@@ -183,12 +200,16 @@ def load_custom_css():
                     background 0.18s ease, filter 0.15s ease !important;
         box-shadow: 0 2px 8px rgba(243,154,31,0.18) !important;
         letter-spacing: 0.01em !important;
+        white-space: normal !important;
+        line-height: 1.2 !important;
     }
 
     .stButton > button p,
     .stButton > button span,
     .stButton > button div {
         font-weight: 900 !important;
+        white-space: normal !important;
+        line-height: 1.2 !important;
     }
 
     .stButton > button:hover {
@@ -206,24 +227,25 @@ def load_custom_css():
     }
 
     .todos-btn .stButton > button {
-        background: linear-gradient(135deg, #34a853 0%, #6bcf63 100%) !important;
+        background: #2f9e44 !important;
         color: #f39a1f !important;
-        border: 2px solid rgba(129, 221, 124, 0.75) !important;
+        border: 2px solid #78d08b !important;
         border-radius: 14px !important;
         font-size: 1.02rem !important;
-        min-height: 3.55rem !important;
+        min-height: 3.7rem !important;
         animation: pulse-border 2.2s ease-in-out infinite !important;
-        letter-spacing: 0.03em !important;
+        letter-spacing: 0.02em !important;
         text-shadow: none !important;
         box-shadow: 0 4px 18px rgba(52,168,83,0.22) !important;
+        font-weight: 900 !important;
     }
 
     .todos-btn .stButton > button:hover {
-        background: linear-gradient(135deg, #43bf64 0%, #7dd96e 100%) !important;
+        background: #37b24d !important;
         color: #ffb347 !important;
-        transform: translateY(-3px) scale(1.02) !important;
-        box-shadow: 0 8px 26px rgba(52,168,83,0.32), 0 0 0 3px rgba(129,221,124,0.18) !important;
-        filter: brightness(1.04) !important;
+        transform: translateY(-3px) scale(1.018) !important;
+        box-shadow: 0 8px 26px rgba(52,168,83,0.28), 0 0 0 3px rgba(129,221,124,0.16) !important;
+        filter: brightness(1.03) !important;
     }
 
     .todos-btn .stButton > button:active {
@@ -255,8 +277,12 @@ def load_custom_css():
     .footer-note {
         color: #b8c3bd;
         font-size: 0.9rem;
-        margin-top: 1rem;
+        margin-top: 1.15rem;
         text-align: center;
+    }
+
+    div[data-testid="column"] > div {
+        height: 100%;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -350,16 +376,17 @@ def voltar_inicio():
 # =========================
 # RENDER DE BLOCOS
 # =========================
-def render_bloco_modulos(titulo: str, subtitulo: str, itens: list[str], key_prefix: str):
+def render_header_bloco(titulo: str, subtitulo: str):
     st.markdown(f"""
     <div class="section-card">
         <div class="section-title">{titulo}</div>
         <div class="section-subtitle">{subtitulo}</div>
     </div>
     """, unsafe_allow_html=True)
+    st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)
 
-    if len(itens) == 1:
-        item = itens[0]
+def render_lista_botoes(itens: list[str], key_prefix: str):
+    for item in itens:
         if item == "TODOS OS INDICADORES":
             st.markdown('<div class="todos-btn">', unsafe_allow_html=True)
             if st.button(item, key=f"{key_prefix}_{item}", use_container_width=True):
@@ -370,21 +397,12 @@ def render_bloco_modulos(titulo: str, subtitulo: str, itens: list[str], key_pref
             if st.button(item, key=f"{key_prefix}_{item}", use_container_width=True):
                 selecionar_indicador(item)
                 st.rerun()
-        return
 
-    colunas = st.columns(3)
-    for i, item in enumerate(itens):
-        with colunas[i % 3]:
-            if item == "TODOS OS INDICADORES":
-                st.markdown('<div class="todos-btn">', unsafe_allow_html=True)
-                if st.button(item, key=f"{key_prefix}_{item}", use_container_width=True):
-                    selecionar_indicador(item)
-                    st.rerun()
-                st.markdown('</div>', unsafe_allow_html=True)
-            else:
-                if st.button(item, key=f"{key_prefix}_{item}", use_container_width=True):
-                    selecionar_indicador(item)
-                    st.rerun()
+def render_bloco_completo(titulo: str, subtitulo: str, itens: list[str], key_prefix: str):
+    st.markdown('<div class="section-wrap">', unsafe_allow_html=True)
+    render_header_bloco(titulo, subtitulo)
+    render_lista_botoes(itens, key_prefix)
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # =========================
 # TELA INICIAL
@@ -399,27 +417,33 @@ def render_home():
     """, unsafe_allow_html=True)
 
     st.markdown("### Módulos disponíveis")
+    st.markdown("<div style='height: 0.35rem;'></div>", unsafe_allow_html=True)
 
-    render_bloco_modulos(
-        "Atualização dos Indicadores",
-        "Selecione um indicador para processamento individual ou execução completa.",
-        INDICADORES_ATUALIZACAO,
-        "atualizacao"
-    )
+    col_esq, col_centro, col_dir = st.columns([1.45, 1.0, 1.0], gap="large")
 
-    render_bloco_modulos(
-        "Geocodificação",
-        "Módulo dedicado à geocodificação de ocorrências e endereços.",
-        MODULOS_GEO,
-        "geocodificacao"
-    )
+    with col_esq:
+        render_bloco_completo(
+            "Atualização dos Indicadores",
+            "Selecione um indicador para processamento individual ou execução completa.",
+            INDICADORES_ATUALIZACAO,
+            "atualizacao"
+        )
 
-    render_bloco_modulos(
-        "Consolidar Indicadores",
-        "Área reservada para o módulo de consolidação de indicadores.",
-        MODULOS_CONSOLIDACAO,
-        "consolidacao"
-    )
+    with col_centro:
+        render_bloco_completo(
+            "Geocodificação",
+            "Módulo dedicado à geocodificação de ocorrências e endereços.",
+            MODULOS_GEO,
+            "geocodificacao"
+        )
+
+    with col_dir:
+        render_bloco_completo(
+            "Consolidar Indicadores",
+            "Área reservada para o módulo de consolidação de indicadores.",
+            MODULOS_CONSOLIDACAO,
+            "consolidacao"
+        )
 
     st.markdown('<div class="info-row">', unsafe_allow_html=True)
     st.markdown('<div class="metric-chip">Versão 1.0.0</div>', unsafe_allow_html=True)
