@@ -40,7 +40,7 @@ def render_home_hero() -> None:
             <div class="hero-title">Bem-vindo ao QGP Online</div>
             <p class="hero-text">
                 Sistema de atualização de indicadores de Segurança Pública da SUPESP/CE.
-                Selecione o módulo desejado para iniciar o processamento de forma clara e organizada.
+                Selecione o módulo desejado para iniciar o processamento de forma clara, rápida e organizada.
             </p>
         </div>
         """,
@@ -65,9 +65,11 @@ def render_info_chips() -> None:
 def render_panel_header(kicker: str, titulo: str, descricao: str) -> None:
     st.markdown(
         f"""
-        <div class="panel-kicker">{kicker}</div>
-        <div class="panel-title">{titulo}</div>
-        <p class="panel-description">{descricao}</p>
+        <div class="panel-header">
+            <div class="panel-kicker">{kicker}</div>
+            <div class="panel-title">{titulo}</div>
+            <p class="panel-description">{descricao}</p>
+        </div>
         """,
         unsafe_allow_html=True,
     )
@@ -82,6 +84,8 @@ def render_panel_atualizacao() -> None:
             "Indicadores operacionais",
             "Execute a atualização completa ou selecione um indicador específico para processamento individual.",
         )
+
+        st.markdown('<div class="panel-content">', unsafe_allow_html=True)
 
         if st.button("Executar todos os indicadores", key="btn_todos", use_container_width=True):
             selecionar_indicador("TODOS OS INDICADORES")
@@ -112,6 +116,7 @@ def render_panel_atualizacao() -> None:
         )
 
         st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
 
 def render_panel_geocodificacao() -> None:
@@ -124,7 +129,7 @@ def render_panel_geocodificacao() -> None:
             "Módulo dedicado à geocodificação de ocorrências e endereços para análise espacial.",
         )
 
-        st.markdown('<div class="panel-action-gap"></div>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-content panel-content-compact">', unsafe_allow_html=True)
 
         if st.button("Abrir módulo de geocodificação", key="btn_geo", use_container_width=True):
             selecionar_indicador("GEOCODIFICAÇÃO")
@@ -140,6 +145,7 @@ def render_panel_geocodificacao() -> None:
         )
 
         st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
 
 def render_panel_consolidacao() -> None:
@@ -152,7 +158,7 @@ def render_panel_consolidacao() -> None:
             "Organize e unifique resultados em uma base consolidada para consumo analítico.",
         )
 
-        st.markdown('<div class="panel-action-gap"></div>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-content panel-content-compact">', unsafe_allow_html=True)
 
         if st.button("Abrir módulo de consolidação", key="btn_consolidar", use_container_width=True):
             selecionar_indicador("CONSOLIDAR INDICADORES")
@@ -167,6 +173,7 @@ def render_panel_consolidacao() -> None:
             unsafe_allow_html=True,
         )
 
+        st.markdown("</div>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
 
