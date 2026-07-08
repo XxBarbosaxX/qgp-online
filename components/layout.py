@@ -65,11 +65,9 @@ def render_info_chips() -> None:
 def render_panel_header(kicker: str, titulo: str, descricao: str) -> None:
     st.markdown(
         f"""
-        <div class="panel-header">
-            <div class="panel-kicker">{kicker}</div>
-            <div class="panel-title">{titulo}</div>
-            <p class="panel-description">{descricao}</p>
-        </div>
+        <div class="panel-kicker">{kicker}</div>
+        <div class="panel-title">{titulo}</div>
+        <p class="panel-description">{descricao}</p>
         """,
         unsafe_allow_html=True,
     )
