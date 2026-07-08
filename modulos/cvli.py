@@ -204,86 +204,84 @@ def _aplicar_estilo_cvli() -> None:
             .cvli-shell {
                 display: flex;
                 flex-direction: column;
-                gap: 1.25rem;
-                margin-bottom: 1.25rem;
+                gap: 1rem;
+                margin-bottom: 1rem;
             }
 
             .cvli-hero {
-                background:
-                    radial-gradient(circle at top right, rgba(247, 178, 103, 0.12), transparent 22%),
-                    linear-gradient(135deg, rgba(7, 55, 49, 0.96) 0%, rgba(6, 70, 63, 0.96) 100%);
+                background: linear-gradient(135deg, rgba(8, 54, 49, 0.92) 0%, rgba(9, 79, 70, 0.92) 100%);
                 border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 20px;
-                padding: 1.5rem 1.5rem 1.25rem 1.5rem;
-                box-shadow: 0 14px 32px rgba(0, 0, 0, 0.20);
+                border-radius: 18px;
+                padding: 1.4rem 1.4rem 1.2rem 1.4rem;
+                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
             }
 
             .cvli-kicker {
-                font-size: 0.75rem;
+                font-size: 0.78rem;
                 text-transform: uppercase;
                 letter-spacing: 0.14em;
                 font-weight: 800;
                 color: #f7b267;
-                margin-bottom: 0.4rem;
+                margin-bottom: 0.55rem;
             }
 
             .cvli-title {
                 font-size: 2rem;
-                line-height: 1.05;
+                line-height: 1.1;
                 font-weight: 900;
                 color: #f8fafc;
-                margin: 0;
+                margin: 0 0 0.5rem 0;
             }
 
-            .cvli-desc {
+            .cvli-description {
                 color: rgba(255, 255, 255, 0.82);
-                font-size: 0.96rem;
+                font-size: 0.98rem;
                 line-height: 1.6;
-                margin: 0.55rem 0 0 0;
-                max-width: 960px;
+                margin: 0;
+                max-width: 920px;
             }
 
-            .cvli-card {
-                background: rgba(2, 6, 23, 0.48);
-                border: 1px solid rgba(148, 163, 184, 0.25);
+            .cvli-section-card {
+                background: rgba(255, 255, 255, 0.02);
+                border: 1px solid rgba(255, 255, 255, 0.07);
                 border-radius: 18px;
-                padding: 1.05rem 1.1rem 0.95rem 1.1rem;
-                margin: 0.75rem 0;
+                padding: 1.1rem 1.1rem 0.7rem 1.1rem;
+                margin: 1rem 0;
             }
 
-            .cvli-card-title {
-                font-size: 1.05rem;
+            .cvli-section-title {
+                font-size: 1.15rem;
                 font-weight: 800;
-                color: #e5e7eb;
-                margin-bottom: 0.3rem;
+                color: #f8fafc;
+                margin-bottom: 0.25rem;
             }
 
-            .cvli-card-desc {
-                font-size: 0.92rem;
-                color: rgba(148, 163, 184, 0.95);
+            .cvli-section-desc {
+                font-size: 0.93rem;
+                color: rgba(255, 255, 255, 0.70);
+                margin-bottom: 0.9rem;
                 line-height: 1.5;
-                margin-bottom: 0.25rem;
             }
 
             .cvli-grid-status {
                 display: grid;
                 grid-template-columns: repeat(4, minmax(0, 1fr));
                 gap: 0.85rem;
-                margin-top: 0.9rem;
+                margin: 1rem 0 0.2rem 0;
             }
 
             .cvli-stat {
-                background: rgba(15, 23, 42, 0.75);
-                border: 1px solid rgba(148, 163, 184, 0.35);
+                background: rgba(255, 255, 255, 0.025);
+                border: 1px solid rgba(255, 255, 255, 0.08);
                 border-radius: 16px;
-                padding: 0.9rem 1rem;
+                padding: 0.95rem 1rem;
             }
 
             .cvli-stat-label {
-                font-size: 0.76rem;
+                font-size: 0.78rem;
                 text-transform: uppercase;
                 letter-spacing: 0.08em;
-                color: rgba(148, 163, 184, 0.95);
+                color: rgba(255, 255, 255, 0.58);
                 margin-bottom: 0.35rem;
                 font-weight: 700;
             }
@@ -291,7 +289,7 @@ def _aplicar_estilo_cvli() -> None:
             .cvli-stat-value {
                 font-size: 1.45rem;
                 font-weight: 900;
-                color: #f9fafb;
+                color: #ffffff;
                 line-height: 1;
             }
 
@@ -323,8 +321,8 @@ def _render_hero_cvli() -> None:
         <div class="cvli-shell">
             <div class="cvli-hero">
                 <div class="cvli-kicker">Módulo ativo</div>
-                <h1 class="cvli-title">CVLI</h1>
-                <p class="cvli-desc">
+                <div class="cvli-title">CVLI</div>
+                <p class="cvli-description">
                     Atualize a base de Crimes Violentos Letais Intencionais com segurança, mantendo
                     consistência estrutural entre a base histórica e o arquivo complementar.
                 </p>
@@ -344,6 +342,19 @@ def _gerar_excel_download(df: pd.DataFrame) -> bytes:
     return output.getvalue()
 
 
+def _limpar_estado_cvli() -> None:
+    """Limpa os estados do módulo CVLI."""
+    chaves = [
+        "cvli_arquivo01",
+        "cvli_arquivo02",
+        "cvli_drive",
+        "cvli_resultado",
+    ]
+    for chave in chaves:
+        if chave in st.session_state:
+            del st.session_state[chave]
+
+
 def interface_cvli() -> None:
     """Interface Streamlit para processamento do módulo CVLI."""
     _aplicar_estilo_cvli()
@@ -351,9 +362,9 @@ def interface_cvli() -> None:
 
     st.markdown(
         """
-        <div class="cvli-card">
-            <div class="cvli-card-title">Processamento CVLI</div>
-            <div class="cvli-card-desc">
+        <div class="cvli-section-card">
+            <div class="cvli-section-title">Processamento CVLI</div>
+            <div class="cvli-section-desc">
                 Envie a base histórica e o arquivo complementar para atualizar a base do indicador.
                 O sistema identifica períodos coincidentes, substitui os registros necessários e gera
                 o arquivo final pronto para integração com o QGP Online.
@@ -381,9 +392,9 @@ def interface_cvli() -> None:
 
     st.markdown(
         """
-        <div class="cvli-card">
-            <div class="cvli-card-title">Opções adicionais</div>
-            <div class="cvli-card-desc">
+        <div class="cvli-section-card">
+            <div class="cvli-section-title">Opções adicionais</div>
+            <div class="cvli-section-desc">
                 Defina opções complementares para o destino do arquivo processado.
             </div>
         </div>
@@ -393,6 +404,22 @@ def interface_cvli() -> None:
 
     salvar_drive = st.checkbox("💾 Salvar no Google Drive", key="cvli_drive")
 
+    pode_processar = arquivo01 is not None and arquivo02 is not None
+
+    st.markdown(
+        """
+        <div class="cvli-section-card">
+            <div class="cvli-section-title">Execução do processamento</div>
+            <div class="cvli-section-desc">
+                Inicie o processamento após validar os arquivos carregados. O fluxo aplica a lógica
+                de atualização do CVLI, preserva a consistência da base e disponibiliza o resultado
+                final para download ao término da execução.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
     col_btn1, col_btn2 = st.columns(2)
 
     with col_btn1:
@@ -401,25 +428,32 @@ def interface_cvli() -> None:
             key="processar_cvli",
             type="primary",
             use_container_width=True,
+            disabled=not pode_processar,
         )
 
     with col_btn2:
-        st.empty()
+        limpar = st.button(
+            "Limpar seleção",
+            key="limpar_cvli",
+            type="secondary",
+            use_container_width=True,
+        )
 
-    if not processar:
+    if limpar:
+        _limpar_estado_cvli()
+        st.rerun()
+
+    if processar:
+        with st.spinner("Processando dados CVLI..."):
+            processador = ProcessadorCVLI()
+            resultado = processador.processar(arquivo01, arquivo02)
+
+        st.session_state.cvli_resultado = resultado
+
+    resultado = st.session_state.get("cvli_resultado")
+
+    if not resultado:
         return
-
-    if not arquivo01:
-        st.error("⚠️ Envie o Arquivo 01 (Base de dados CVLI).")
-        return
-
-    if not arquivo02:
-        st.error("⚠️ Envie o Arquivo 02 (Dados complementares).")
-        return
-
-    with st.spinner("Processando dados CVLI..."):
-        processador = ProcessadorCVLI()
-        resultado = processador.processar(arquivo01, arquivo02)
 
     if not resultado["sucesso"]:
         st.error(f"❌ Erro no processamento: {resultado['erro']}")
@@ -432,9 +466,9 @@ def interface_cvli() -> None:
 
     st.markdown(
         f"""
-        <div class="cvli-card">
-            <div class="cvli-card-title">Resumo do processamento</div>
-            <div class="cvli-card-desc">{resultado["situacao"]}</div>
+        <div class="cvli-section-card">
+            <div class="cvli-section-title">Resumo do processamento</div>
+            <div class="cvli-section-desc">{resultado["situacao"]}</div>
             <div class="cvli-grid-status">
                 <div class="cvli-stat">
                     <div class="cvli-stat-label">Registros adicionados</div>
