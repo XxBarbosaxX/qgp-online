@@ -11,7 +11,7 @@ import traceback
 # =========================
 st.set_page_config(
     page_title="QGP Online - SUPESP/CE",
-    page_icon="🛡️",
+    page_icon="",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
@@ -46,7 +46,7 @@ def executar_interface_segura(func, nome_indicador: str):
         with area_execucao:
             func()
     except Exception as e:
-        st.error(f"❌ Erro ao executar o indicador '{nome_indicador}': {e}")
+        st.error(f"Erro ao executar o módulo '{nome_indicador}': {e}")
         with st.expander("Detalhes do erro"):
             st.code(traceback.format_exc())
 
@@ -57,14 +57,9 @@ def load_custom_css():
     st.markdown("""
     <style>
     @keyframes pulse-border {
-        0%   { box-shadow: 0 0 0 0 rgba(243,154,31,0.55), 0 4px 18px rgba(243,154,31,0.18); }
-        70%  { box-shadow: 0 0 0 7px rgba(243,154,31,0.00), 0 4px 18px rgba(243,154,31,0.10); }
-        100% { box-shadow: 0 0 0 0 rgba(243,154,31,0.00), 0 4px 18px rgba(243,154,31,0.18); }
-    }
-
-    @keyframes shimmer-btn {
-        0%   { background-position: -200% center; }
-        100% { background-position: 200% center; }
+        0%   { box-shadow: 0 0 0 0 rgba(52,168,83,0.42), 0 4px 18px rgba(52,168,83,0.18); }
+        70%  { box-shadow: 0 0 0 8px rgba(52,168,83,0.00), 0 4px 18px rgba(52,168,83,0.10); }
+        100% { box-shadow: 0 0 0 0 rgba(52,168,83,0.00), 0 4px 18px rgba(52,168,83,0.18); }
     }
 
     .stApp {
@@ -131,6 +126,30 @@ def load_custom_css():
         line-height: 1.5;
     }
 
+    .section-card {
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(243,154,31,0.14);
+        border-radius: 18px;
+        padding: 1.15rem 1.15rem 1rem 1.15rem;
+        margin-top: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .section-title {
+        font-size: 1.08rem;
+        font-weight: 900;
+        color: #ffffff;
+        margin-bottom: 0.25rem;
+        letter-spacing: 0.01em;
+    }
+
+    .section-subtitle {
+        color: #cdd8d2;
+        font-size: 0.95rem;
+        margin-bottom: 0.9rem;
+        line-height: 1.45;
+    }
+
     .info-row {
         margin-top: 0.8rem;
         margin-bottom: 1rem;
@@ -155,10 +174,10 @@ def load_custom_css():
         border: 1px solid rgba(243,154,31,0.35) !important;
         border-radius: 12px !important;
         font-weight: 900 !important;
-        font-size: 0.98rem !important;
-        padding: 0.85rem 1.15rem !important;
+        font-size: 0.96rem !important;
+        padding: 0.82rem 1rem !important;
         width: 100% !important;
-        min-height: 3.2rem !important;
+        min-height: 3.15rem !important;
         text-align: center !important;
         transition: transform 0.15s ease, box-shadow 0.18s ease,
                     background 0.18s ease, filter 0.15s ease !important;
@@ -187,24 +206,24 @@ def load_custom_css():
     }
 
     .todos-btn .stButton > button {
-        background: linear-gradient(135deg, #ffe066 0%, #f39a1f 45%, #ff6b2b 100%) !important;
-        background-size: 200% auto !important;
-        color: #0f1e18 !important;
-        border: 2px solid rgba(255,210,60,0.75) !important;
+        background: linear-gradient(135deg, #34a853 0%, #6bcf63 100%) !important;
+        color: #f39a1f !important;
+        border: 2px solid rgba(129, 221, 124, 0.75) !important;
         border-radius: 14px !important;
-        font-size: 1.04rem !important;
-        min-height: 3.6rem !important;
-        animation: pulse-border 2.2s ease-in-out infinite,
-                   shimmer-btn 3s linear infinite !important;
+        font-size: 1.02rem !important;
+        min-height: 3.55rem !important;
+        animation: pulse-border 2.2s ease-in-out infinite !important;
         letter-spacing: 0.03em !important;
-        text-shadow: 0 1px 2px rgba(255,255,255,0.18) !important;
+        text-shadow: none !important;
+        box-shadow: 0 4px 18px rgba(52,168,83,0.22) !important;
     }
 
     .todos-btn .stButton > button:hover {
-        transform: translateY(-3px) scale(1.025) !important;
-        box-shadow: 0 8px 28px rgba(243,154,31,0.45), 0 0 0 3px rgba(255,210,60,0.28) !important;
-        filter: brightness(1.1) saturate(1.15) !important;
-        animation: shimmer-btn 1.2s linear infinite !important;
+        background: linear-gradient(135deg, #43bf64 0%, #7dd96e 100%) !important;
+        color: #ffb347 !important;
+        transform: translateY(-3px) scale(1.02) !important;
+        box-shadow: 0 8px 26px rgba(52,168,83,0.32), 0 0 0 3px rgba(129,221,124,0.18) !important;
+        filter: brightness(1.04) !important;
     }
 
     .todos-btn .stButton > button:active {
@@ -265,20 +284,21 @@ def carregar_modulo(nome_modulo: str, nome_funcao: str):
         func = getattr(mod, nome_funcao, None)
 
         if func is None:
-            st.error(f"❌ Função '{nome_funcao}' não encontrada no módulo '{nome_modulo}'.")
+            st.error(f"Função '{nome_funcao}' não encontrada no módulo '{nome_modulo}'.")
             return None
 
         return func
     except Exception as e:
-        st.error(f"❌ Erro ao carregar módulo '{nome_modulo}': {e}")
+        st.error(f"Erro ao carregar módulo '{nome_modulo}': {e}")
         with st.expander("Detalhes do erro"):
             st.code(traceback.format_exc())
         return None
 
 # =========================
-# MAPEAMENTO DE INDICADORES
+# MAPEAMENTO DE MÓDULOS
 # =========================
 MAPEAMENTO = {
+    "TODOS OS INDICADORES": ("todos_indicadores", "interface_todos_indicadores"),
     "CVLI": ("cvli", "interface_cvli"),
     "CVP (SPORTAL)": ("cvp_sportal", "interface_cvp_sportal"),
     "CVP (SIP)": ("cvp_sip", "interface_cvp_sip"),
@@ -289,24 +309,33 @@ MAPEAMENTO = {
     "ACIDENTE DE TRÂNSITO": ("acidente_transito", "interface_acidente_transito"),
     "FURTO DE VEÍCULO (SPORTAL)": ("furto_veiculo_sportal", "interface_furto_veiculo_sportal"),
     "FURTO DE VEÍCULO (SIP)": ("furto_veiculo_sip", "interface_furto_veiculo_sip"),
-    "TODOS OS INDICADORES": ("todos_indicadores", "interface_todos_indicadores"),
+    "GEOCODIFICAÇÃO": ("geocodificar", "interface_geocodificar"),
+    "CONSOLIDAR INDICADORES": ("consolidar_indicadores", "interface_consolidar_indicadores"),
 }
 
 # =========================
-# ÍCONES DOS INDICADORES
+# LISTAS DE EXIBIÇÃO
 # =========================
-INDICADORES_COM_ICONES = [
-    ("⚡ TODOS OS INDICADORES", "TODOS OS INDICADORES"),
-    ("🔫 CVLI", "CVLI"),
-    ("🦹 CVP (SPORTAL)", "CVP (SPORTAL)"),
-    ("🦹 CVP (SIP)", "CVP (SIP)"),
-    ("🔊 PERTURBAÇÃO AO SOSSEGO ALHEIO", "PERTURBAÇÃO AO SOSSEGO ALHEIO"),
-    ("🕵️ DESLOCAMENTO FORÇADO", "DESLOCAMENTO FORÇADO"),
-    ("🚗💥 ROUBO DE VEÍCULO (SPORTAL)", "ROUBO DE VEÍCULO (SPORTAL)"),
-    ("🚗💥 ROUBO DE VEÍCULO (SIP)", "ROUBO DE VEÍCULO (SIP)"),
-    ("🛣️ ACIDENTE DE TRÂNSITO", "ACIDENTE DE TRÂNSITO"),
-    ("🚙🔓 FURTO DE VEÍCULO (SPORTAL)", "FURTO DE VEÍCULO (SPORTAL)"),
-    ("🚙🔓 FURTO DE VEÍCULO (SIP)", "FURTO DE VEÍCULO (SIP)"),
+INDICADORES_ATUALIZACAO = [
+    "TODOS OS INDICADORES",
+    "CVLI",
+    "CVP (SPORTAL)",
+    "CVP (SIP)",
+    "PERTURBAÇÃO AO SOSSEGO ALHEIO",
+    "DESLOCAMENTO FORÇADO",
+    "ROUBO DE VEÍCULO (SPORTAL)",
+    "ROUBO DE VEÍCULO (SIP)",
+    "ACIDENTE DE TRÂNSITO",
+    "FURTO DE VEÍCULO (SPORTAL)",
+    "FURTO DE VEÍCULO (SIP)",
+]
+
+MODULOS_GEO = [
+    "GEOCODIFICAÇÃO",
+]
+
+MODULOS_CONSOLIDACAO = [
+    "CONSOLIDAR INDICADORES",
 ]
 
 # =========================
@@ -319,6 +348,45 @@ def voltar_inicio():
     st.session_state.indicador_selecionado = "Selecione um indicador..."
 
 # =========================
+# RENDER DE BLOCOS
+# =========================
+def render_bloco_modulos(titulo: str, subtitulo: str, itens: list[str], key_prefix: str):
+    st.markdown(f"""
+    <div class="section-card">
+        <div class="section-title">{titulo}</div>
+        <div class="section-subtitle">{subtitulo}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    if len(itens) == 1:
+        item = itens[0]
+        if item == "TODOS OS INDICADORES":
+            st.markdown('<div class="todos-btn">', unsafe_allow_html=True)
+            if st.button(item, key=f"{key_prefix}_{item}", use_container_width=True):
+                selecionar_indicador(item)
+                st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
+        else:
+            if st.button(item, key=f"{key_prefix}_{item}", use_container_width=True):
+                selecionar_indicador(item)
+                st.rerun()
+        return
+
+    colunas = st.columns(3)
+    for i, item in enumerate(itens):
+        with colunas[i % 3]:
+            if item == "TODOS OS INDICADORES":
+                st.markdown('<div class="todos-btn">', unsafe_allow_html=True)
+                if st.button(item, key=f"{key_prefix}_{item}", use_container_width=True):
+                    selecionar_indicador(item)
+                    st.rerun()
+                st.markdown('</div>', unsafe_allow_html=True)
+            else:
+                if st.button(item, key=f"{key_prefix}_{item}", use_container_width=True):
+                    selecionar_indicador(item)
+                    st.rerun()
+
+# =========================
 # TELA INICIAL
 # =========================
 def render_home():
@@ -326,47 +394,32 @@ def render_home():
     <div class="home-card">
         <div class="home-title">Bem-vindo ao QGP Online</div>
         <div class="home-subtitle">Sistema de atualização de indicadores de Segurança Pública da SUPESP/CE.</div>
-        <div class="home-subtitle">Selecione o indicador desejado para iniciar o processamento.</div>
+        <div class="home-subtitle">Selecione o módulo desejado para iniciar o processamento.</div>
     </div>
     """, unsafe_allow_html=True)
 
-    st.markdown("### Selecione o Indicador Abaixo:")
+    st.markdown("### Módulos disponíveis")
 
-    st.markdown('<div class="todos-btn">', unsafe_allow_html=True)
-    if st.button("⚡ TODOS OS INDICADORES", key="btn_TODOS_OS_INDICADORES_topo", use_container_width=True):
-        selecionar_indicador("TODOS OS INDICADORES")
-        st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
+    render_bloco_modulos(
+        "Atualização dos Indicadores",
+        "Selecione um indicador para processamento individual ou execução completa.",
+        INDICADORES_ATUALIZACAO,
+        "atualizacao"
+    )
 
-    st.markdown("<div style='height: 0.7rem;'></div>", unsafe_allow_html=True)
+    render_bloco_modulos(
+        "Geocodificação",
+        "Módulo dedicado à geocodificação de ocorrências e endereços.",
+        MODULOS_GEO,
+        "geocodificacao"
+    )
 
-    indicadores_restantes = [
-        ("🔫 CVLI", "CVLI"),
-        ("🦹 CVP (SPORTAL)", "CVP (SPORTAL)"),
-        ("🦹 CVP (SIP)", "CVP (SIP)"),
-        ("🔊 PERTURBAÇÃO AO SOSSEGO ALHEIO", "PERTURBAÇÃO AO SOSSEGO ALHEIO"),
-        ("🕵️ DESLOCAMENTO FORÇADO", "DESLOCAMENTO FORÇADO"),
-        ("🚗💥 ROUBO DE VEÍCULO (SPORTAL)", "ROUBO DE VEÍCULO (SPORTAL)"),
-        ("🚗💥 ROUBO DE VEÍCULO (SIP)", "ROUBO DE VEÍCULO (SIP)"),
-        ("🛣️ ACIDENTE DE TRÂNSITO", "ACIDENTE DE TRÂNSITO"),
-        ("🚙🔓 FURTO DE VEÍCULO (SPORTAL)", "FURTO DE VEÍCULO (SPORTAL)"),
-        ("🚙🔓 FURTO DE VEÍCULO (SIP)", "FURTO DE VEÍCULO (SIP)"),
-    ]
-
-    col1, col2, col3 = st.columns(3)
-
-    blocos = [
-        indicadores_restantes[0:4],
-        indicadores_restantes[4:7],
-        indicadores_restantes[7:10],
-    ]
-
-    for coluna, bloco in zip([col1, col2, col3], blocos):
-        with coluna:
-            for label, valor in bloco:
-                if st.button(label, key=f"btn_{valor}", use_container_width=True):
-                    selecionar_indicador(valor)
-                    st.rerun()
+    render_bloco_modulos(
+        "Consolidar Indicadores",
+        "Área reservada para o módulo de consolidação de indicadores.",
+        MODULOS_CONSOLIDACAO,
+        "consolidacao"
+    )
 
     st.markdown('<div class="info-row">', unsafe_allow_html=True)
     st.markdown('<div class="metric-chip">Versão 1.0.0</div>', unsafe_allow_html=True)
@@ -393,7 +446,7 @@ elif indicador in MAPEAMENTO:
 
     with col_topo_2:
         st.markdown('<div class="secondary-button">', unsafe_allow_html=True)
-        if st.button("← Voltar", use_container_width=True):
+        if st.button("Voltar", use_container_width=True):
             voltar_inicio()
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
@@ -405,8 +458,8 @@ elif indicador in MAPEAMENTO:
         executar_interface_segura(func, indicador)
 
 else:
-    st.warning(f"🚧 O indicador **{indicador}** estará disponível em breve")
-    st.info("👨‍💻 Sistema em desenvolvimento")
+    st.warning(f"O módulo **{indicador}** estará disponível em breve.")
+    st.info("Sistema em desenvolvimento.")
 
 # =========================
 # RODAPÉ
