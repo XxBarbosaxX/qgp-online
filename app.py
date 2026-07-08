@@ -127,8 +127,19 @@ def load_custom_css():
         line-height: 1.32;
     }
 
+    .modules-heading {
+        font-size: 1.95rem;
+        font-weight: 900;
+        color: #ffffff;
+        line-height: 1.05;
+        margin: 0.08rem 0 0.18rem 0;
+        padding: 0;
+    }
+
     .modules-row {
         width: 100%;
+        margin-top: 0 !important;
+        padding-top: 0 !important;
     }
 
     .module-shell {
@@ -137,6 +148,8 @@ def load_custom_css():
         flex-direction: column;
         align-items: stretch;
         justify-content: flex-start;
+        margin-top: 0 !important;
+        padding-top: 0 !important;
     }
 
     .section-wrap {
@@ -478,8 +491,7 @@ def render_home():
     </div>
     """, unsafe_allow_html=True)
 
-    st.markdown("### Módulos disponíveis")
-    st.markdown("<div style='height: 0.08rem;'></div>", unsafe_allow_html=True)
+    st.markdown('<div class="modules-heading">Módulos disponíveis</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="modules-row">', unsafe_allow_html=True)
     col_esq, col_centro, col_dir = st.columns([1, 1, 1], gap="small")
