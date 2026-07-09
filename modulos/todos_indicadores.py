@@ -1,554 +1,508 @@
 """
-Módulo agregador para processamento de todos os indicadores do QGP Online.
+Módulo Todos os Indicadores - Orquestrador principal do QGP Online.
 
-Fluxo esperado:
-- Arquivo 01: múltiplos arquivos-base, um para cada indicador, enviados em uma única seleção.
-- Arquivo 02: um único arquivo complementar com múltiplas abas, uma para cada indicador.
+Fluxo:
+- recebe os 10 arquivos consolidados;
+- valida qual arquivo pertence a cada indicador pelo nome;
+- executa cada módulo individualmente na ordem oficial;
+- exibe progresso global e progresso textual do módulo atual;
+- entrega downloads individuais e um ZIP final com todos os resultados.
 """
 
 from __future__ import annotations
 
-import importlib
-from io import BytesIO
-from typing import Any, Callable
+import io
+import re
+import unicodedata
+import zipfile
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Callable, Optional
 
 import pandas as pd
 import streamlit as st
 
-from modulos.utils import gerar_arquivo_excel
+# ==========================================================
+# IMPORTS DOS MÓDULOS INDIVIDUAIS
+# Ajuste apenas se algum nome estiver diferente no projeto.
+# ==========================================================
+
+from modulos.cvli import processar_cvli
+from modulos.cvp_sportal import processar_cvp_sportal
+from modulos.cvp_sip import processar_cvp_sip
+from modulos.perturbacao_sossego import processar_perturbacao_sossego
+from modulos.deslocamento_forcado import processar_deslocamento_forcado
+from modulos.roubo_veiculo_sportal import processar_roubo_veiculo_sportal
+from modulos.roubo_veiculo_sip import processar_roubo_veiculo_sip
+from modulos.acidente_transito import processar_acidente_transito
+from modulos.furto_veiculo_sportal import processar_furto_veiculo_sportal
+from modulos.furto_veiculo_sip import processar_furto_veiculo_sip
+
+from modulos.utils import nome_arquivo_padrao
+
+# ==========================================================
+# CONFIGURAÇÃO
+# ==========================================================
 
 
-MODULOS_CONFIG = [
-    {
-        "id": "cvli",
-        "label": "CVLI",
-        "modulo": "modulos.cvli",
-        "funcao": "processar_cvli",
-        "arquivo_01_match": ["cvli"],
-        "aba_arquivo_02": "CVLI",
-    },
-    {
-        "id": "cvp_sip",
-        "label": "CVP SIP",
-        "modulo": "modulos.cvp_sip",
-        "funcao": "processar_cvp_sip",
-        "arquivo_01_match": ["cvp", "sip"],
-        "aba_arquivo_02": "CVP SIP",
-    },
-    {
-        "id": "cvp_sportal",
-        "label": "CVP SPORTAL",
-        "modulo": "modulos.cvp_sportal",
-        "funcao": "processar_cvp_sportal",
-        "arquivo_01_match": ["cvp", "sportal"],
-        "aba_arquivo_02": "CVP SPORTAL",
-    },
-    {
-        "id": "acidente_transito",
-        "label": "Acidente de Trânsito",
-        "modulo": "modulos.acidente_transito",
-        "funcao": "processar_acidente_transito",
-        "arquivo_01_match": ["acidente", "transito"],
-        "aba_arquivo_02": "ACIDENTE TRANSITO",
-    },
-    {
-        "id": "perturbacao_sossego",
-        "label": "Perturbação do Sossego",
-        "modulo": "modulos.perturbacao_sossego",
-        "funcao": "processar_perturbacao_sossego",
-        "arquivo_01_match": ["perturbacao", "sossego"],
-        "aba_arquivo_02": "PERTURBACAO SOSSEGO",
-    },
-    {
-        "id": "deslocamento_forcado",
-        "label": "Deslocamento Forçado",
-        "modulo": "modulos.deslocamento_forcado",
-        "funcao": "processar_deslocamento_forcado",
-        "arquivo_01_match": ["deslocamento", "forcado"],
-        "aba_arquivo_02": "DESLOCAMENTO FORCADO",
-    },
-    {
-        "id": "furto_veiculo_sip",
-        "label": "Furto de Veículo SIP",
-        "modulo": "modulos.furto_veiculo_sip",
-        "funcao": "processar_furto_veiculo_sip",
-        "arquivo_01_match": ["furto", "veiculo", "sip"],
-        "aba_arquivo_02": "FURTO VEICULO SIP",
-    },
-    {
-        "id": "furto_veiculo_sportal",
-        "label": "Furto de Veículo SPORTAL",
-        "modulo": "modulos.furto_veiculo_sportal",
-        "funcao": "processar_furto_veiculo_sportal",
-        "arquivo_01_match": ["furto", "veiculo", "sportal"],
-        "aba_arquivo_02": "FURTO VEICULO SPORTAL",
-    },
-    {
-        "id": "roubo_veiculo_sip",
-        "label": "Roubo de Veículo SIP",
-        "modulo": "modulos.roubo_veiculo_sip",
-        "funcao": "processar_roubo_veiculo_sip",
-        "arquivo_01_match": ["roubo", "veiculo", "sip"],
-        "aba_arquivo_02": "ROUBO VEICULO SIP",
-    },
-    {
-        "id": "roubo_veiculo_sportal",
-        "label": "Roubo de Veículo SPORTAL",
-        "modulo": "modulos.roubo_veiculo_sportal",
-        "funcao": "processar_roubo_veiculo_sportal",
-        "arquivo_01_match": ["roubo", "veiculo", "sportal"],
-        "aba_arquivo_02": "ROUBO VEICULO SPORTAL",
-    },
+@dataclass(frozen=True)
+class IndicadorDef:
+    chave: str
+    ordem: int
+    titulo: str
+    padroes_nome: list[str]
+    processar: Callable
+    nome_saida: str
+
+
+INDICADORES: list[IndicadorDef] = [
+    IndicadorDef(
+        chave="cvli",
+        ordem=1,
+        titulo="CVLI",
+        padroes_nome=[
+            "CVLI - 2026 - QGP",
+            "CVLI 2026 QGP",
+        ],
+        processar=processar_cvli,
+        nome_saida=nome_arquivo_padrao(1, "CVLI"),
+    ),
+    IndicadorDef(
+        chave="cvp_sportal",
+        ordem=2,
+        titulo="CVP Sportal",
+        padroes_nome=[
+            "CVP_SPORTAL - 2026 - QGP",
+            "CVP SPORTAL 2026 QGP",
+        ],
+        processar=processar_cvp_sportal,
+        nome_saida=nome_arquivo_padrao(2, "CVP-SPORTAL"),
+    ),
+    IndicadorDef(
+        chave="cvp_sip",
+        ordem=3,
+        titulo="CVP SIP Endereço",
+        padroes_nome=[
+            "CVP_SIP ENDERECO - 2026 - QGP",
+            "CVP SIP ENDERECO 2026 QGP",
+        ],
+        processar=processar_cvp_sip,
+        nome_saida=nome_arquivo_padrao(3, "CVP-SIP-ENDERECO"),
+    ),
+    IndicadorDef(
+        chave="perturbacao_sossego",
+        ordem=4,
+        titulo="Perturbação ao Sossego Alheio",
+        padroes_nome=[
+            "PERTURBAÇÃO AO SOSSEGO ALHEIO - 2026 - QGP",
+            "PERTURBACAO AO SOSSEGO ALHEIO 2026 QGP",
+        ],
+        processar=processar_perturbacao_sossego,
+        nome_saida=nome_arquivo_padrao(4, "PERTURBACAO-AO-SOSSEGO-ALHEIO"),
+    ),
+    IndicadorDef(
+        chave="deslocamento_forcado",
+        ordem=5,
+        titulo="Deslocamento Forçado",
+        padroes_nome=[
+            "DESLOCAMENTO FORCADO - 2026 - QGP",
+            "DESLOCAMENTO FORCADO 2026 QGP",
+        ],
+        processar=processar_deslocamento_forcado,
+        nome_saida=nome_arquivo_padrao(5, "DESLOCAMENTO-FORCADO"),
+    ),
+    IndicadorDef(
+        chave="roubo_veiculo_sportal",
+        ordem=6,
+        titulo="Roubo de Veículo Sportal",
+        padroes_nome=[
+            "ROUBO DE VEÍCULO_SPORTAL LAT LONG - 2026 - QGP",
+            "ROUBO DE VEICULO SPORTAL LAT LONG 2026 QGP",
+        ],
+        processar=processar_roubo_veiculo_sportal,
+        nome_saida=nome_arquivo_padrao(6, "ROUBO-DE-VEICULO-SPORTAL-LAT-LONG"),
+    ),
+    IndicadorDef(
+        chave="roubo_veiculo_sip",
+        ordem=7,
+        titulo="Roubo de Veículo SIP Endereço",
+        padroes_nome=[
+            "ROUBO DE VEÍCULO_SIP ENDERECO - 2026 - QGP",
+            "ROUBO DE VEICULO SIP ENDERECO 2026 QGP",
+        ],
+        processar=processar_roubo_veiculo_sip,
+        nome_saida=nome_arquivo_padrao(7, "ROUBO-DE-VEICULO-SIP-ENDERECO"),
+    ),
+    IndicadorDef(
+        chave="acidente_transito",
+        ordem=8,
+        titulo="Acidente de Trânsito Sportal",
+        padroes_nome=[
+            "ACIDENTE DE TRÂNSITO_SPORTAL_QGP",
+            "ACIDENTE DE TRANSITO SPORTAL QGP",
+        ],
+        processar=processar_acidente_transito,
+        nome_saida=nome_arquivo_padrao(8, "ACIDENTE-DE-TRANSITO-SPORTAL"),
+    ),
+    IndicadorDef(
+        chave="furto_veiculo_sportal",
+        ordem=9,
+        titulo="Furto de Veículo Sportal",
+        padroes_nome=[
+            "FURTO DE VEICULO_SPORTAL - QGP",
+            "FURTO DE VEICULO SPORTAL QGP",
+        ],
+        processar=processar_furto_veiculo_sportal,
+        nome_saida=nome_arquivo_padrao(9, "FURTO-DE-VEICULO-SPORTAL"),
+    ),
+    IndicadorDef(
+        chave="furto_veiculo_sip",
+        ordem=10,
+        titulo="Furto de Veículo SIP",
+        padroes_nome=[
+            "FURTO DE VEICULO_SIP QGP",
+            "FURTO DE VEICULO SIP QGP",
+        ],
+        processar=processar_furto_veiculo_sip,
+        nome_saida=nome_arquivo_padrao(10, "FURTO-DE-VEICULO-SIP"),
+    ),
 ]
 
-
-def _aplicar_estilo_todos_indicadores() -> None:
-    """Aplica estilo visual da interface agregadora."""
-    st.markdown(
-        """
-        <style>
-            .todos-shell {
-                display: flex;
-                flex-direction: column;
-                gap: 1rem;
-                margin-bottom: 1rem;
-            }
-
-            .todos-hero {
-                background: linear-gradient(135deg, rgba(17, 24, 39, 0.96) 0%, rgba(31, 41, 55, 0.96) 100%);
-                border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 20px;
-                padding: 1.5rem;
-                margin-bottom: 1rem;
-            }
-
-            .todos-kicker {
-                font-size: 0.78rem;
-                text-transform: uppercase;
-                letter-spacing: 0.14em;
-                font-weight: 800;
-                color: #60a5fa;
-                margin-bottom: 0.55rem;
-            }
-
-            .todos-title {
-                font-size: 2rem;
-                line-height: 1.1;
-                font-weight: 900;
-                color: #f9fafb;
-                margin-bottom: 0.55rem;
-            }
-
-            .todos-description {
-                color: rgba(255, 255, 255, 0.78);
-                font-size: 0.98rem;
-                line-height: 1.6;
-                margin: 0;
-            }
-
-            .todos-card {
-                background: rgba(255, 255, 255, 0.02);
-                border: 1px solid rgba(255, 255, 255, 0.07);
-                border-radius: 18px;
-                padding: 1rem;
-                margin: 0.8rem 0;
-            }
-
-            .todos-card-title {
-                font-size: 1.05rem;
-                font-weight: 800;
-                color: #f8fafc;
-                margin-bottom: 0.3rem;
-            }
-
-            .todos-card-desc {
-                font-size: 0.92rem;
-                color: rgba(255, 255, 255, 0.70);
-                line-height: 1.5;
-            }
-
-            .todos-grid {
-                display: grid;
-                grid-template-columns: repeat(2, minmax(0, 1fr));
-                gap: 0.9rem;
-                margin-top: 1rem;
-            }
-
-            .todos-item {
-                background: rgba(255, 255, 255, 0.025);
-                border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 16px;
-                padding: 0.95rem 1rem;
-            }
-
-            .todos-item-title {
-                font-size: 0.95rem;
-                font-weight: 800;
-                color: #ffffff;
-                margin-bottom: 0.35rem;
-            }
-
-            .todos-badge {
-                display: inline-flex;
-                align-items: center;
-                gap: 0.35rem;
-                padding: 0.4rem 0.68rem;
-                border-radius: 999px;
-                font-size: 0.8rem;
-                font-weight: 700;
-                margin-top: 0.35rem;
-            }
-
-            .todos-badge.ok {
-                background: rgba(34, 197, 94, 0.12);
-                color: #bbf7d0;
-                border: 1px solid rgba(34, 197, 94, 0.22);
-            }
-
-            .todos-badge.warn {
-                background: rgba(245, 158, 11, 0.12);
-                color: #fde68a;
-                border: 1px solid rgba(245, 158, 11, 0.22);
-            }
-
-            .todos-badge.err {
-                background: rgba(239, 68, 68, 0.12);
-                color: #fecaca;
-                border: 1px solid rgba(239, 68, 68, 0.22);
-            }
-
-            @media (max-width: 900px) {
-                .todos-grid {
-                    grid-template-columns: 1fr;
-                }
-            }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+# ==========================================================
+# UTILITÁRIOS
+# ==========================================================
 
 
-def _normalizar_texto(valor: str) -> str:
-    """Normaliza texto para comparação."""
-    return (
-        str(valor)
-        .strip()
-        .lower()
-        .replace("_", " ")
-        .replace("-", " ")
-        .replace("á", "a")
-        .replace("à", "a")
-        .replace("ã", "a")
-        .replace("â", "a")
-        .replace("é", "e")
-        .replace("ê", "e")
-        .replace("í", "i")
-        .replace("ó", "o")
-        .replace("ô", "o")
-        .replace("õ", "o")
-        .replace("ú", "u")
-        .replace("ç", "c")
-    )
+def normalizar_nome_arquivo(nome: str) -> str:
+    texto = str(nome or "").strip()
+    texto = unicodedata.normalize("NFKD", texto)
+    texto = "".join(c for c in texto if not unicodedata.combining(c))
+    texto = texto.upper()
+    texto = texto.replace(".XLSX", "").replace(".XLS", "")
+    texto = texto.replace("_", " ")
+    texto = texto.replace("-", " ")
+    texto = re.sub(r"\s+", " ", texto).strip()
+    return texto
 
 
-def _obter_funcao_processamento(nome_modulo: str, nome_funcao: str) -> Callable:
-    """Importa dinamicamente a função pública de processamento do módulo."""
-    modulo = importlib.import_module(nome_modulo)
+def identificar_indicador_por_nome(nome_arquivo: str) -> IndicadorDef | None:
+    nome_norm = normalizar_nome_arquivo(nome_arquivo)
 
-    if hasattr(modulo, nome_funcao):
-        return getattr(modulo, nome_funcao)
+    for indicador in INDICADORES:
+        for padrao in indicador.padroes_nome:
+            padrao_norm = normalizar_nome_arquivo(padrao)
+            if nome_norm == padrao_norm:
+                return indicador
 
-    for candidato in ["processar", "executar"]:
-        if hasattr(modulo, candidato):
-            return getattr(modulo, candidato)
-
-    raise AttributeError(
-        f"Nenhuma função compatível encontrada em '{nome_modulo}'. "
-        f"Candidatos testados: {nome_funcao}, processar, executar"
-    )
+    return None
 
 
-def _mapear_arquivos_base(uploaded_files: list[Any]) -> dict[str, bytes]:
-    """
-    Relaciona os arquivos-base enviados no Arquivo 01 aos indicadores esperados.
-    O vínculo é feito pelo nome do arquivo.
-    """
-    arquivos_por_indicador: dict[str, bytes] = {}
-
-    for config in MODULOS_CONFIG:
-        termos = [_normalizar_texto(item) for item in config["arquivo_01_match"]]
-
-        for arquivo in uploaded_files:
-            nome = _normalizar_texto(arquivo.name)
-            if all(termo in nome for termo in termos):
-                arquivos_por_indicador[config["id"]] = arquivo.getvalue()
-                break
-
-    return arquivos_por_indicador
-
-
-def _carregar_abas_arquivo_02(arquivo_02_bytes: bytes) -> dict[str, pd.DataFrame]:
-    """Lê todas as abas do Arquivo 02."""
-    workbook = pd.read_excel(BytesIO(arquivo_02_bytes), sheet_name=None)
-    return {_normalizar_texto(nome): df for nome, df in workbook.items()}
-
-
-def _obter_arquivo_base_indicador(
-    arquivos_base: dict[str, bytes],
-    indicador_id: str,
-) -> BytesIO:
-    """Obtém o arquivo-base do indicador."""
-    if indicador_id not in arquivos_base:
-        raise FileNotFoundError(
-            f"Arquivo 01 do indicador '{indicador_id}' não foi encontrado entre os arquivos enviados."
-        )
-
-    return BytesIO(arquivos_base[indicador_id])
-
-
-def _obter_arquivo_complemento_indicador(
-    abas_arquivo_02: dict[str, pd.DataFrame],
-    nome_aba_esperada: str,
-) -> BytesIO:
-    """Obtém a aba correspondente do Arquivo 02 e converte em arquivo Excel temporário."""
-    chave = _normalizar_texto(nome_aba_esperada)
-
-    if chave not in abas_arquivo_02:
-        raise FileNotFoundError(
-            f"A aba '{nome_aba_esperada}' não foi encontrada no Arquivo 02."
-        )
-
-    df = abas_arquivo_02[chave]
-
-    output = BytesIO()
+def gerar_excel_em_memoria(df: pd.DataFrame, sheet_name: str = "Dados") -> bytes:
+    output = io.BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, sheet_name="Complemento")
-    output.seek(0)
-    return output
+        df.to_excel(writer, index=False, sheet_name=sheet_name[:31])
+    return output.getvalue()
 
 
-def _executar_modulo(
-    config: dict[str, Any],
-    arquivos_base: dict[str, bytes],
-    abas_arquivo_02: dict[str, pd.DataFrame],
-) -> dict[str, Any]:
-    """Executa um indicador individual."""
-    try:
-        func = _obter_funcao_processamento(config["modulo"], config["funcao"])
-        arquivo_01 = _obter_arquivo_base_indicador(arquivos_base, config["id"])
-        arquivo_02 = _obter_arquivo_complemento_indicador(
-            abas_arquivo_02,
-            config["aba_arquivo_02"],
+def empacotar_resultados_zip(resultados: list[dict]) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for item in resultados:
+            if item.get("status") != "sucesso":
+                continue
+            nome_saida = item["nome_saida"]
+            conteudo = item["arquivo_bytes"]
+            zf.writestr(nome_saida, conteudo)
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+def init_state() -> None:
+    defaults = {
+        "todos_indicadores_uploads": {},
+        "todos_indicadores_resultados": None,
+        "todos_indicadores_zip": None,
+        "todos_indicadores_execucao_em_andamento": False,
+    }
+    for chave, valor in defaults.items():
+        if chave not in st.session_state:
+            st.session_state[chave] = valor
+
+
+def limpar_estado() -> None:
+    chaves = [
+        "todos_indicadores_uploads",
+        "todos_indicadores_resultados",
+        "todos_indicadores_zip",
+        "todos_indicadores_execucao_em_andamento",
+        "todos_indicadores_upload_widget",
+    ]
+    for chave in chaves:
+        if chave in st.session_state:
+            del st.session_state[chave]
+
+
+# ==========================================================
+# EXECUÇÃO
+# ==========================================================
+
+
+def executar_modulo(indicador: IndicadorDef, arquivo_bytes: bytes) -> dict:
+    arquivo_base = io.BytesIO(arquivo_bytes)
+    arquivo_novo = io.BytesIO(arquivo_bytes)
+
+    retorno = indicador.processar(arquivo_base, arquivo_novo)
+
+    if isinstance(retorno, tuple) and len(retorno) >= 1:
+        df_final = retorno[0]
+        resumo = retorno[1] if len(retorno) > 1 else {}
+    else:
+        raise ValueError(
+            f"O módulo '{indicador.chave}' retornou um formato inesperado."
         )
 
-        resultado = func(arquivo_01, arquivo_02)
-
-        if not isinstance(resultado, tuple) or len(resultado) != 2:
-            raise ValueError(
-                f"O módulo {config['label']} deve retornar (df_final, resumo)."
-            )
-
-        df_final, resumo = resultado
-        excel_bytes = gerar_arquivo_excel(df_final, sheet_name=config["label"][:31])
-
-        return {
-            "sucesso": True,
-            "df_final": df_final,
-            "resumo": resumo,
-            "excel_bytes": excel_bytes,
-        }
-
-    except Exception as exc:
-        return {
-            "sucesso": False,
-            "erro": str(exc),
-        }
-
-
-def _executar_todos_indicadores(
-    arquivos_base: dict[str, bytes],
-    arquivo_02_bytes: bytes,
-) -> dict[str, dict[str, Any]]:
-    """Executa todos os indicadores."""
-    abas_arquivo_02 = _carregar_abas_arquivo_02(arquivo_02_bytes)
-    resultados: dict[str, dict[str, Any]] = {}
-
-    for config in MODULOS_CONFIG:
-        resultados[config["id"]] = _executar_modulo(
-            config=config,
-            arquivos_base=arquivos_base,
-            abas_arquivo_02=abas_arquivo_02,
+    if not isinstance(df_final, pd.DataFrame):
+        raise ValueError(
+            f"O módulo '{indicador.chave}' não retornou DataFrame como primeiro item."
         )
 
-    return resultados
+    arquivo_saida = gerar_excel_em_memoria(df_final, sheet_name=indicador.titulo[:31])
+
+    return {
+        "chave": indicador.chave,
+        "ordem": indicador.ordem,
+        "titulo": indicador.titulo,
+        "status": "sucesso",
+        "nome_entrada": None,
+        "nome_saida": indicador.nome_saida,
+        "arquivo_bytes": arquivo_saida,
+        "resumo": resumo,
+        "linhas_saida": len(df_final),
+        "erro": None,
+    }
 
 
-def _render_resultados(resultados: dict[str, dict[str, Any]]) -> None:
-    """Renderiza os resultados consolidados."""
-    st.markdown(
-        """
-        <div class="todos-card">
-            <div class="todos-card-title">Status do processamento</div>
-            <div class="todos-card-desc">
-                Resultado consolidado dos 10 indicadores processados.
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+# ==========================================================
+# INTERFACE
+# ==========================================================
+
+
+def render() -> None:
+    init_state()
+
+    st.title("Todos os Indicadores")
+    st.caption(
+        "Envie os 10 arquivos consolidados. O sistema valida o nome de cada arquivo, "
+        "executa os módulos individualmente na ordem oficial e gera os resultados finais."
     )
 
-    cards_html = ['<div class="todos-grid">']
+    st.markdown(
+        """
+        **Ordem de execução**
+        1. CVLI  
+        2. CVP_SPORTAL  
+        3. CVP_SIP ENDERECO  
+        4. PERTURBAÇÃO AO SOSSEGO ALHEIO  
+        5. DESLOCAMENTO FORCADO  
+        6. ROUBO DE VEÍCULO_SPORTAL LAT LONG  
+        7. ROUBO DE VEÍCULO_SIP ENDERECO  
+        8. ACIDENTE DE TRÂNSITO_SPORTAL_QGP  
+        9. FURTO DE VEICULO_SPORTAL  
+        10. FURTO DE VEICULO_SIP QGP
+        """
+    )
 
-    for config in MODULOS_CONFIG:
-        resultado = resultados.get(config["id"], {})
+    arquivos = st.file_uploader(
+        "Selecione os 10 arquivos consolidados",
+        type=["xlsx", "xls"],
+        accept_multiple_files=True,
+        key="todos_indicadores_upload_widget",
+    )
 
-        if resultado.get("sucesso"):
-            resumo = resultado.get("resumo", {})
-            badge = '<div class="todos-badge ok">Processado com sucesso</div>'
-            detalhe = (
-                f"<div style='color: rgba(255,255,255,0.72); font-size: 0.88rem;'>"
-                f"Adicionados: {resumo.get('adicionados', 'N/A')}<br>"
-                f"Total final: {resumo.get('total_final', 'N/A')}"
-                f"</div>"
+    uploads_identificados: dict[str, dict] = {}
+    conflitos: list[str] = []
+    desconhecidos: list[str] = []
+
+    if arquivos:
+        for arquivo in arquivos:
+            indicador = identificar_indicador_por_nome(arquivo.name)
+            if indicador is None:
+                desconhecidos.append(arquivo.name)
+                continue
+
+            if indicador.chave in uploads_identificados:
+                conflitos.append(
+                    f"Mais de um arquivo foi enviado para {indicador.titulo}."
+                )
+                continue
+
+            arquivo.seek(0)
+            uploads_identificados[indicador.chave] = {
+                "def": indicador,
+                "nome": arquivo.name,
+                "bytes": arquivo.read(),
+            }
+
+        st.session_state.todos_indicadores_uploads = uploads_identificados
+
+    st.subheader("Validação dos arquivos")
+
+    linhas_validacao = []
+    for indicador in INDICADORES:
+        info = uploads_identificados.get(indicador.chave) or st.session_state.todos_indicadores_uploads.get(indicador.chave)
+        if info:
+            linhas_validacao.append(
+                {
+                    "Ordem": indicador.ordem,
+                    "Indicador": indicador.titulo,
+                    "Status": "OK",
+                    "Arquivo": info["nome"],
+                }
             )
         else:
-            badge = '<div class="todos-badge err">Falha no processamento</div>'
-            detalhe = (
-                f"<div style='color: #fecaca; font-size: 0.88rem;'>"
-                f"{resultado.get('erro', 'Erro não informado')}"
-                f"</div>"
+            linhas_validacao.append(
+                {
+                    "Ordem": indicador.ordem,
+                    "Indicador": indicador.titulo,
+                    "Status": "PENDENTE",
+                    "Arquivo": "-",
+                }
             )
 
-        cards_html.append(
-            f"""
-            <div class="todos-item">
-                <div class="todos-item-title">{config["label"]}</div>
-                {badge}
-                {detalhe}
-            </div>
-            """
-        )
+    st.dataframe(pd.DataFrame(linhas_validacao), use_container_width=True, hide_index=True)
 
-    cards_html.append("</div>")
-    st.markdown("".join(cards_html), unsafe_allow_html=True)
+    if desconhecidos:
+        st.warning("Arquivos não reconhecidos: " + " | ".join(desconhecidos))
 
-    for config in MODULOS_CONFIG:
-        resultado = resultados.get(config["id"], {})
-        if resultado.get("sucesso"):
-            with st.expander(f"Prévia - {config['label']}", expanded=False):
-                st.dataframe(
-                    resultado["df_final"].head(200),
-                    use_container_width=True,
-                    hide_index=True,
-                )
-                st.download_button(
-                    label=f"💾 Baixar resultado - {config['label']}",
-                    data=resultado["excel_bytes"],
-                    file_name=f"{config['id']}_processado.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key=f"download_{config['id']}",
-                    use_container_width=True,
-                )
+    if conflitos:
+        st.error("Conflitos encontrados: " + " | ".join(conflitos))
 
+    total_ok = len(st.session_state.todos_indicadores_uploads)
+    st.info(f"Arquivos reconhecidos: {total_ok}/10")
 
-def interface_todos_indicadores() -> None:
-    """Interface principal do módulo agregador."""
-    _aplicar_estilo_todos_indicadores()
-
-    st.markdown(
-        """
-        <div class="todos-shell">
-            <div class="todos-hero">
-                <div class="todos-kicker">Módulo ativo</div>
-                <div class="todos-title">TODOS OS INDICADORES</div>
-                <p class="todos-description">
-                    Envie os 10 arquivos do Arquivo 01 em uma única seleção e, em seguida, o
-                    Arquivo 02 com múltiplas abas. O sistema irá identificar cada arquivo-base
-                    pelo nome e distribuir as abas do complemento para os respectivos indicadores.
-                </p>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        """
-        <div class="todos-card">
-            <div class="todos-card-title">Arquivos de entrada</div>
-            <div class="todos-card-desc">
-                Arquivo 01: selecione múltiplos arquivos-base de uma só vez.<br>
-                Arquivo 02: envie um único arquivo Excel com várias abas.
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    pode_processar = (
+        total_ok == 10
+        and len(conflitos) == 0
+        and len(desconhecidos) == 0
     )
 
     col1, col2 = st.columns(2)
-
     with col1:
-        arquivos_01 = st.file_uploader(
-            "📁 Arquivo 01 - Bases dos 10 indicadores",
-            type=["xlsx", "xls"],
-            accept_multiple_files=True,
-            key="todos_indicadores_arquivo_01_multiplos",
+        iniciar = st.button(
+            "Executar todos os indicadores",
+            type="primary",
+            disabled=not pode_processar,
+            use_container_width=True,
         )
-
     with col2:
-        arquivo_02 = st.file_uploader(
-            "📁 Arquivo 02 - Arquivo com múltiplas abas",
-            type=["xlsx", "xls"],
-            key="todos_indicadores_arquivo_02",
+        limpar = st.button(
+            "Limpar seleção",
+            use_container_width=True,
         )
 
-    total_arquivo_01 = len(arquivos_01) if arquivos_01 else 0
-    pode_processar = total_arquivo_01 > 0 and arquivo_02 is not None
+    if limpar:
+        limpar_estado()
+        st.rerun()
 
-    if arquivos_01:
-        st.info(f"Foram selecionados {total_arquivo_01} arquivo(s) no Arquivo 01.")
+    progresso_global = st.progress(0)
+    progresso_modulo = st.progress(0)
+    status_global = st.empty()
+    status_modulo = st.empty()
 
-    if arquivo_02 is not None:
-        try:
-            abas = pd.ExcelFile(arquivo_02).sheet_names
-            arquivo_02.seek(0)
-            st.info(f"Abas identificadas no Arquivo 02: {', '.join(abas)}")
-        except Exception:
-            arquivo_02.seek(0)
+    if iniciar:
+        resultados: list[dict] = []
+        total = len(INDICADORES)
 
-    st.markdown(
-        """
-        <div class="todos-card">
-            <div class="todos-card-title">Execução consolidada</div>
-            <div class="todos-card-desc">
-                O sistema tentará relacionar automaticamente os arquivos-base pelo nome do arquivo
-                e as informações complementares pelo nome das abas do Arquivo 02.
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        for i, indicador in enumerate(INDICADORES, start=1):
+            info = st.session_state.todos_indicadores_uploads[indicador.chave]
 
-    executar = st.button(
-        "🚀 Processar todos os indicadores",
-        type="primary",
-        use_container_width=True,
-        key="btn_processar_todos_indicadores",
-        disabled=not pode_processar,
-    )
-
-    if executar:
-        with st.spinner("Processando todos os indicadores..."):
-            arquivos_base = _mapear_arquivos_base(arquivos_01)
-
-            resultados = _executar_todos_indicadores(
-                arquivos_base=arquivos_base,
-                arquivo_02_bytes=arquivo_02.getvalue(),
+            status_global.info(
+                f"Processando indicador {i}/{total}: {indicador.titulo}"
             )
+            progresso_global.progress((i - 1) / total)
 
-            st.session_state["todos_indicadores_resultados"] = resultados
+            status_modulo.info(
+                f"Executando módulo atual: {indicador.titulo}"
+            )
+            progresso_modulo.progress(0.15)
 
-    resultados = st.session_state.get("todos_indicadores_resultados")
+            try:
+                resultado = executar_modulo(indicador, info["bytes"])
+                resultado["nome_entrada"] = info["nome"]
+                resultados.append(resultado)
 
-    if resultados:
-        _render_resultados(resultados)
+                progresso_modulo.progress(1.0)
+            except Exception as exc:
+                resultados.append(
+                    {
+                        "chave": indicador.chave,
+                        "ordem": indicador.ordem,
+                        "titulo": indicador.titulo,
+                        "status": "erro",
+                        "nome_entrada": info["nome"],
+                        "nome_saida": None,
+                        "arquivo_bytes": None,
+                        "resumo": None,
+                        "linhas_saida": None,
+                        "erro": str(exc),
+                    }
+                )
+                progresso_modulo.progress(1.0)
+
+            progresso_global.progress(i / total)
+
+        st.session_state.todos_indicadores_resultados = resultados
+        st.session_state.todos_indicadores_zip = empacotar_resultados_zip(resultados)
+
+        status_global.success("Processamento concluído.")
+        status_modulo.success("Execução finalizada.")
+
+    resultados = st.session_state.todos_indicadores_resultados
+    if not resultados:
+        return
+
+    st.subheader("Resumo final")
+
+    tabela_resumo = []
+    for item in resultados:
+        tabela_resumo.append(
+            {
+                "Ordem": item["ordem"],
+                "Indicador": item["titulo"],
+                "Status": item["status"].upper(),
+                "Arquivo de entrada": item["nome_entrada"],
+                "Arquivo de saída": item["nome_saida"] or "-",
+                "Linhas saída": item["linhas_saida"] if item["linhas_saida"] is not None else "-",
+                "Erro": item["erro"] or "-",
+            }
+        )
+
+    st.dataframe(pd.DataFrame(tabela_resumo), use_container_width=True, hide_index=True)
+
+    st.subheader("Downloads individuais")
+    for item in resultados:
+        if item["status"] != "sucesso":
+            continue
+
+        st.download_button(
+            label=f"Baixar {item['titulo']}",
+            data=item["arquivo_bytes"],
+            file_name=item["nome_saida"],
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key=f"download_{item['chave']}",
+            use_container_width=True,
+        )
+
+    if st.session_state.todos_indicadores_zip is not None:
+        nome_zip = f"todos-indicadores-qgp-{datetime.now().strftime('%Y%m%d-%H%M%S')}.zip"
+        st.download_button(
+            label="Baixar ZIP com todos os indicadores",
+            data=st.session_state.todos_indicadores_zip,
+            file_name=nome_zip,
+            mime="application/zip",
+            key="download_zip_todos_indicadores",
+            use_container_width=True,
+        )
+
+
+interface_todos_os_indicadores = render
