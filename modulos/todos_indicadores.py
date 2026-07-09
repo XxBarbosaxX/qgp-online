@@ -2,9 +2,11 @@
 Módulo Todos os Indicadores - Orquestrador principal do QGP Online.
 
 Fluxo:
+- recebe 1 arquivo mestre com várias abas;
 - recebe os 10 arquivos consolidados;
 - valida qual arquivo pertence a cada indicador pelo nome;
 - executa cada módulo individualmente na ordem oficial;
+- usa o arquivo mestre como Arquivo 01 e o consolidado como Arquivo 02;
 - exibe progresso global e progresso textual do módulo atual;
 - entrega downloads individuais e um ZIP final com todos os resultados.
 """
@@ -196,19 +198,18 @@ def empacotar_resultados_zip(resultados: list[dict]) -> bytes:
         for item in resultados:
             if item.get("status") != "sucesso":
                 continue
-            nome_saida = item["nome_saida"]
-            conteudo = item["arquivo_bytes"]
-            zf.writestr(nome_saida, conteudo)
+            zf.writestr(item["nome_saida"], item["arquivo_bytes"])
     buffer.seek(0)
     return buffer.getvalue()
 
 
 def init_state() -> None:
     defaults = {
+        "todos_indicadores_arquivo_mestre_nome": None,
+        "todos_indicadores_arquivo_mestre_bytes": None,
         "todos_indicadores_uploads": {},
         "todos_indicadores_resultados": None,
         "todos_indicadores_zip": None,
-        "todos_indicadores_execucao_em_andamento": False,
     }
     for chave, valor in defaults.items():
         if chave not in st.session_state:
@@ -217,22 +218,29 @@ def init_state() -> None:
 
 def limpar_estado() -> None:
     chaves = [
+        "todos_indicadores_arquivo_mestre_nome",
+        "todos_indicadores_arquivo_mestre_bytes",
         "todos_indicadores_uploads",
         "todos_indicadores_resultados",
         "todos_indicadores_zip",
-        "todos_indicadores_execucao_em_andamento",
         "todos_indicadores_upload_widget",
+        "todos_indicadores_upload_mestre_widget",
     ]
     for chave in chaves:
         if chave in st.session_state:
             del st.session_state[chave]
 
 
-def executar_modulo(indicador: IndicadorDef, arquivo_bytes: bytes) -> dict:
-    arquivo_base = io.BytesIO(arquivo_bytes)
-    arquivo_novo = io.BytesIO(arquivo_bytes)
+def executar_modulo(
+    indicador: IndicadorDef,
+    arquivo_mestre_bytes: bytes,
+    arquivo_consolidado_bytes: bytes,
+    nome_entrada: str,
+) -> dict:
+    arquivo_01 = io.BytesIO(arquivo_mestre_bytes)
+    arquivo_02 = io.BytesIO(arquivo_consolidado_bytes)
 
-    retorno = indicador.processar(arquivo_base, arquivo_novo)
+    retorno = indicador.processar(arquivo_01, arquivo_02)
 
     if isinstance(retorno, tuple) and len(retorno) >= 1:
         df_final = retorno[0]
@@ -254,7 +262,7 @@ def executar_modulo(indicador: IndicadorDef, arquivo_bytes: bytes) -> dict:
         "ordem": indicador.ordem,
         "titulo": indicador.titulo,
         "status": "sucesso",
-        "nome_entrada": None,
+        "nome_entrada": nome_entrada,
         "nome_saida": indicador.nome_saida,
         "arquivo_bytes": arquivo_saida,
         "resumo": resumo,
@@ -268,22 +276,39 @@ def render() -> None:
 
     st.title("Todos os Indicadores")
     st.caption(
-        "Envie os 10 arquivos consolidados. O sistema valida o nome de cada arquivo, "
-        "executa os módulos individualmente na ordem oficial e gera os resultados finais."
+        "Envie 1 arquivo mestre com várias abas e os 10 arquivos consolidados. "
+        "O sistema valida os nomes, executa os módulos na ordem oficial e gera os resultados."
     )
+
+    arquivo_mestre = st.file_uploader(
+        "Arquivo mestre com várias abas (base geral)",
+        type=["xlsx", "xls"],
+        accept_multiple_files=False,
+        key="todos_indicadores_upload_mestre_widget",
+    )
+
+    if arquivo_mestre is not None:
+        arquivo_mestre.seek(0)
+        st.session_state.todos_indicadores_arquivo_mestre_nome = arquivo_mestre.name
+        st.session_state.todos_indicadores_arquivo_mestre_bytes = arquivo_mestre.read()
+
+    if st.session_state.todos_indicadores_arquivo_mestre_nome:
+        st.success(
+            f"Arquivo mestre carregado: {st.session_state.todos_indicadores_arquivo_mestre_nome}"
+        )
 
     st.markdown(
         """
-        **Ordem de execução**
-        1. CVLI  
-        2. CVP_SPORTAL  
-        3. CVP_SIP ENDERECO  
-        4. PERTURBAÇÃO AO SOSSEGO ALHEIO  
-        5. DESLOCAMENTO FORCADO  
-        6. ROUBO DE VEÍCULO_SPORTAL LAT LONG  
-        7. ROUBO DE VEÍCULO_SIP ENDERECO  
+        **Arquivos consolidados esperados**
+        1. CVLI - 2026 - QGP  
+        2. CVP_SPORTAL - 2026 - QGP  
+        3. CVP_SIP ENDERECO - 2026 - QGP  
+        4. PERTURBAÇÃO AO SOSSEGO ALHEIO - 2026 - QGP  
+        5. DESLOCAMENTO FORCADO - 2026 - QGP  
+        6. ROUBO DE VEÍCULO_SPORTAL LAT LONG - 2026 - QGP  
+        7. ROUBO DE VEÍCULO_SIP ENDERECO - 2026 - QGP  
         8. ACIDENTE DE TRÂNSITO_SPORTAL_QGP  
-        9. FURTO DE VEICULO_SPORTAL  
+        9. FURTO DE VEICULO_SPORTAL - QGP  
         10. FURTO DE VEICULO_SIP QGP
         """
     )
@@ -337,7 +362,7 @@ def render() -> None:
                     "Ordem": indicador.ordem,
                     "Indicador": indicador.titulo,
                     "Status": "OK",
-                    "Arquivo": info["nome"],
+                    "Arquivo consolidado": info["nome"],
                 }
             )
         else:
@@ -346,7 +371,7 @@ def render() -> None:
                     "Ordem": indicador.ordem,
                     "Indicador": indicador.titulo,
                     "Status": "PENDENTE",
-                    "Arquivo": "-",
+                    "Arquivo consolidado": "-",
                 }
             )
 
@@ -363,10 +388,16 @@ def render() -> None:
         st.error("Conflitos encontrados: " + " | ".join(conflitos))
 
     total_ok = len(st.session_state.todos_indicadores_uploads)
-    st.info(f"Arquivos reconhecidos: {total_ok}/10")
+    mestre_ok = st.session_state.todos_indicadores_arquivo_mestre_bytes is not None
+
+    st.info(
+        f"Arquivo mestre: {'OK' if mestre_ok else 'PENDENTE'} | "
+        f"Arquivos consolidados reconhecidos: {total_ok}/10"
+    )
 
     pode_processar = (
-        total_ok == 10
+        mestre_ok
+        and total_ok == 10
         and len(conflitos) == 0
         and len(desconhecidos) == 0
     )
@@ -399,6 +430,7 @@ def render() -> None:
     if iniciar:
         resultados: list[dict] = []
         total = len(INDICADORES)
+        arquivo_mestre_bytes = st.session_state.todos_indicadores_arquivo_mestre_bytes
 
         for i, indicador in enumerate(INDICADORES, start=1):
             info = st.session_state.todos_indicadores_uploads[indicador.chave]
@@ -411,11 +443,15 @@ def render() -> None:
             status_modulo.info(
                 f"Executando módulo atual: {indicador.titulo}"
             )
-            progresso_modulo.progress(0.15)
+            progresso_modulo.progress(0.10)
 
             try:
-                resultado = executar_modulo(indicador, info["bytes"])
-                resultado["nome_entrada"] = info["nome"]
+                resultado = executar_modulo(
+                    indicador=indicador,
+                    arquivo_mestre_bytes=arquivo_mestre_bytes,
+                    arquivo_consolidado_bytes=info["bytes"],
+                    nome_entrada=info["nome"],
+                )
                 resultados.append(resultado)
                 progresso_modulo.progress(1.0)
 
