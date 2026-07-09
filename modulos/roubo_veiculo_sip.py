@@ -1,4 +1,7 @@
-"""<br>Módulo Roubo de Veículo (SIP) - Geocodificação por endereço<br>Versão Streamlit adaptada para o QGP Online.<br>"""
+"""
+Módulo Roubo de Veículo (SIP) - Geocodificação por endereço
+Versão Streamlit adaptada para o QGP Online.
+"""
 
 from __future__ import annotations
 
@@ -29,6 +32,7 @@ from modulos.utils import (
     normalizar_colunas,
     obter_ultima_datahora,
     renomear_colunas_equivalentes,
+    selecionar_aba_atualizacao,
 )
 
 NOME_ARQUIVO_FINAL = nome_arquivo_padrao(7, "ROUBO-DE-VEICULO-SIP-ENDERECO")
@@ -364,26 +368,8 @@ def _normalizar_nome_aba(nome: str) -> str:
 
 
 def _selecionar_aba_arquivo_02(sheet_names: list[str]) -> str:
-    prioridades = [
-        "ROUBOSIP",
-        "ROUBODEVEICULOSIP",
-        "ROUBOVEICULOSIP",
-    ]
-
-    normalizadas = {aba: _normalizar_nome_aba(aba) for aba in sheet_names}
-
-    for prioridade in prioridades:
-        for aba, nome_norm in normalizadas.items():
-            if nome_norm == prioridade:
-                return aba
-
-    for aba, nome_norm in normalizadas.items():
-        if "ROUBO" in nome_norm and "SIP" in nome_norm:
-            return aba
-
-    raise ValueError(
-        f"Aba de Roubo SIP não encontrada no Arquivo 02. Abas disponíveis: {sheet_names}"
-    )
+    """Seleciona a aba correta do Arquivo 02 conforme chaveamento oficial."""
+    return selecionar_aba_atualizacao(sheet_names, "roubo_veiculo_sip")
 
 
 def _selecionar_aba_arquivo_01(sheet_names: list[str]) -> str:
