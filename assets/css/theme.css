@@ -129,6 +129,8 @@ section[data-testid="stSidebar"] {
     font-weight: 780;
     color: #ffffff;
     text-align: left;
+    text-wrap: balance;
+    max-width: 22ch;
 }
 
 .hero-text {
@@ -137,6 +139,10 @@ section[data-testid="stSidebar"] {
     font-size: 1rem;
     line-height: 1.65;
     text-align: left;
+    text-wrap: pretty;
+    overflow-wrap: break-word;
+    hyphens: auto;
+    max-width: 90ch;
 }
 
 /* Título da seção */
@@ -148,6 +154,7 @@ section[data-testid="stSidebar"] {
     line-height: 1.05;
     letter-spacing: -0.025em;
     text-align: left;
+    text-wrap: balance;
 }
 
 /* Colunas principais homogêneas */
@@ -205,6 +212,7 @@ div[data-testid="column"] > div {
     text-transform: uppercase;
     line-height: 1.2;
     text-align: left;
+    text-wrap: balance;
 }
 
 .panel-title {
@@ -214,6 +222,8 @@ div[data-testid="column"] > div {
     font-weight: 760;
     line-height: 1.2;
     text-align: left;
+    text-wrap: balance;
+    max-width: 18ch;
 }
 
 .panel-description {
@@ -221,8 +231,11 @@ div[data-testid="column"] > div {
     color: var(--text-soft);
     font-size: 0.98rem;
     line-height: 1.62;
-    max-width: 34ch;
+    max-width: none;
     text-align: left;
+    text-wrap: pretty;
+    overflow-wrap: break-word;
+    hyphens: auto;
 }
 
 .panel-kicker,
@@ -260,6 +273,9 @@ div[data-testid="column"] > div {
     font-size: 0.84rem;
     line-height: 1.52;
     text-align: left;
+    text-wrap: pretty;
+    overflow-wrap: break-word;
+    hyphens: auto;
 }
 
 .panel-footer-tight {
@@ -411,6 +427,7 @@ hr {
 
     .hero-title {
         font-size: 1.35rem;
+        max-width: 20ch;
     }
 }
 
@@ -469,5 +486,9 @@ hr {
     .hero-text,
     .panel-description {
         font-size: 0.94rem;
+    }
+
+    .panel-title {
+        max-width: none;
     }
 }
