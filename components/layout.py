@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 import base64
-from datetime import datetime
 from pathlib import Path
 
 import streamlit as st
 
-from config.settings import VERSAO_SISTEMA
 from services.modules_loader import (
     INDICADORES_ATUALIZACAO,
     MAPEAMENTO,
@@ -74,20 +72,6 @@ def render_home_hero() -> None:
                 Sistema de atualização de indicadores de Segurança Pública da SUPESP/CE.
                 Selecione o módulo desejado para iniciar o processamento de forma clara, rápida e organizada.
             </p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def render_info_chips() -> None:
-    agora = datetime.now()
-    st.markdown(
-        f"""
-        <div class="chips-row">
-            <div class="metric-chip">Versão {VERSAO_SISTEMA}</div>
-            <div class="metric-chip">Data {agora.strftime("%d/%m/%Y")}</div>
-            <div class="metric-chip">Hora {agora.strftime("%H:%M:%S")}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -236,8 +220,6 @@ def render_home() -> None:
 
     with col3:
         render_panel_consolidacao()
-
-    render_info_chips()
 
 
 def render_modulo() -> None:
