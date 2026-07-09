@@ -5,10 +5,10 @@ Fluxo:
 - recebe 1 arquivo mestre com várias abas;
 - recebe os 10 arquivos consolidados;
 - valida qual arquivo pertence a cada indicador pelo nome;
-- executa cada módulo individualmente na ordem oficial;
+- mantém uma fila de execução na ordem oficial;
+- executa um indicador por vez ao clicar no botão;
 - usa o arquivo mestre como Arquivo 01 e o consolidado como Arquivo 02;
-- exibe progresso global e progresso textual do módulo atual;
-- entrega downloads individuais e um ZIP final com todos os resultados.
+- acumula resultados, exibe status e gera ZIP final.
 """
 
 from __future__ import annotations
@@ -180,8 +180,9 @@ def init_state() -> None:
         "todos_indicadores_arquivo_mestre_nome": None,
         "todos_indicadores_arquivo_mestre_bytes": None,
         "todos_indicadores_uploads": {},
-        "todos_indicadores_resultados": None,
+        "todos_indicadores_resultados": [],
         "todos_indicadores_zip": None,
+        "todos_indicadores_fila_indice_atual": 0,
     }
     for chave, valor in defaults.items():
         if chave not in st.session_state:
@@ -197,6 +198,7 @@ def limpar_estado() -> None:
         "todos_indicadores_zip",
         "todos_indicadores_upload_widget",
         "todos_indicadores_upload_mestre_widget",
+        "todos_indicadores_fila_indice_atual",
     ]
     for chave in chaves:
         if chave in st.session_state:
@@ -214,17 +216,20 @@ def executar_modulo(
 
     retorno = indicador.processar(arquivo_01, arquivo_02)
 
-    if isinstance(retorno, tuple) and len(retorno) >= 1:
-        df_final = retorno[0]
-        resumo = retorno[1] if len(retorno) > 1 else {}
-    else:
-        raise ValueError(
-            f"O módulo '{indicador.chave}' retornou um formato inesperado."
-        )
+    resumo = {}
+    df_final = None
 
-    if not isinstance(df_final, pd.DataFrame):
+    if isinstance(retorno, pd.DataFrame):
+        df_final = retorno
+    elif isinstance(retorno, tuple):
+        if len(retorno) >= 1 and isinstance(retorno[0], pd.DataFrame):
+            df_final = retorno[0]
+            if len(retorno) > 1:
+                resumo = retorno[1]
+
+    if df_final is None:
         raise ValueError(
-            f"O módulo '{indicador.chave}' não retornou DataFrame como primeiro item."
+            f"O módulo '{indicador.chave}' retornou tipo inválido: {type(retorno).__name__}"
         )
 
     arquivo_saida = gerar_excel_em_memoria(df_final, sheet_name=indicador.titulo[:31])
@@ -249,7 +254,7 @@ def render() -> None:
     st.title("Todos os Indicadores")
     st.caption(
         "Envie 1 arquivo mestre com várias abas e os 10 arquivos consolidados. "
-        "O sistema valida os nomes, executa os módulos na ordem oficial e gera os resultados."
+        "O sistema mantém uma fila e executa um indicador por vez."
     )
 
     arquivo_mestre = st.file_uploader(
@@ -363,7 +368,7 @@ def render() -> None:
         st.error("Conflitos encontrados: " + " | ".join(conflitos))
 
     if pendentes:
-        st.info("Indicadores pendentes: " + " | ".join(pendentes))
+        st.info("Indicadores sem arquivo consolidado: " + " | ".join(pendentes))
 
     total_ok = len(st.session_state.todos_indicadores_uploads)
     mestre_ok = st.session_state.todos_indicadores_arquivo_mestre_bytes is not None
@@ -373,26 +378,45 @@ def render() -> None:
         f"Arquivos consolidados reconhecidos: {total_ok}/10"
     )
 
-    pode_processar = (
+    # =========================
+    # CONTROLE DA FILA
+    # =========================
+
+    total_indicadores = len(INDICADORES)
+    indice_atual = st.session_state.todos_indicadores_fila_indice_atual
+
+    if indice_atual >= total_indicadores:
+        st.success("Fila concluída: todos os indicadores já foram processados.")
+        proximo_indicador_titulo = "Nenhum (fila concluída)"
+    else:
+        proximo_indicador_titulo = INDICADORES[indice_atual].titulo
+
+    st.write(
+        f"Indicador atual na fila: {indice_atual + 1}/{total_indicadores} - "
+        f"{proximo_indicador_titulo}"
+    )
+
+    pode_executar_proximo = (
         mestre_ok
         and total_ok == 10
         and len(conflitos) == 0
         and len(desconhecidos) == 0
+        and indice_atual < total_indicadores
     )
 
     col1, col2 = st.columns(2)
 
     with col1:
-        iniciar = st.button(
-            "Executar todos os indicadores",
+        executar_proximo = st.button(
+            "Executar próximo indicador da fila",
             type="primary",
-            disabled=not pode_processar,
+            disabled=not pode_executar_proximo,
             use_container_width=True,
         )
 
     with col2:
         limpar = st.button(
-            "Limpar seleção",
+            "Limpar seleção e reiniciar fila",
             use_container_width=True,
         )
 
@@ -400,41 +424,49 @@ def render() -> None:
         limpar_estado()
         st.rerun()
 
-    progresso_global = st.progress(0)
+    progresso_global = st.progress(
+        indice_atual / total_indicadores if total_indicadores > 0 else 0.0
+    )
     progresso_modulo = st.progress(0)
     status_global = st.empty()
     status_modulo = st.empty()
 
-    if iniciar:
-        resultados: list[dict] = []
-        total = len(INDICADORES)
-        arquivo_mestre_bytes = st.session_state.todos_indicadores_arquivo_mestre_bytes
+    # =========================
+    # EXECUÇÃO DE UM INDICADOR
+    # =========================
 
-        for i, indicador in enumerate(INDICADORES, start=1):
-            info = st.session_state.todos_indicadores_uploads[indicador.chave]
+    if executar_proximo:
+        indicador = INDICADORES[indice_atual]
+        info = st.session_state.todos_indicadores_uploads.get(indicador.chave)
 
+        if info is None:
+            st.error(
+                f"Não há arquivo consolidado para o indicador {indicador.titulo}."
+            )
+        else:
             status_global.info(
-                f"Processando indicador {i}/{total}: {indicador.titulo}"
+                f"Executando indicador {indice_atual + 1}/{total_indicadores}: "
+                f"{indicador.titulo}"
             )
-            progresso_global.progress((i - 1) / total)
-
-            status_modulo.info(
-                f"Executando módulo atual: {indicador.titulo}"
-            )
-            progresso_modulo.progress(0.10)
+            status_modulo.info(f"Executando módulo atual: {indicador.titulo}")
+            progresso_modulo.progress(0.2)
 
             try:
                 resultado = executar_modulo(
                     indicador=indicador,
-                    arquivo_mestre_bytes=arquivo_mestre_bytes,
+                    arquivo_mestre_bytes=st.session_state.todos_indicadores_arquivo_mestre_bytes,
                     arquivo_consolidado_bytes=info["bytes"],
                     nome_entrada=info["nome"],
                 )
-                resultados.append(resultado)
-                progresso_modulo.progress(1.0)
-
+                st.session_state.todos_indicadores_resultados.append(resultado)
+                status_modulo.success(
+                    f"Indicador {indicador.titulo} concluído com sucesso."
+                )
             except Exception as exc:
-                resultados.append(
+                st.error(
+                    f"Erro no indicador {indicador.ordem} - {indicador.titulo}: {exc}"
+                )
+                st.session_state.todos_indicadores_resultados.append(
                     {
                         "chave": indicador.chave,
                         "ordem": indicador.ordem,
@@ -448,32 +480,44 @@ def render() -> None:
                         "erro": str(exc),
                     }
                 )
-                progresso_modulo.progress(1.0)
 
-            progresso_global.progress(i / total)
+            progresso_modulo.progress(1.0)
 
-        st.session_state.todos_indicadores_resultados = resultados
-        st.session_state.todos_indicadores_zip = empacotar_resultados_zip(resultados)
+            # avança a fila
+            st.session_state.todos_indicadores_fila_indice_atual += 1
+            progresso_global.progress(
+                st.session_state.todos_indicadores_fila_indice_atual / total_indicadores
+            )
 
-        status_global.success("Processamento concluído.")
-        status_modulo.success("Execução finalizada.")
+            # atualiza ZIP com o que já foi gerado
+            st.session_state.todos_indicadores_zip = empacotar_resultados_zip(
+                st.session_state.todos_indicadores_resultados
+            )
 
     resultados = st.session_state.todos_indicadores_resultados
     if not resultados:
         return
 
-    st.subheader("Resumo final")
+    st.subheader("Resumo da fila e resultados")
 
     tabela_resumo = []
-    for item in resultados:
+    for item in sorted(resultados, key=lambda x: x["ordem"]):
+        if item["status"] == "sucesso":
+            estado_fila = "Concluído"
+        else:
+            estado_fila = "Erro"
+
         tabela_resumo.append(
             {
                 "Ordem": item["ordem"],
                 "Indicador": item["titulo"],
+                "Estado fila": estado_fila,
                 "Status": item["status"].upper(),
                 "Arquivo de entrada": item["nome_entrada"],
                 "Arquivo de saída": item["nome_saida"] or "-",
-                "Linhas saída": item["linhas_saida"] if item["linhas_saida"] is not None else "-",
+                "Linhas saída": item["linhas_saida"]
+                if item["linhas_saida"] is not None
+                else "-",
                 "Erro": item["erro"] or "-",
             }
         )
@@ -484,9 +528,9 @@ def render() -> None:
         hide_index=True,
     )
 
-    st.subheader("Downloads individuais")
+    st.subheader("Downloads individuais (já concluídos)")
 
-    for item in resultados:
+    for item in sorted(resultados, key=lambda x: x["ordem"]):
         if item["status"] != "sucesso":
             continue
 
@@ -502,7 +546,7 @@ def render() -> None:
     if st.session_state.todos_indicadores_zip is not None:
         nome_zip = f"todos-indicadores-qgp-{datetime.now().strftime('%Y%m%d-%H%M%S')}.zip"
         st.download_button(
-            label="Baixar ZIP com todos os indicadores",
+            label="Baixar ZIP com indicadores já concluídos",
             data=st.session_state.todos_indicadores_zip,
             file_name=nome_zip,
             mime="application/zip",
