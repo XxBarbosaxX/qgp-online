@@ -1,1223 +1,921 @@
-"""<br>Módulo TODOS OS INDICADORES<br>
-Processamento consolidado de múltiplos indicadores.<br>
-Chama os módulos individuais com suas lógicas reais (incluindo geocodificação).<br>
-"""
-
-from __future__ import annotations
-
-import re
-import unicodedata
-import zipfile
-from contextlib import contextmanager
+import os
+import io
+import sys
+import traceback
+import importlib.util
+import threading
 from datetime import datetime
-from io import BytesIO
-from types import SimpleNamespace
+from pathlib import Path
+from dataclasses import dataclass
+from typing import Dict, List, Optional
 
-import pandas as pd
-import streamlit as st
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox
 
-from modulos.acidente_transito import processar_acidente_transito
-from modulos.cvli import ProcessadorCVLI
-from modulos.cvp_sip import processar_cvp_sip
-from modulos.deslocamento_forcado import processar_deslocamento_forcado
-from modulos.furto_veiculo_sip import processar_furto_veiculo_sip
-from modulos.furto_veiculo_sportal import processar_furto_veiculo_sportal
-from modulos.perturbacao_sossego import processar_perturbacao_sossego
-from modulos.roubo_veiculo_sip import processar_roubo_veiculo_sip
-from modulos.roubo_veiculo_sportal import processar_roubo_veiculo_sportal
-from modulos.utils import (
-    alinhar_colunas_com_base,
-    converter_coordenadas_para_wgs84_auto,
-    criar_coluna_datahora,
-    encontrar_coluna_data,
-    encontrar_coluna_hora,
-    encontrar_coluna_por_nomes,
-    excluir_coordenadas_invalidas,
-    filtrar_apenas_registros_posteriores,
-    nome_arquivo_padrao,
-    normalizar_colunas,
-    obter_ultima_datahora,
-    renomear_colunas_equivalentes,
-)
+BASE_DIR = Path(__file__).resolve().parent
+MODULES_DIR = BASE_DIR / "embedded_modules"
+MODULES_DIR.mkdir(exist_ok=True)
 
-INDICADORES_CONFIG = {
-    "CVLI": {
-        "ordem": 1,
-        "label": "CVLI",
-        "key": "cvli",
-        "nome_arquivo": f"1-CVLI-{datetime.now().year}-QGP.xlsx",
-        "geocodifica": False,
-    },
-    "CVP (SPORTAL)": {
-        "ordem": 2,
-        "label": "CVP (SPORTAL)",
-        "key": "cvp_sportal",
-        "nome_arquivo": nome_arquivo_padrao(2, "CVP-SPORTAL"),
-        "geocodifica": False,
-    },
-    "CVP (SIP)": {
-        "ordem": 3,
-        "label": "CVP (SIP)",
-        "key": "cvp_sip",
-        "nome_arquivo": nome_arquivo_padrao(3, "CVP-SIP-ENDERECO"),
-        "geocodifica": True,
-    },
-    "PERTURBAÇÃO AO SOSSEGO ALHEIO": {
-        "ordem": 4,
-        "label": "PERTURBAÇÃO AO SOSSEGO ALHEIO",
-        "key": "perturbacao_sossego",
-        "nome_arquivo": nome_arquivo_padrao(4, "PERTURBACAO-AO-SOSSEGO-ALHEIO"),
-        "geocodifica": False,
-    },
-    "DESLOCAMENTO FORÇADO": {
-        "ordem": 5,
-        "label": "DESLOCAMENTO FORÇADO",
-        "key": "deslocamento_forcado",
-        "nome_arquivo": nome_arquivo_padrao(5, "DESLOCAMENTO-FORCADO"),
-        "geocodifica": False,
-    },
-    "ROUBO DE VEÍCULO (SPORTAL)": {
-        "ordem": 6,
-        "label": "ROUBO DE VEÍCULO (SPORTAL)",
-        "key": "roubo_sportal",
-        "nome_arquivo": nome_arquivo_padrao(6, "ROUBO-DE-VEICULO-SPORTAL-LAT-LONG"),
-        "geocodifica": False,
-    },
-    "ROUBO DE VEÍCULO (SIP)": {
-        "ordem": 7,
-        "label": "ROUBO DE VEÍCULO (SIP)",
-        "key": "roubo_sip",
-        "nome_arquivo": nome_arquivo_padrao(7, "ROUBO-DE-VEICULO-SIP-ENDERECO"),
-        "geocodifica": True,
-    },
-    "ACIDENTE DE TRÂNSITO": {
-        "ordem": 8,
-        "label": "ACIDENTE DE TRÂNSITO",
-        "key": "acidente_transito",
-        "nome_arquivo": nome_arquivo_padrao(8, "ACIDENTE-DE-TRANSITO-SPORTAL-QGP"),
-        "geocodifica": False,
-    },
-    "FURTO DE VEÍCULO (SPORTAL)": {
-        "ordem": 9,
-        "label": "FURTO DE VEÍCULO (SPORTAL)",
-        "key": "furto_sportal",
-        "nome_arquivo": nome_arquivo_padrao(9, "FURTO-DE-VEICULO-SPORTAL-QGP"),
-        "geocodifica": False,
-    },
-    "FURTO DE VEÍCULO (SIP)": {
-        "ordem": 10,
-        "label": "FURTO DE VEÍCULO (SIP)",
-        "key": "furto_sip",
-        "nome_arquivo": nome_arquivo_padrao(10, "FURTO-DE-VEICULO-SIP-ENDERECO"),
-        "geocodifica": True,
-    },
-}
-
-INDICADORES_ORDEM = [
-    "CVLI",
-    "CVP (SPORTAL)",
-    "CVP (SIP)",
-    "PERTURBAÇÃO AO SOSSEGO ALHEIO",
-    "DESLOCAMENTO FORÇADO",
-    "ROUBO DE VEÍCULO (SPORTAL)",
-    "ROUBO DE VEÍCULO (SIP)",
-    "ACIDENTE DE TRÂNSITO",
-    "FURTO DE VEÍCULO (SPORTAL)",
-    "FURTO DE VEÍCULO (SIP)",
+INDICATOR_OPTIONS = [
+    (0, "TODOS OS INDICADORES"),
+    (1, "CVLI"),
+    (2, "CVP (SPORTAL)"),
+    (3, "CVP (SIP)"),
+    (4, "PERTURBAÇÃO DO SOSSEGO ALHEIO"),
+    (5, "DESLOCAMENTO FORÇADO"),
+    (6, "ROUBO DE VEÍCULO (SPORTAL)"),
+    (7, "ROUBO DE VEÍCULO (SIP)"),
+    (8, "ACIDENTE DE TRÂNSITO"),
+    (9, "FURTO (SPORTAL)"),
+    (10, "FURTO (SIP)"),
 ]
 
+SHEET_MAP = {
+    1: "CVLI",
+    2: "CVPCIOPS",
+    3: "CVPSIP",
+    4: "Perturbação ao Sossego Alheio",
+    5: "Grupo Criminoso",
+    6: "CVPCIOPS",
+    7: "CVPSIP",
+    8: "Acidente de Trânsito",
+    9: "Furto CIOPS",
+    10: "Furto SIP",
+}
 
-def _aplicar_estilo_todos_indicadores() -> None:
-    st.markdown(
-        """
-        <style>
-            .todos-shell {
-                display: flex;
-                flex-direction: column;
-                gap: 1rem;
-                margin-bottom: 1rem;
-            }
-
-            .todos-hero {
-                background: linear-gradient(135deg, rgba(8, 54, 49, 0.92) 0%, rgba(9, 79, 70, 0.92) 100%);
-                border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 18px;
-                padding: 1.4rem 1.4rem 1.2rem 1.4rem;
-                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
-            }
-
-            .todos-kicker {
-                font-size: 0.78rem;
-                text-transform: uppercase;
-                letter-spacing: 0.14em;
-                font-weight: 800;
-                color: #f7b267;
-                margin-bottom: 0.55rem;
-            }
-
-            .todos-title {
-                font-size: 2rem;
-                line-height: 1.1;
-                font-weight: 900;
-                color: #f8fafc;
-                margin: 0 0 0.5rem 0;
-            }
-
-            .todos-description {
-                color: rgba(255, 255, 255, 0.82);
-                font-size: 0.98rem;
-                line-height: 1.6;
-                margin: 0;
-                max-width: 920px;
-            }
-
-            .todos-section-card {
-                background: rgba(255, 255, 255, 0.02);
-                border: 1px solid rgba(255, 255, 255, 0.07);
-                border-radius: 18px;
-                padding: 1.1rem 1.1rem 0.7rem 1.1rem;
-                margin: 1rem 0;
-            }
-
-            .todos-section-title {
-                font-size: 1.15rem;
-                font-weight: 800;
-                color: #f8fafc;
-                margin-bottom: 0.25rem;
-            }
-
-            .todos-section-desc {
-                font-size: 0.93rem;
-                color: rgba(255, 255, 255, 0.70);
-                margin-bottom: 0.9rem;
-                line-height: 1.5;
-            }
-
-            .todos-grid-status {
-                display: grid;
-                grid-template-columns: repeat(4, minmax(0, 1fr));
-                gap: 0.85rem;
-                margin: 1rem 0 0.2rem 0;
-            }
-
-            .todos-stat {
-                background: rgba(255, 255, 255, 0.025);
-                border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 16px;
-                padding: 0.95rem 1rem;
-            }
-
-            .todos-stat-label {
-                font-size: 0.78rem;
-                text-transform: uppercase;
-                letter-spacing: 0.08em;
-                color: rgba(255, 255, 255, 0.58);
-                margin-bottom: 0.35rem;
-                font-weight: 700;
-            }
-
-            .todos-stat-value {
-                font-size: 1.45rem;
-                font-weight: 900;
-                color: #ffffff;
-                line-height: 1;
-            }
-
-            .todos-badge-wrap {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 0.5rem;
-                margin-top: 0.55rem;
-                margin-bottom: 0.15rem;
-            }
-
-            .todos-badge {
-                display: inline-flex;
-                align-items: center;
-                gap: 0.35rem;
-                padding: 0.5rem 0.72rem;
-                border-radius: 999px;
-                font-size: 0.82rem;
-                font-weight: 700;
-                border: 1px solid rgba(255, 255, 255, 0.08);
-                background: rgba(255, 255, 255, 0.03);
-                color: #e5f3ee;
-            }
-
-            .todos-badge.ok {
-                background: rgba(34, 197, 94, 0.10);
-                color: #b7f7c9;
-                border-color: rgba(34, 197, 94, 0.22);
-            }
-
-            .todos-badge.warn {
-                background: rgba(245, 158, 11, 0.10);
-                color: #fde4b0;
-                border-color: rgba(245, 158, 11, 0.22);
-            }
-
-            .todos-badge.err {
-                background: rgba(239, 68, 68, 0.10);
-                color: #fecaca;
-                border-color: rgba(239, 68, 68, 0.22);
-            }
-
-            .todos-mini-list {
-                margin: 0.6rem 0 0 0;
-                padding-left: 1rem;
-                color: rgba(255,255,255,0.78);
-                font-size: 0.92rem;
-            }
-
-            .todos-divider-space {
-                height: 0.2rem;
-            }
-
-            @media (max-width: 980px) {
-                .todos-grid-status {
-                    grid-template-columns: repeat(2, minmax(0, 1fr));
-                }
-            }
-
-            @media (max-width: 640px) {
-                .todos-grid-status {
-                    grid-template-columns: 1fr;
-                }
-
-                .todos-title {
-                    font-size: 1.6rem;
-                }
-            }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def _normalizar_texto(texto: str) -> str:
-    texto = str(texto).strip().upper()
-    texto = unicodedata.normalize("NFKD", texto)
-    texto = "".join(ch for ch in texto if not unicodedata.combining(ch))
-    texto = re.sub(r"[^A-Z0-9]+", "-", texto)
-    texto = re.sub(r"-+", "-", texto).strip("-")
-    return texto
-
-
-def _tokens_nome_arquivo(nome_arquivo: str) -> str:
-    nome_base = str(nome_arquivo).rsplit(".", 1)[0]
-    return _normalizar_texto(nome_base)
-
-
-def _mapa_tokens_indicadores_nome() -> dict[str, list[str]]:
-    return {
-        "CVLI": ["CVLI", "1-CVLI"],
-        "CVP (SPORTAL)": ["CVP-SPORTAL", "2-CVP-SPORTAL"],
-        "CVP (SIP)": ["CVP-SIP", "CVP-SIP-ENDERECO", "3-CVP-SIP-ENDERECO"],
-        "PERTURBAÇÃO AO SOSSEGO ALHEIO": [
-            "PERTURBACAO-AO-SOSSEGO-ALHEIO",
-            "PERTURBACAO-SOSSEGO-ALHEIO",
-            "4-PERTURBACAO-AO-SOSSEGO-ALHEIO",
-        ],
-        "DESLOCAMENTO FORÇADO": ["DESLOCAMENTO-FORCADO", "5-DESLOCAMENTO-FORCADO"],
-        "ROUBO DE VEÍCULO (SPORTAL)": [
-            "ROUBO-DE-VEICULO-SPORTAL-LAT-LONG",
-            "ROUBO-DE-VEICULO-SPORTAL",
-            "6-ROUBO-DE-VEICULO-SPORTAL-LAT-LONG",
-        ],
-        "ROUBO DE VEÍCULO (SIP)": [
-            "ROUBO-DE-VEICULO-SIP-ENDERECO",
-            "ROUBO-DE-VEICULO-SIP",
-            "7-ROUBO-DE-VEICULO-SIP-ENDERECO",
-        ],
-        "ACIDENTE DE TRÂNSITO": [
-            "ACIDENTE-DE-TRANSITO-SPORTAL-QGP",
-            "ACIDENTE-DE-TRANSITO",
-            "8-ACIDENTE-DE-TRANSITO-SPORTAL-QGP",
-        ],
-        "FURTO DE VEÍCULO (SPORTAL)": [
-            "FURTO-DE-VEICULO-SPORTAL-QGP",
-            "FURTO-DE-VEICULO-SPORTAL",
-            "9-FURTO-DE-VEICULO-SPORTAL-QGP",
-        ],
-        "FURTO DE VEÍCULO (SIP)": [
-            "FURTO-DE-VEICULO-SIP-ENDERECO",
-            "FURTO-DE-VEICULO-SIP",
-            "10-FURTO-DE-VEICULO-SIP-ENDERECO",
-        ],
-    }
-
-
-def _identificar_por_nome(nome_arquivo: str) -> str | None:
-    nome_norm = _tokens_nome_arquivo(nome_arquivo)
-    correspondencias = []
-
-    for indicador, tokens in _mapa_tokens_indicadores_nome().items():
-        for token in tokens:
-            token_norm = _normalizar_texto(token)
-            if token_norm and token_norm in nome_norm:
-                correspondencias.append((len(token_norm), indicador))
-
-    if not correspondencias:
-        return None
-
-    correspondencias.sort(reverse=True)
-    return correspondencias[0][1]
-
-
-def _identificar_por_conteudo(arquivo) -> str | None:
-    try:
-        arquivo.seek(0)
-        df = pd.read_excel(arquivo, nrows=200)
-        arquivo.seek(0)
-    except Exception:
-        return None
-
-    df_norm = normalizar_colunas(df)
-    colunas = set(df_norm.columns)
-
-    def tem_algum(*cols):
-        return any(c in colunas for c in cols)
-
-    if df_norm.empty:
-        return None
-
-    natureza_series = (
-        df_norm["natureza"].astype(str).fillna("").unique()
-        if "natureza" in df_norm.columns
-        else []
-    )
-    natureza_tokens = {_normalizar_texto(v) for v in natureza_series}
-
-    if tem_algum("natureza", "tipo_crime", "tipo_ocorrencia") and tem_algum("vitima", "nome_vitima"):
-        if tem_algum("cvli", "homicidio", "latrocini"):
-            return "CVLI"
-
-    if tem_algum("logradouro", "endereco") and tem_algum("bairro", "municipio"):
-        if tem_algum("tipo_crime", "natureza") and tem_algum("cvp", "crime_contra_patrimonio"):
-            return "CVP (SIP)"
-
-    if tem_algum("latitude", "lat") and tem_algum("longitude", "long", "lon"):
-        if tem_algum("cvp", "crime_contra_patrimonio"):
-            return "CVP (SPORTAL)"
-
-    if "natureza" in df_norm.columns:
-        if any("PERTURBACAO" in v or "SOSSEGO" in v for v in natureza_tokens):
-            return "PERTURBAÇÃO AO SOSSEGO ALHEIO"
-
-        if any("DESLOCAMENTO-FORCADO" in v or "DESLOCAMENTO" in v for v in natureza_tokens):
-            return "DESLOCAMENTO FORÇADO"
-
-    if tem_algum("placa", "chassi", "modelo", "veiculo", "categoria_veiculo"):
-        if tem_algum("logradouro", "endereco", "bairro", "municipio"):
-            if "natureza" in df_norm.columns:
-                if any("ROUBO" in v for v in natureza_tokens):
-                    return "ROUBO DE VEÍCULO (SIP)"
-                if any("FURTO" in v for v in natureza_tokens):
-                    return "FURTO DE VEÍCULO (SIP)"
-        elif tem_algum("latitude", "lat") and tem_algum("longitude", "long", "lon"):
-            if "natureza" in df_norm.columns:
-                if any("ROUBO" in v for v in natureza_tokens):
-                    return "ROUBO DE VEÍCULO (SPORTAL)"
-                if any("FURTO" in v for v in natureza_tokens):
-                    return "FURTO DE VEÍCULO (SPORTAL)"
-
-    if tem_algum("natureza", "tipo_acidente", "tipo_crime"):
-        if "natureza" in df_norm.columns:
-            valores_nat = {_normalizar_texto(str(v)) for v in df_norm["natureza"].astype(str).unique()}
-        elif "tipo_acidente" in df_norm.columns:
-            valores_nat = {_normalizar_texto(str(v)) for v in df_norm["tipo_acidente"].astype(str).unique()}
-        else:
-            valores_nat = {_normalizar_texto(str(v)) for v in df_norm["tipo_crime"].astype(str).unique()}
-
-        if any("ACIDENTE" in v or "COLISAO" in v or "TRANSITO" in v for v in valores_nat):
-            return "ACIDENTE DE TRÂNSITO"
-
-    return None
-
-
-def _identificar_indicador(arquivo) -> tuple[str | None, str]:
-    nome_arq = getattr(arquivo, "name", "arquivo_sem_nome")
-    ind_nome = _identificar_por_nome(nome_arq)
-    if ind_nome:
-        return ind_nome, "Identificado automaticamente pelo nome do arquivo."
-
-    ind_cont = _identificar_por_conteudo(arquivo)
-    if ind_cont:
-        return ind_cont, "Identificado automaticamente pelo conteúdo da planilha."
-
-    return None, "Não foi possível identificar o indicador pelo nome ou conteúdo."
-
-
-def _registrar_arquivos_base(arquivos_upload) -> tuple[list[str], list[str]]:
-    reconhecidos = []
-    nao_reconhecidos = []
-
-    st.session_state.todos_arq01_bytes = {}
-    st.session_state.todos_arq01_nomes = {}
-    st.session_state.todos_erros_upload = {}
-    st.session_state.todos_duplicados_upload = {}
-
-    for arq in arquivos_upload:
-        indicador, origem_msg = _identificar_indicador(arq)
-
-        if indicador is None:
-            nao_reconhecidos.append(arq.name)
-            continue
-
-        if indicador in st.session_state.todos_arq01_bytes:
-            st.session_state.todos_duplicados_upload.setdefault(indicador, []).append(arq.name)
-            continue
-
-        arq.seek(0)
-        st.session_state.todos_arq01_bytes[indicador] = arq.read()
-        st.session_state.todos_arq01_nomes[indicador] = f"{arq.name} ({origem_msg})"
-        reconhecidos.append(indicador)
-
-    return reconhecidos, nao_reconhecidos
-
-
-@contextmanager
-def _silenciar_streamlit_temporariamente():
-    funcoes_silenciadas = [
-        "write",
-        "dataframe",
-        "table",
-        "caption",
-        "info",
-        "success",
-        "warning",
-        "error",
-        "markdown",
-        "text",
-        "subheader",
-        "header",
-        "divider",
-        "code",
-        "toast",
-        "balloons",
-        "snow",
+SHEET_FALLBACKS = {
+    4: [
+        "Perturbação ao Sossego Alheio",
+        "Perturbação de Sossego Alheio",
+        "Perturbacao ao Sossego Alheio",
+        "Perturbacao de Sossego Alheio",
     ]
-    originais = {}
+}
 
-    def _noop(*args, **kwargs):
+BASE_LABELS = {
+    1: "Arquivo 01 - Base CVLI",
+    2: "Arquivo 01 - Base CVP (SPORTAL)",
+    3: "Arquivo 01 - Base CVP (SIP)",
+    4: "Arquivo 01 - Base Perturbação do Sossego Alheio",
+    5: "Arquivo 01 - Base Deslocamento Forçado",
+    6: "Arquivo 01 - Base Roubo de Veículo (SPORTAL)",
+    7: "Arquivo 01 - Base Roubo de Veículo (SIP)",
+    8: "Arquivo 01 - Base Acidente de Trânsito",
+    9: "Arquivo 01 - Base Furto (SPORTAL)",
+    10: "Arquivo 01 - Base Furto (SIP)",
+}
+
+MODULE_MAP = {
+    1: ('CVLI', '1-CVLI.py'),
+    2: ('CVP (SPORTAL)', '2-CVP-SPORTAL-2.py'),
+    3: ('CVP (SIP)', '3-CVP-SIP-3.py'),
+    4: ('PERTURBAÇÃO DO SOSSEGO ALHEIO', '4-Pertubacao-do-Sossego-Alheio-4.py'),
+    5: ('DESLOCAMENTO FORÇADO', '5-Deslocamento-Forcado-5.py'),
+    6: ('ROUBO DE VEÍCULO (SPORTAL)', '6-Roubo-de-Veiculo-Sportal-6.py'),
+    7: ('ROUBO DE VEÍCULO (SIP)', '7-Roubo-de-Veiculo-Sip-7.py'),
+    8: ('ACIDENTE DE TRÂNSITO', '8-Acidente-de-Transito-8.py'),
+    9: ('FURTO (SPORTAL)', '9-Furto-Sportal-9.py'),
+    10: ('FURTO (SIP)', '10-Furto-Sip-10.py'),
+}
+
+STATUS_AGUARDANDO = 'Aguardando'
+STATUS_EM_FILA = 'Em fila'
+STATUS_PROCESSANDO = 'Processando...'
+STATUS_CONCLUIDO = 'Concluído'
+STATUS_FALHA = 'Falha'
+STATUS_CANCELADO = 'Cancelado'
+
+@dataclass
+class IndicatorResult:
+    code: int
+    name: str
+    success: bool
+    output_file: Optional[str] = None
+    message: str = ''
+    error: str = ''
+    cancelled: bool = False
+
+
+class UILogger:
+    def __init__(self, widget: tk.Text):
+        self.widget = widget
+
+    def log(self, text: str) -> None:
+        self.widget.configure(state='normal')
+        self.widget.insert('end', text.rstrip() + '\n')
+        self.widget.see('end')
+        self.widget.configure(state='disabled')
+        self.widget.update_idletasks()
+
+
+class MessageCollector:
+    def __init__(self):
+        self.infos = []
+        self.warnings = []
+        self.errors = []
+
+    def showinfo(self, title, message):
+        self.infos.append((title, message))
+
+    def showwarning(self, title, message):
+        self.warnings.append((title, message))
+
+    def showerror(self, title, message):
+        self.errors.append((title, message))
+
+
+class DummyWidget:
+    def __init__(self, *args, **kwargs):
+        self.children = {}
+        self.master = args[0] if args else None
+        self.tk = getattr(self.master, 'tk', self)
+        self._last_child_ids = {}
+        self._w = '.'
+
+    def pack(self, *args, **kwargs):
         return None
 
-    class _DummyContext:
-        def __enter__(self):
-            return self
+    def grid(self, *args, **kwargs):
+        return None
 
-        def __exit__(self, exc_type, exc, tb):
-            return False
+    def place(self, *args, **kwargs):
+        return None
 
-        def write(self, *args, **kwargs):
-            return None
+    def config(self, *args, **kwargs):
+        return None
 
-        def dataframe(self, *args, **kwargs):
-            return None
+    configure = config
 
-        def table(self, *args, **kwargs):
-            return None
+    def destroy(self):
+        return None
 
-        def caption(self, *args, **kwargs):
-            return None
+    def update(self):
+        return None
 
-        def markdown(self, *args, **kwargs):
-            return None
+    def update_idletasks(self):
+        return None
 
-        def code(self, *args, **kwargs):
-            return None
+    def withdraw(self):
+        return None
 
-        def info(self, *args, **kwargs):
-            return None
+    def transient(self, *args, **kwargs):
+        return None
 
-        def success(self, *args, **kwargs):
-            return None
+    def title(self, *args, **kwargs):
+        return None
 
-        def warning(self, *args, **kwargs):
-            return None
+    def geometry(self, *args, **kwargs):
+        return None
 
-        def error(self, *args, **kwargs):
-            return None
+    def resizable(self, *args, **kwargs):
+        return None
 
-    for nome in funcoes_silenciadas:
-        if hasattr(st, nome):
-            originais[nome] = getattr(st, nome)
-            setattr(st, nome, _noop)
+    def protocol(self, *args, **kwargs):
+        return None
 
-    if hasattr(st, "expander"):
-        originais["expander"] = st.expander
-        st.expander = lambda *args, **kwargs: _DummyContext()
+    def winfo_exists(self):
+        return False
 
-    if hasattr(st, "empty"):
-        originais["empty"] = st.empty
-        st.empty = lambda *args, **kwargs: _DummyContext()
+    def __setitem__(self, key, value):
+        setattr(self, key, value)
+
+    def __getitem__(self, key):
+        return getattr(self, key, None)
+
+    def call(self, *args, **kwargs):
+        return ''
+
+    def createcommand(self, *args, **kwargs):
+        return ''
+
+    def deletecommand(self, *args, **kwargs):
+        return None
+
+    def getboolean(self, value):
+        return bool(value)
+
+    def splitlist(self, value):
+        return value if isinstance(value, (list, tuple)) else [value]
+
+
+class DummyTkRoot(DummyWidget):
+    pass
+
+
+class MonkeyPatchDialogs:
+    def __init__(self, module, paths, collector: MessageCollector):
+        self.module = module
+        self.paths = list(paths)
+        self.collector = collector
+        self.originals = {}
+
+    def __enter__(self):
+        filedialog_mod = getattr(self.module, 'filedialog', None)
+        messagebox_mod = getattr(self.module, 'messagebox', None)
+        tk_mod = getattr(self.module, 'tk', None)
+        ttk_mod = getattr(self.module, 'ttk', None)
+
+        def next_path(*args, **kwargs):
+            return self.paths.pop(0) if self.paths else ''
+
+        def next_dir(*args, **kwargs):
+            return self.paths.pop(0) if self.paths else ''
+
+        if filedialog_mod is not None:
+            self.originals['askopenfilename'] = filedialog_mod.askopenfilename
+            self.originals['askdirectory'] = filedialog_mod.askdirectory
+            filedialog_mod.askopenfilename = next_path
+            filedialog_mod.askdirectory = next_dir
+
+        if messagebox_mod is not None:
+            self.originals['showinfo'] = messagebox_mod.showinfo
+            self.originals['showwarning'] = messagebox_mod.showwarning
+            self.originals['showerror'] = messagebox_mod.showerror
+            messagebox_mod.showinfo = self.collector.showinfo
+            messagebox_mod.showwarning = self.collector.showwarning
+            messagebox_mod.showerror = self.collector.showerror
+
+        if tk_mod is not None:
+            for attr in ('Tk', 'Toplevel', 'Label'):
+                if hasattr(tk_mod, attr):
+                    self.originals[f'tk.{attr}'] = getattr(tk_mod, attr)
+            if hasattr(tk_mod, 'Tk'):
+                tk_mod.Tk = DummyTkRoot
+            if hasattr(tk_mod, 'Toplevel'):
+                tk_mod.Toplevel = DummyWidget
+            if hasattr(tk_mod, 'Label'):
+                tk_mod.Label = DummyWidget
+
+        if ttk_mod is not None:
+            for attr in ('Progressbar',):
+                if hasattr(ttk_mod, attr):
+                    self.originals[f'ttk.{attr}'] = getattr(ttk_mod, attr)
+                    setattr(ttk_mod, attr, DummyWidget)
+
+        if hasattr(self.module, 'Tk'):
+            self.originals['module.Tk'] = self.module.Tk
+            self.module.Tk = DummyTkRoot
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        filedialog_mod = getattr(self.module, 'filedialog', None)
+        messagebox_mod = getattr(self.module, 'messagebox', None)
+        tk_mod = getattr(self.module, 'tk', None)
+        ttk_mod = getattr(self.module, 'ttk', None)
+
+        if filedialog_mod is not None:
+            if 'askopenfilename' in self.originals:
+                filedialog_mod.askopenfilename = self.originals['askopenfilename']
+            if 'askdirectory' in self.originals:
+                filedialog_mod.askdirectory = self.originals['askdirectory']
+
+        if messagebox_mod is not None:
+            if 'showinfo' in self.originals:
+                messagebox_mod.showinfo = self.originals['showinfo']
+            if 'showwarning' in self.originals:
+                messagebox_mod.showwarning = self.originals['showwarning']
+            if 'showerror' in self.originals:
+                messagebox_mod.showerror = self.originals['showerror']
+
+        if tk_mod is not None:
+            for attr in ('Tk', 'Toplevel', 'Label'):
+                key = f'tk.{attr}'
+                if key in self.originals:
+                    setattr(tk_mod, attr, self.originals[key])
+
+        if ttk_mod is not None:
+            for attr in ('Progressbar',):
+                key = f'ttk.{attr}'
+                if key in self.originals:
+                    setattr(ttk_mod, attr, self.originals[key])
+
+        if 'module.Tk' in self.originals:
+            self.module.Tk = self.originals['module.Tk']
+
+
+def write_embedded_modules():
+    for filename, content in EMBEDDED_MODULES.items():
+        (MODULES_DIR / filename).write_text(content, encoding='utf-8')
+
+
+def load_module(module_filename: str):
+    path = MODULES_DIR / module_filename
+    module_name = path.stem.replace('-', '_')
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def detect_entrypoint(module):
+    for name in ('processar', 'executar'):
+        fn = getattr(module, name, None)
+        if callable(fn):
+            return fn
+    raise AttributeError('Nenhuma função processar/executar encontrada no módulo.')
+
+
+def summarize_messages(collector: MessageCollector) -> str:
+    parts = []
+    for title, msg in collector.infos:
+        parts.append(f'INFO - {title}: {msg}')
+    for title, msg in collector.warnings:
+        parts.append(f'ALERTA - {title}: {msg}')
+    for title, msg in collector.errors:
+        parts.append(f'ERRO - {title}: {msg}')
+    return '\n\n'.join(parts).strip()
+
+
+def run_indicator(indicator_code: int, name: str, module_filename: str, arquivo_01: str, arquivo_02: str, pasta_saida: str, logger: UILogger) -> IndicatorResult:
+    logger.log(f'[{indicator_code}] Iniciando indicador: {name}')
+    collector = MessageCollector()
+    stdout_buffer = io.StringIO()
+    stderr_buffer = io.StringIO()
 
     try:
-        yield
-    finally:
-        for nome, func in originais.items():
-            setattr(st, nome, func)
-
-
-def _normalizar_saida_processamento(resultado, nome_indicador: str) -> tuple[pd.DataFrame, dict]:
-    if isinstance(resultado, tuple) and len(resultado) == 2:
-        df_final, resumo = resultado
-    elif isinstance(resultado, dict):
-        if not resultado.get("sucesso", True):
-            raise ValueError(resultado.get("erro", f"Falha ao processar {nome_indicador}."))
-        df_final = resultado.get("df_final")
-        if df_final is None:
-            raise ValueError(f"O processador de {nome_indicador} não retornou 'df_final'.")
-        resumo = {
-            "adicionados": resultado.get("adicionados", 0),
-            "total_final": resultado.get("total_final", len(df_final)),
-            "geocodificados": resultado.get("geocodificados", 0),
-            "situacao": resultado.get("situacao", "Processado com sucesso."),
-        }
-    else:
-        raise ValueError(
-            f"Retorno inválido do processador de {nome_indicador}: {type(resultado).__name__}"
-        )
-
-    if not isinstance(df_final, pd.DataFrame):
-        raise ValueError(f"O resultado de {nome_indicador} não é um DataFrame válido.")
-
-    if not isinstance(resumo, dict):
-        resumo = {}
-
-    resumo.setdefault("adicionados", 0)
-    resumo.setdefault("total_final", len(df_final))
-    resumo.setdefault("geocodificados", 0)
-    resumo.setdefault("situacao", "Processado com sucesso.")
-    return df_final, resumo
-
-
-def _processar_cvp_sportal(buf_01: BytesIO, buf_02: BytesIO):
-    buf_01.seek(0)
-    buf_02.seek(0)
-
-    df_base = pd.read_excel(buf_01)
-    df_novo = pd.read_excel(buf_02)
-
-    df_base = normalizar_colunas(df_base)
-    df_novo = normalizar_colunas(df_novo)
-
-    col_data_base = encontrar_coluna_data(df_base)
-    col_data_novo = encontrar_coluna_data(df_novo)
-    col_hora_base = encontrar_coluna_hora(df_base)
-    col_hora_novo = encontrar_coluna_hora(df_novo)
-
-    if col_data_base and col_data_novo and col_data_base != col_data_novo:
-        df_novo = df_novo.rename(columns={col_data_novo: col_data_base})
-
-    if col_hora_base and col_hora_novo and col_hora_base != col_hora_novo:
-        df_novo = df_novo.rename(columns={col_hora_novo: col_hora_base})
-
-    col_data = col_data_base or col_data_novo
-    col_hora = col_hora_base or col_hora_novo
-
-    col_lat_base = encontrar_coluna_por_nomes(df_base, ["lat", "latitude"], obrigatoria=False)
-    col_lon_base = encontrar_coluna_por_nomes(df_base, ["long", "longitude", "lon"], obrigatoria=False)
-
-    df_novo = renomear_colunas_equivalentes(df_base, df_novo)
-
-    col_lat_novo = encontrar_coluna_por_nomes(df_novo, ["lat", "latitude"], obrigatoria=False)
-    col_lon_novo = encontrar_coluna_por_nomes(df_novo, ["long", "longitude", "lon"], obrigatoria=False)
-
-    total_lido = len(df_novo)
-    removidos_invalidos = 0
-
-    if col_lat_novo and col_lon_novo:
-        df_novo = excluir_coordenadas_invalidas(df_novo, col_lat_novo, col_lon_novo)
-        removidos_invalidos = total_lido - len(df_novo)
-
-    df_base = criar_coluna_datahora(df_base, col_data, col_hora, "datahora")
-    df_novo = criar_coluna_datahora(df_novo, col_data, col_hora, "datahora")
-
-    ultima_dh = obter_ultima_datahora(df_base, "datahora")
-
-    total_antes = len(df_novo)
-    df_novo_filtrado = filtrar_apenas_registros_posteriores(df_novo, "datahora", ultima_dh)
-    removidos_datahora = total_antes - len(df_novo_filtrado)
-
-    base_sem_aux = df_base.drop(columns=["datahora"], errors="ignore").copy()
-
-    if ultima_dh is None:
-        df_novo_util = df_novo.drop(columns=["datahora"], errors="ignore").copy()
-        situacao = "Base anterior sem Data/Hora válida - Arquivo 02 incluído integralmente."
-    elif df_novo_filtrado.empty:
-        df_novo_util = df_novo_filtrado.drop(columns=["datahora"], errors="ignore").copy()
-        situacao = "Nenhum registro novo encontrado após a última Data/Hora da base."
-    else:
-        df_novo_util = df_novo_filtrado.drop(columns=["datahora"], errors="ignore").copy()
-        situacao = "Somente registros posteriores à última Data/Hora foram adicionados."
-
-    adicionados = len(df_novo_util)
-
-    if not df_novo_util.empty and col_lat_novo and col_lon_novo and col_lat_base and col_lon_base:
-        df_novo_util = converter_coordenadas_para_wgs84_auto(
-            df_novo_util,
-            col_y_or_lat=col_lat_novo,
-            col_x_or_lon=col_lon_novo,
-            col_lat_destino=col_lat_base,
-            col_lon_destino=col_lon_base,
-        )
-
-    if not df_novo_util.empty:
-        df_novo_util = alinhar_colunas_com_base(base_sem_aux, df_novo_util)
-        df_final = pd.concat([base_sem_aux, df_novo_util], ignore_index=True)
-    else:
-        df_final = base_sem_aux.copy()
-
-    df_final = criar_coluna_datahora(df_final, col_data, col_hora, "datahora")
-    if "datahora" in df_final.columns:
-        df_final = df_final.sort_values("datahora", ascending=True, na_position="last").reset_index(drop=True)
-    df_final = df_final.drop(columns=["datahora"], errors="ignore")
-
-    resumo = {
-        "adicionados": adicionados,
-        "total_final": len(df_final),
-        "geocodificados": 0,
-        "removidos_invalidos": removidos_invalidos,
-        "removidos_datahora": removidos_datahora,
-        "ultima_datahora_base": ultima_dh.strftime("%d/%m/%Y %H:%M:%S") if ultima_dh else "N/A",
-        "situacao": situacao,
-    }
-
-    return df_final, resumo
-
-
-def _criar_config_padrao_sip(nome_indicador: str) -> SimpleNamespace:
-    nome_normalizado = _normalizar_texto(nome_indicador)
-
-    valor_filtro_natureza = ""
-    if "ROUBO-DE-VEICULO" in nome_normalizado:
-        valor_filtro_natureza = "ROUBO"
-    elif "FURTO-DE-VEICULO" in nome_normalizado:
-        valor_filtro_natureza = "FURTO"
-
-    return SimpleNamespace(
-        origem="todos_indicadores",
-        modo_silencioso=True,
-        usar_cache=True,
-        valor_filtro_natureza=valor_filtro_natureza,
-        caminho_base_enxuta="",
-    )
-
-
-def _chamar_processador(nome_indicador: str, buf_01: BytesIO, buf_02: BytesIO):
-    buf_01.seek(0)
-    buf_02.seek(0)
-
-    with _silenciar_streamlit_temporariamente():
-        if nome_indicador == "CVLI":
-            proc = ProcessadorCVLI()
-            res = proc.processar(buf_01, buf_02)
-            return _normalizar_saida_processamento(res, nome_indicador)
-
-        if nome_indicador == "CVP (SPORTAL)":
-            return _normalizar_saida_processamento(
-                _processar_cvp_sportal(buf_01, buf_02),
-                nome_indicador,
-            )
-
-        if nome_indicador == "CVP (SIP)":
-            return _normalizar_saida_processamento(
-                processar_cvp_sip(buf_01, buf_02),
-                nome_indicador,
-            )
-
-        if nome_indicador == "PERTURBAÇÃO AO SOSSEGO ALHEIO":
-            return _normalizar_saida_processamento(
-                processar_perturbacao_sossego(buf_01, buf_02),
-                nome_indicador,
-            )
-
-        if nome_indicador == "DESLOCAMENTO FORÇADO":
-            return _normalizar_saida_processamento(
-                processar_deslocamento_forcado(buf_01, buf_02),
-                nome_indicador,
-            )
-
-        if nome_indicador == "ROUBO DE VEÍCULO (SPORTAL)":
-            return _normalizar_saida_processamento(
-                processar_roubo_veiculo_sportal(buf_01, buf_02),
-                nome_indicador,
-            )
-
-        if nome_indicador == "ROUBO DE VEÍCULO (SIP)":
-            config_padrao = _criar_config_padrao_sip(nome_indicador)
-            return _normalizar_saida_processamento(
-                processar_roubo_veiculo_sip(buf_01, buf_02, config=config_padrao),
-                nome_indicador,
-            )
-
-        if nome_indicador == "ACIDENTE DE TRÂNSITO":
-            return _normalizar_saida_processamento(
-                processar_acidente_transito(buf_01, buf_02),
-                nome_indicador,
-            )
-
-        if nome_indicador == "FURTO DE VEÍCULO (SPORTAL)":
-            return _normalizar_saida_processamento(
-                processar_furto_veiculo_sportal(buf_01, buf_02),
-                nome_indicador,
-            )
-
-        if nome_indicador == "FURTO DE VEÍCULO (SIP)":
-            config_padrao = _criar_config_padrao_sip(nome_indicador)
-            return _normalizar_saida_processamento(
-                processar_furto_veiculo_sip(buf_01, buf_02, config=config_padrao),
-                nome_indicador,
-            )
-
-        raise ValueError(f"Indicador desconhecido: {nome_indicador}")
-
-
-def _df_para_excel(df: pd.DataFrame, sheet_name: str = "Dados") -> bytes:
-    buf = BytesIO()
-    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, sheet_name=sheet_name[:31])
-    buf.seek(0)
-    return buf.getvalue()
-
-
-def _init_state():
-    defaults = {
-        "todos_arq01_bytes": {},
-        "todos_arq01_nomes": {},
-        "todos_arq02_bytes": None,
-        "todos_arq02_nome": None,
-        "todos_resultados_excel": {},
-        "todos_resumos": {},
-        "todos_erros": {},
-        "todos_processando": False,
-        "todos_parar": False,
-        "todos_erros_upload": {},
-        "todos_duplicados_upload": {},
-        "todos_df_resultados": None,
-    }
-    for chave, valor in defaults.items():
-        if chave not in st.session_state:
-            st.session_state[chave] = valor
-
-
-def _render_hero():
-    st.markdown(
-        """
-        <div class="todos-shell">
-            <div class="todos-hero">
-                <div class="todos-kicker">Processamento consolidado</div>
-                <div class="todos-title">Todos os Indicadores</div>
-                <p class="todos-description">
-                    Centralize o processamento dos indicadores em uma única operação. O módulo identifica
-                    automaticamente os arquivos-base, utiliza o Arquivo 02 compartilhado e executa, de forma
-                    sequencial, as regras específicas de cada indicador — inclusive geocodificação quando aplicável.
-                </p>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def _render_status_cards(indicadores_prontos: list[str], indicadores_faltantes: list[str], tem_arq02: bool) -> None:
-    total_indicadores = len(INDICADORES_ORDEM)
-    total_prontos = len(indicadores_prontos)
-    total_geocodificaveis = sum(
-        1 for nome in indicadores_prontos if INDICADORES_CONFIG[nome]["geocodifica"]
-    )
-    total_faltantes = len(indicadores_faltantes)
-    arq02_status = "Sim" if tem_arq02 else "Não"
-
-    st.markdown(
-        f"""
-        <div class="todos-grid-status">
-            <div class="todos-stat">
-                <div class="todos-stat-label">Indicadores carregados</div>
-                <div class="todos-stat-value">{total_prontos}/{total_indicadores}</div>
-            </div>
-            <div class="todos-stat">
-                <div class="todos-stat-label">Arquivo 02</div>
-                <div class="todos-stat-value">{arq02_status}</div>
-            </div>
-            <div class="todos-stat">
-                <div class="todos-stat-label">Com geocodificação</div>
-                <div class="todos-stat-value">{total_geocodificaveis}</div>
-            </div>
-            <div class="todos-stat">
-                <div class="todos-stat-label">Pendentes</div>
-                <div class="todos-stat-value">{total_faltantes}</div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def _render_lista_indicadores(titulo: str, indicadores: list[str], tipo: str) -> None:
-    if not indicadores:
-        return
-
-    badges = []
-    for nome in indicadores:
-        cfg = INDICADORES_CONFIG[nome]
-        badges.append(
-            f'<span class="todos-badge {tipo}">{cfg["ordem"]}. {cfg["label"]}</span>'
-        )
-
-    st.markdown(
-        f"""
-        <div class="todos-section-card">
-            <div class="todos-section-title">{titulo}</div>
-            <div class="todos-badge-wrap">
-                {''.join(badges)}
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def interface_todos_indicadores():
-    _init_state()
-    _aplicar_estilo_todos_indicadores()
-    _render_hero()
-
-    st.markdown(
-        """
-        <div class="todos-section-card">
-            <div class="todos-section-title">Arquivo 02 · Complemento único</div>
-            <div class="todos-section-desc">
-                Envie o arquivo consolidado em Excel com múltiplas abas. Cada processador seleciona
-                automaticamente a aba correspondente ao indicador.
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    arquivo_02_upload = st.file_uploader(
-        "Arquivo 02 (Excel com múltiplas abas)",
-        type=["xlsx", "xls"],
-        key="todos_upload_02",
-    )
-
-    if arquivo_02_upload is not None:
-        arquivo_02_upload.seek(0)
-        st.session_state.todos_arq02_bytes = arquivo_02_upload.read()
-        st.session_state.todos_arq02_nome = arquivo_02_upload.name
-    else:
-        st.session_state.todos_arq02_bytes = None
-        st.session_state.todos_arq02_nome = None
-
-    if st.session_state.todos_arq02_nome:
-        st.success(f"Arquivo 02 carregado com sucesso: {st.session_state.todos_arq02_nome}")
-
-    st.markdown(
-        """
-        <div class="todos-section-card">
-            <div class="todos-section-title">Arquivos 01 · Base histórica</div>
-            <div class="todos-section-desc">
-                Selecione em lote os arquivos históricos. O sistema tenta identificar automaticamente
-                cada indicador pelo nome do arquivo e, quando necessário, pelo conteúdo da planilha.
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    arquivos_base_upload = st.file_uploader(
-        "Arquivos 01 (seleção múltipla)",
-        type=["xlsx", "xls"],
-        accept_multiple_files=True,
-        key="todos_upload_01_lote",
-    )
-
-    if arquivos_base_upload:
-        reconhecidos, nao_reconhecidos = _registrar_arquivos_base(arquivos_base_upload)
-
-        if reconhecidos:
-            reconhecidos_ordenados = sorted(
-                reconhecidos,
-                key=lambda nome: INDICADORES_CONFIG[nome]["ordem"],
-            )
-            st.success(
-                f"{len(reconhecidos_ordenados)} arquivo(s) de base reconhecido(s): "
-                + ", ".join(
-                    f"{INDICADORES_CONFIG[nome]['ordem']} - {INDICADORES_CONFIG[nome]['label']}"
-                    for nome in reconhecidos_ordenados
-                )
-            )
-
-        if nao_reconhecidos:
-            st.warning(
-                "Arquivo(s) não reconhecido(s) pelo nome ou conteúdo: "
-                + ", ".join(nao_reconhecidos)
-            )
-
-        if st.session_state.todos_duplicados_upload:
-            for nome_ind, arquivos_dup in st.session_state.todos_duplicados_upload.items():
-                cfg = INDICADORES_CONFIG[nome_ind]
-                st.warning(
-                    f"Duplicidade para {cfg['ordem']} - {cfg['label']}: "
-                    + ", ".join(arquivos_dup)
-                    + ". Apenas o primeiro arquivo reconhecido foi considerado."
-                )
-    else:
-        st.session_state.todos_arq01_bytes = {}
-        st.session_state.todos_arq01_nomes = {}
-        st.session_state.todos_erros_upload = {}
-        st.session_state.todos_duplicados_upload = {}
-
-    indicadores_prontos = [
-        nome_ind for nome_ind in INDICADORES_ORDEM
-        if nome_ind in st.session_state.todos_arq01_bytes
-    ]
-    indicadores_faltantes = [
-        nome_ind for nome_ind in INDICADORES_ORDEM
-        if nome_ind not in st.session_state.todos_arq01_bytes
-    ]
-    tem_arq02 = st.session_state.todos_arq02_bytes is not None
-
-    _render_status_cards(indicadores_prontos, indicadores_faltantes, tem_arq02)
-
-    if st.session_state.todos_arq01_nomes:
-        with st.expander("Ver arquivos base identificados", expanded=False):
-            for nome_ind in INDICADORES_ORDEM:
-                if nome_ind in st.session_state.todos_arq01_nomes:
-                    cfg = INDICADORES_CONFIG[nome_ind]
-                    st.caption(
-                        f"{cfg['ordem']} - {cfg['label']}: "
-                        f"{st.session_state.todos_arq01_nomes[nome_ind]}"
-                    )
-
-    _render_lista_indicadores("Indicadores prontos para processamento", indicadores_prontos, "ok")
-    _render_lista_indicadores("Indicadores ainda pendentes", indicadores_faltantes, "warn")
-
-    if not tem_arq02:
-        st.warning("O Arquivo 02 ainda não foi carregado.")
-
-    pode_processar = len(indicadores_prontos) > 0 and tem_arq02
-
-    st.markdown(
-        """
-        <div class="todos-section-card">
-            <div class="todos-section-title">Execução do processamento</div>
-            <div class="todos-section-desc">
-                Inicie o processamento consolidado após validar os arquivos carregados. O fluxo executa
-                os indicadores em sequência e preserva o resultado individual para download.
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    col_btn1, col_btn2 = st.columns(2)
-
-    with col_btn1:
-        iniciar = st.button(
-            "Processar Todos os Indicadores",
-            type="primary",
-            use_container_width=True,
-            disabled=not pode_processar or st.session_state.todos_processando,
-        )
-
-    with col_btn2:
-        if st.button(
-            "Parar Processo",
-            type="secondary",
-            use_container_width=True,
-            disabled=not st.session_state.todos_processando,
-        ):
-            st.session_state.todos_parar = True
-            st.warning("Sinalização de parada enviada ao processamento.")
-
-    if iniciar:
-        st.session_state.todos_resultados_excel = {}
-        st.session_state.todos_resumos = {}
-        st.session_state.todos_erros = {}
-        st.session_state.todos_df_resultados = None
-        st.session_state.todos_processando = True
-        st.session_state.todos_parar = False
-
-        total = len(indicadores_prontos)
-        progresso = st.progress(0)
-        status = st.empty()
-        resultados_linha = []
-        interrompido = False
-
-        for idx, nome_ind in enumerate(indicadores_prontos):
-            if st.session_state.todos_parar:
-                interrompido = True
-                status.warning("Processo interrompido pelo usuário.")
-                break
-
-            cfg = INDICADORES_CONFIG[nome_ind]
-            status.info(
-                f"[{idx + 1}/{total}] Processando {cfg['label']}"
-                + (" · executando geocodificação" if cfg["geocodifica"] else "")
-            )
-
+        module = load_module(module_filename)
+        entrypoint = detect_entrypoint(module)
+        with MonkeyPatchDialogs(module, [arquivo_01, arquivo_02, pasta_saida], collector):
+            old_stdout, old_stderr = sys.stdout, sys.stderr
+            sys.stdout, sys.stderr = stdout_buffer, stderr_buffer
             try:
-                buf_01 = BytesIO(st.session_state.todos_arq01_bytes[nome_ind])
-                buf_02 = BytesIO(st.session_state.todos_arq02_bytes)
+                entrypoint()
+            finally:
+                sys.stdout, sys.stderr = old_stdout, old_stderr
 
-                df_final, resumo = _chamar_processador(nome_ind, buf_01, buf_02)
-                excel_bytes = _df_para_excel(df_final, sheet_name=nome_ind[:31])
+        out_text = stdout_buffer.getvalue().strip()
+        err_text = stderr_buffer.getvalue().strip()
+        if out_text:
+            logger.log(out_text)
+        if err_text:
+            logger.log(err_text)
 
-                st.session_state.todos_resultados_excel[nome_ind] = (
-                    excel_bytes,
-                    cfg["nome_arquivo"],
+        summary = summarize_messages(collector)
+        output_file = None
+        if hasattr(module, 'NOME_ARQUIVO_FINAL'):
+            output_file = os.path.join(pasta_saida, getattr(module, 'NOME_ARQUIVO_FINAL'))
+
+        if collector.errors:
+            logger.log(f'[{indicator_code}] Falha detectada.')
+            return IndicatorResult(indicator_code, name, False, output_file=output_file, message=summary, error=summary)
+
+        logger.log(f'[{indicator_code}] Concluído com sucesso.')
+        if summary:
+            logger.log(summary)
+        return IndicatorResult(indicator_code, name, True, output_file=output_file, message=summary)
+    except Exception as exc:
+        tb = traceback.format_exc()
+        logger.log(f'[{indicator_code}] Exceção: {exc}')
+        logger.log(tb)
+        return IndicatorResult(indicator_code, name, False, error=str(exc))
+
+
+class IndicatorApp(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title('Atualizador de Indicadores QGP')
+        self.geometry('1080x760')
+        self.minsize(980, 700)
+        self.selected_code = tk.IntVar(value=0)
+        self.output_dir = tk.StringVar(value='')
+        self.multi_file_02 = tk.StringVar(value='')
+        self.base_files: Dict[int, str] = {}
+        self.results: List[IndicatorResult] = []
+        self.is_running = False
+        self.current_worker = None
+        self.base_vars = {}
+        self.status_labels = {}
+        self.exec_buttons = {}
+        self.pending_codes: List[int] = []
+        self.completed_codes: List[int] = []
+        self.failed_codes: List[int] = []
+        self.cancel_requested = False
+        self.auto_run_all = False
+        self.last_summary_path: Optional[str] = None
+        self._build_ui()
+        write_embedded_modules()
+
+    def _build_ui(self):
+        top = ttk.Frame(self, padding=12)
+        top.pack(fill='x')
+        ttk.Label(top, text='Selecione o indicador a atualizar:', font=('Segoe UI', 11, 'bold')).pack(anchor='w')
+
+        values = [f"{code} - {name}" for code, name in INDICATOR_OPTIONS]
+        self.combo = ttk.Combobox(top, state='readonly', values=values, width=52)
+        self.combo.current(0)
+        self.combo.pack(anchor='w', pady=(8, 12))
+        self.combo.bind('<<ComboboxSelected>>', self.on_indicator_change)
+
+        action_frame = ttk.Frame(top)
+        action_frame.pack(fill='x')
+        ttk.Button(action_frame, text='Confirmar', command=self.confirm_selection).pack(side='left')
+        self.run_button = ttk.Button(action_frame, text='Executar', command=self.execute_flow)
+        self.run_button.pack(side='left', padx=8)
+        self.stop_button = ttk.Button(action_frame, text='Parar Execução', command=self.request_cancel)
+        self.stop_button.pack(side='left', padx=8)
+        ttk.Button(action_frame, text='Limpar Logs', command=self.clear_logs).pack(side='left')
+
+        files_frame = ttk.LabelFrame(self, text='Arquivos', padding=12)
+        files_frame.pack(fill='x', padx=12, pady=8)
+        ttk.Button(files_frame, text='Selecionar pasta de saída', command=self.select_output_dir).grid(row=0, column=0, sticky='w')
+        ttk.Label(files_frame, textvariable=self.output_dir, wraplength=820).grid(row=0, column=1, sticky='w', padx=8)
+        ttk.Button(files_frame, text='Selecionar Arquivo 02 (múltiplas abas)', command=self.select_file_02).grid(row=1, column=0, sticky='w', pady=8)
+        ttk.Label(files_frame, textvariable=self.multi_file_02, wraplength=820).grid(row=1, column=1, sticky='w', padx=8)
+
+        self.base_frame = ttk.LabelFrame(self, text='Arquivos 01 por indicador', padding=12)
+        self.base_frame.pack(fill='x', padx=12, pady=8)
+
+        progress_frame = ttk.LabelFrame(self, text='Progresso', padding=12)
+        progress_frame.pack(fill='x', padx=12, pady=8)
+        self.progress = ttk.Progressbar(progress_frame, orient='horizontal', mode='determinate')
+        self.progress.pack(fill='x')
+        self.status_var = tk.StringVar(value='Aguardando seleção.')
+        ttk.Label(progress_frame, textvariable=self.status_var).pack(anchor='w', pady=(8, 0))
+
+        log_frame = ttk.LabelFrame(self, text='Logs de execução', padding=12)
+        log_frame.pack(fill='both', expand=True, padx=12, pady=8)
+        self.log_text = tk.Text(log_frame, wrap='word', state='disabled', font=('Consolas', 10))
+        self.log_text.pack(side='left', fill='both', expand=True)
+        scrollbar = ttk.Scrollbar(log_frame, command=self.log_text.yview)
+        scrollbar.pack(side='right', fill='y')
+        self.log_text.configure(yscrollcommand=scrollbar.set)
+        self.logger = UILogger(self.log_text)
+
+        self.render_base_selectors([code for code, _ in INDICATOR_OPTIONS if code != 0])
+        self.set_running_state(False)
+
+    def on_indicator_change(self, event=None):
+        self.confirm_selection(auto=True)
+
+    def get_selected_code(self):
+        return int(self.combo.get().split(' - ')[0].strip())
+
+    def confirm_selection(self, auto=False):
+        if self.is_running:
+            messagebox.showwarning('Aviso', 'Aguarde a finalização do indicador em execução antes de alterar o modo.')
+            return
+
+        code = self.get_selected_code()
+        self.selected_code.set(code)
+        codes = self.get_all_codes() if code == 0 else [code]
+        self.results = []
+        self.progress['maximum'] = len(codes)
+        self.progress['value'] = 0
+        self.auto_run_all = False
+        self.cancel_requested = False
+        self.last_summary_path = None
+        self.render_base_selectors(codes)
+
+        msg = 'Modo selecionado: TODOS OS INDICADORES.' if code == 0 else f'Modo selecionado: {self.combo.get()}.'
+        self.status_var.set(msg)
+        self.logger.log(msg)
+        if not auto:
+            messagebox.showinfo('Confirmação', msg)
+
+    def render_base_selectors(self, codes: List[int]):
+        for child in self.base_frame.winfo_children():
+            child.destroy()
+
+        self.base_vars = {}
+        self.status_labels = {}
+        self.exec_buttons = {}
+        self.pending_codes = list(codes)
+        self.completed_codes = []
+        self.failed_codes = []
+
+        headers = ['Código', 'Indicador', 'Arquivo 01', 'Ação', 'Status']
+        for col, title in enumerate(headers):
+            ttk.Label(self.base_frame, text=title, font=('Segoe UI', 9, 'bold')).grid(row=0, column=col, sticky='w', padx=6, pady=(0, 8))
+
+        for row, code in enumerate(codes, start=1):
+            var = tk.StringVar(value=self.base_files.get(code, ''))
+            status_var = tk.StringVar(value=STATUS_EM_FILA if self.selected_code.get() == 0 else STATUS_AGUARDANDO)
+            self.base_vars[code] = var
+            self.status_labels[code] = status_var
+
+            ttk.Label(self.base_frame, text=f'{code:02d}').grid(row=row, column=0, sticky='w', padx=6, pady=4)
+            ttk.Label(self.base_frame, text=MODULE_MAP[code][0], wraplength=240).grid(row=row, column=1, sticky='w', padx=6, pady=4)
+
+            file_frame = ttk.Frame(self.base_frame)
+            file_frame.grid(row=row, column=2, sticky='ew', padx=6, pady=4)
+            ttk.Button(file_frame, text='Selecionar', command=lambda c=code: self.select_base_file(c)).pack(side='left')
+            ttk.Label(file_frame, textvariable=var, wraplength=380).pack(side='left', padx=8)
+
+            btn = ttk.Button(self.base_frame, text='Executar', command=lambda c=code: self.execute_single_indicator(c))
+            btn.grid(row=row, column=3, sticky='w', padx=6, pady=4)
+            self.exec_buttons[code] = btn
+
+            ttk.Label(self.base_frame, textvariable=status_var, wraplength=200).grid(row=row, column=4, sticky='w', padx=6, pady=4)
+
+        self.base_frame.columnconfigure(2, weight=1)
+        self.update_action_buttons()
+
+    def select_base_file(self, code: int):
+        path = filedialog.askopenfilename(title=BASE_LABELS[code], filetypes=[('Arquivos Excel', '*.xlsx *.xls')])
+        if path:
+            self.base_files[code] = path
+            if code in self.base_vars:
+                self.base_vars[code].set(path)
+            self.logger.log(f'Arquivo 01 definido para [{code}] {path}')
+
+    def select_output_dir(self):
+        path = filedialog.askdirectory(title='Selecione a pasta de saída')
+        if path:
+            self.output_dir.set(path)
+            self.logger.log(f'Pasta de saída definida: {path}')
+
+    def select_file_02(self):
+        path = filedialog.askopenfilename(title='Selecione o Arquivo 02', filetypes=[('Arquivos Excel', '*.xlsx *.xls')])
+        if path:
+            self.multi_file_02.set(path)
+            self.logger.log(f'Arquivo 02 definido: {path}')
+
+    def validate_inputs(self, codes: List[int]) -> bool:
+        if not self.output_dir.get():
+            messagebox.showwarning('Aviso', 'Selecione a pasta de saída.')
+            return False
+        if not self.multi_file_02.get():
+            messagebox.showwarning('Aviso', 'Selecione o Arquivo 02.')
+            return False
+        faltantes = [str(code) for code in codes if not self.base_files.get(code)]
+        if faltantes:
+            messagebox.showwarning('Aviso', f'Faltam Arquivos 01 para os indicadores: {", ".join(faltantes)}')
+            return False
+        return True
+
+    def set_running_state(self, running: bool):
+        self.is_running = running
+        self.combo.configure(state='disabled' if running else 'readonly')
+        self.run_button.state(['disabled'] if running else ['!disabled'])
+        self.stop_button.state(['!disabled'] if running else ['disabled'])
+        self.update_action_buttons()
+
+    def update_action_buttons(self):
+        for code, btn in self.exec_buttons.items():
+            if self.is_running:
+                btn.state(['disabled'])
+                continue
+
+            if self.selected_code.get() == 0:
+                if self.auto_run_all:
+                    btn.state(['disabled'])
+                    continue
+                expected = self.get_next_pending_code()
+                if code == expected:
+                    btn.state(['!disabled'])
+                else:
+                    btn.state(['disabled'])
+            else:
+                if code == self.selected_code.get():
+                    btn.state(['!disabled'])
+                else:
+                    btn.state(['disabled'])
+
+    def prepare_sheet_file(self, code: int, workbook_path: str) -> Optional[str]:
+        import pandas as pd
+
+        candidates = SHEET_FALLBACKS.get(code, [SHEET_MAP[code]])
+        try:
+            xls = pd.ExcelFile(workbook_path)
+            normalized = {str(sheet).strip().lower(): sheet for sheet in xls.sheet_names}
+            selected_sheet = None
+            for candidate in candidates:
+                if candidate in xls.sheet_names:
+                    selected_sheet = candidate
+                    break
+                sheet_match = normalized.get(candidate.strip().lower())
+                if sheet_match:
+                    selected_sheet = sheet_match
+                    break
+            if not selected_sheet:
+                raise ValueError(
+                    f"Nenhuma aba compatível encontrada para o indicador [{code}]. "
+                    f"Esperado: {', '.join(candidates)} | Disponíveis: {', '.join(xls.sheet_names)}"
                 )
-                st.session_state.todos_resumos[nome_ind] = resumo
+            self.logger.log(f'Extraindo aba "{selected_sheet}" do Arquivo 02 para o indicador [{code}]...')
+            df = pd.read_excel(workbook_path, sheet_name=selected_sheet)
+            temp_path = BASE_DIR / f'_temp_arquivo02_{code}.xlsx'
+            with pd.ExcelWriter(temp_path, engine='openpyxl') as writer:
+                df.to_excel(writer, index=False, sheet_name=selected_sheet[:31])
+            return str(temp_path)
+        except Exception as exc:
+            self.logger.log(f'Falha ao extrair aba do indicador [{code}]: {exc}')
+            return None
 
-                resultados_linha.append({
-                    "Ordem": cfg["ordem"],
-                    "Indicador": cfg["label"],
-                    "Status": "Sucesso",
-                    "Adicionados": resumo.get("adicionados", 0),
-                    "Total Final": resumo.get("total_final", 0),
-                    "Geocodificados": resumo.get("geocodificados", 0),
-                    "Situação": resumo.get("situacao", ""),
-                })
-            except Exception as exc:
-                st.session_state.todos_erros[nome_ind] = str(exc)
-                resultados_linha.append({
-                    "Ordem": cfg["ordem"],
-                    "Indicador": cfg["label"],
-                    "Status": "Erro",
-                    "Adicionados": 0,
-                    "Total Final": 0,
-                    "Geocodificados": 0,
-                    "Situação": str(exc),
-                })
+    def get_all_codes(self) -> List[int]:
+        return [c for c, _ in INDICATOR_OPTIONS if c != 0]
 
-            progresso.progress((idx + 1) / total)
+    def get_next_pending_code(self) -> Optional[int]:
+        for code in self.pending_codes:
+            if code not in self.completed_codes and code not in self.failed_codes:
+                return code
+        return None
 
-        st.session_state.todos_processando = False
+    def mark_waiting_queue(self):
+        if self.selected_code.get() != 0:
+            return
+        next_code = self.get_next_pending_code()
+        for code, status_var in self.status_labels.items():
+            if code in self.completed_codes or code in self.failed_codes:
+                continue
+            if code == next_code:
+                status_var.set(STATUS_EM_FILA)
+            else:
+                status_var.set(STATUS_EM_FILA)
 
-        if interrompido:
-            status.warning("Processamento interrompido antes da conclusão.")
+    def execute_flow(self):
+        if self.is_running:
+            messagebox.showwarning('Aviso', 'Já existe um indicador em execução. Aguarde a conclusão.')
+            return
+
+        selected = self.selected_code.get()
+        codes = self.get_all_codes() if selected == 0 else [selected]
+        if not self.validate_inputs(codes):
+            return
+
+        self.results = []
+        self.progress['maximum'] = len(codes)
+        self.progress['value'] = 0
+        self.completed_codes = []
+        self.failed_codes = []
+        self.cancel_requested = False
+        self.last_summary_path = None
+
+        for code in codes:
+            if code in self.status_labels:
+                self.status_labels[code].set(STATUS_EM_FILA if selected == 0 else STATUS_AGUARDANDO)
+
+        if selected == 0:
+            self.pending_codes = codes.copy()
+            self.auto_run_all = True
+            self.status_var.set('Modo TODOS ativado. Execução automática sequencial iniciada.')
+            self.logger.log('Modo TODOS ativado. O sistema executará automaticamente todos os indicadores em sequência.')
+            next_code = self.get_next_pending_code()
+            if next_code is not None:
+                self.execute_single_indicator(next_code)
+            return
+
+        self.pending_codes = [selected]
+        self.auto_run_all = False
+        self.execute_single_indicator(selected)
+
+    def execute_single_indicator(self, code: int):
+        if self.is_running:
+            messagebox.showwarning('Aviso', 'Já existe um indicador em execução. Aguarde a conclusão.')
+            return
+        if self.cancel_requested:
+            self.logger.log('Execução cancelada pelo usuário. Nenhum novo indicador será iniciado.')
+            return
+        if not self.validate_inputs([code]):
+            if self.auto_run_all:
+                self.auto_run_all = False
+            return
+
+        name, module_filename = MODULE_MAP[code]
+        self.status_labels[code].set(STATUS_PROCESSANDO)
+        self.status_var.set(f'Executando: {name}')
+        self.logger.log('-' * 90)
+        self.logger.log(f'Preparando indicador [{code}] {name}')
+        self.set_running_state(True)
+
+        worker = threading.Thread(
+            target=self._run_indicator_worker,
+            args=(code, name, module_filename),
+            daemon=True
+        )
+        self.current_worker = worker
+        worker.start()
+
+    def _run_indicator_worker(self, code: int, name: str, module_filename: str):
+        if self.cancel_requested:
+            result = IndicatorResult(code, name, False, cancelled=True, error='Execução cancelada antes do início do processamento.')
+            self.after(0, lambda r=result: self._finalize_indicator_result(r))
+            return
+
+        arquivo_01 = self.base_files[code]
+        arquivo_02 = self.prepare_sheet_file(code, self.multi_file_02.get())
+        if self.cancel_requested:
+            result = IndicatorResult(code, name, False, cancelled=True, error='Execução cancelada após a preparação do Arquivo 02.')
+        elif not arquivo_02:
+            expected = ', '.join(SHEET_FALLBACKS.get(code, [SHEET_MAP[code]]))
+            result = IndicatorResult(code, name, False, error=f'Não foi possível preparar a aba do Arquivo 02. Esperado: {expected}')
         else:
-            status.success("Processamento concluído com sucesso.")
+            result = run_indicator(code, name, module_filename, arquivo_01, arquivo_02, self.output_dir.get(), self.logger)
+        self.after(0, lambda r=result: self._finalize_indicator_result(r))
 
-        if resultados_linha:
-            st.session_state.todos_df_resultados = (
-                pd.DataFrame(resultados_linha)
-                .sort_values("Ordem")
-                .reset_index(drop=True)
+    def _finalize_indicator_result(self, result: IndicatorResult):
+        self.results = [r for r in self.results if r.code != result.code]
+        self.results.append(result)
+        self.set_running_state(False)
+        self.current_worker = None
+        self.finish_single_execution(result)
+
+    def finish_single_execution(self, result: IndicatorResult):
+        if result.cancelled:
+            self.status_labels[result.code].set(STATUS_CANCELADO)
+            if result.code not in self.failed_codes:
+                self.failed_codes.append(result.code)
+            msg = f'Indicador [{result.code}] {result.name} cancelado.'
+        elif result.success:
+            self.status_labels[result.code].set(STATUS_CONCLUIDO)
+            if result.code not in self.completed_codes:
+                self.completed_codes.append(result.code)
+            msg = f'Indicador [{result.code}] {result.name} concluído com sucesso.'
+        else:
+            self.status_labels[result.code].set(STATUS_FALHA)
+            if result.code not in self.failed_codes:
+                self.failed_codes.append(result.code)
+            msg = f'Indicador [{result.code}] {result.name} finalizado com falha.'
+
+        self.logger.log(msg)
+        if result.message:
+            self.logger.log(result.message)
+        if result.error:
+            self.logger.log(f'Erro: {result.error}')
+
+        total_alvo = len(self.pending_codes) if self.pending_codes else (len(self.get_all_codes()) if self.selected_code.get() == 0 else 1)
+        total_finalizados = len(self.completed_codes) + len(self.failed_codes)
+        self.progress['value'] = total_finalizados
+        self.update_idletasks()
+
+        detalhes = []
+        if result.output_file:
+            detalhes.append(f'Arquivo de saída: {result.output_file}')
+        if result.message:
+            detalhes.append(result.message)
+        if result.error:
+            detalhes.append(f'Erro: {result.error}')
+        resumo = '\n\n'.join(detalhes).strip() or 'Processo finalizado.'
+
+        if self.selected_code.get() == 0 and self.auto_run_all:
+            if self.cancel_requested:
+                self.status_var.set(f'Execução interrompida pelo usuário. Progresso: {total_finalizados}/{total_alvo}')
+                self.mark_remaining_as_cancelled()
+                self.auto_run_all = False
+                self.finish_execution(cancelled=True)
+                return
+
+            self.status_var.set(f'Progresso geral: {total_finalizados}/{total_alvo} indicadores processados.')
+            self.update_action_buttons()
+            self.logger.log(f'Progresso geral: {total_finalizados}/{total_alvo} indicadores processados.')
+
+            if total_finalizados < total_alvo:
+                next_code = self.get_next_pending_code()
+                if next_code is not None:
+                    self.logger.log(f'Próximo indicador automático: [{next_code}] {MODULE_MAP[next_code][0]}')
+                    self.after(250, lambda c=next_code: self.execute_single_indicator(c))
+                    return
+
+            self.auto_run_all = False
+            self.finish_execution(cancelled=False)
+            return
+
+        if self.selected_code.get() == 0:
+            self.status_var.set(f'Progresso geral: {total_finalizados}/{total_alvo} indicadores processados.')
+            self.update_action_buttons()
+            titulo = 'Indicador concluído' if result.success else 'Indicador concluído com falha'
+            if result.cancelled:
+                titulo = 'Indicador cancelado'
+            if result.success:
+                messagebox.showinfo(titulo, f'{msg}\n\n{resumo}')
+            else:
+                messagebox.showwarning(titulo, f'{msg}\n\n{resumo}')
+            if total_finalizados == total_alvo:
+                self.finish_execution(cancelled=self.cancel_requested)
+        else:
+            self.status_var.set('Indicador finalizado.' if not result.cancelled else 'Execução cancelada pelo usuário.')
+            titulo = 'Indicador concluído' if result.success else 'Indicador concluído com falha'
+            if result.cancelled:
+                titulo = 'Indicador cancelado'
+            if result.success:
+                messagebox.showinfo(titulo, f'{msg}\n\n{resumo}')
+            else:
+                messagebox.showwarning(titulo, f'{msg}\n\n{resumo}')
+            self.finish_execution(cancelled=self.cancel_requested or result.cancelled)
+
+    def mark_remaining_as_cancelled(self):
+        for code in self.pending_codes:
+            if code in self.completed_codes or code in self.failed_codes:
+                continue
+            if code in self.status_labels:
+                self.status_labels[code].set(STATUS_CANCELADO)
+            name = MODULE_MAP[code][0]
+            existente = next((r for r in self.results if r.code == code), None)
+            if existente is None:
+                self.results.append(
+                    IndicatorResult(
+                        code=code,
+                        name=name,
+                        success=False,
+                        error='Execução não iniciada porque o lote foi cancelado pelo usuário.',
+                        cancelled=True,
+                    )
+                )
+                if code not in self.failed_codes:
+                    self.failed_codes.append(code)
+
+    def request_cancel(self):
+        if not self.is_running and not self.auto_run_all:
+            messagebox.showinfo('Parar execução', 'Nenhuma execução em andamento no momento.')
+            return
+        self.cancel_requested = True
+        self.auto_run_all = False
+        self.status_var.set('Solicitação de parada registrada. O sistema encerrará após o indicador atual.')
+        self.logger.log('Solicitação de parada registrada pelo usuário. O sistema encerrará após o indicador atual.')
+
+    def build_summary_text(self, cancelled: bool = False) -> str:
+        success_count = sum(1 for r in self.results if r.success)
+        fail_count = sum(1 for r in self.results if not r.success and not r.cancelled)
+        cancelled_count = sum(1 for r in self.results if r.cancelled)
+
+        linhas = ['RESUMO FINAL', '=' * 90]
+        linhas.append(f'Data/Hora: {datetime.now().strftime("%d/%m/%Y %H:%M:%S")}')
+        linhas.append(f'Sucesso: {success_count} | Falhas: {fail_count} | Cancelados: {cancelled_count}')
+        if cancelled:
+            linhas.append('Situação geral: EXECUÇÃO INTERROMPIDA PELO USUÁRIO')
+        else:
+            linhas.append('Situação geral: EXECUÇÃO FINALIZADA')
+        linhas.append('=' * 90)
+
+        for r in sorted(self.results, key=lambda x: x.code):
+            if r.cancelled:
+                status = 'CANCELADO'
+            else:
+                status = 'SUCESSO' if r.success else 'FALHA'
+            linhas.append(f'[{r.code}] {r.name} -> {status}')
+            if r.output_file:
+                linhas.append(f'Arquivo de saída: {r.output_file}')
+            if r.message:
+                linhas.append(r.message)
+            if r.error:
+                linhas.append(f'Erro: {r.error}')
+            linhas.append('-' * 90)
+        return '\n'.join(linhas)
+
+    def save_summary_log(self, summary_text: str) -> Optional[str]:
+        if not self.output_dir.get():
+            return None
+        try:
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            path = Path(self.output_dir.get()) / f'log_execucao_qgp_{timestamp}.txt'
+            path.write_text(summary_text, encoding='utf-8')
+            self.last_summary_path = str(path)
+            self.logger.log(f'Log final salvo em: {path}')
+            return str(path)
+        except Exception as exc:
+            self.logger.log(f'Falha ao salvar log final: {exc}')
+            return None
+
+    def finish_execution(self, cancelled: bool = False):
+        self.auto_run_all = False
+        self.set_running_state(False)
+        summary_text = self.build_summary_text(cancelled=cancelled)
+        self.logger.log(summary_text)
+        log_path = self.save_summary_log(summary_text)
+
+        success_count = sum(1 for r in self.results if r.success)
+        fail_count = sum(1 for r in self.results if not r.success and not r.cancelled)
+        cancelled_count = sum(1 for r in self.results if r.cancelled)
+
+        if cancelled:
+            self.status_var.set(
+                f'Execução interrompida. Sucesso: {success_count} | Falhas: {fail_count} | Cancelados: {cancelled_count}'
+            )
+        else:
+            self.status_var.set(
+                f'Finalizado. Sucesso: {success_count} | Falhas: {fail_count} | Cancelados: {cancelled_count}'
             )
 
-    if st.session_state.todos_df_resultados is not None:
-        st.markdown(
-            """
-            <div class="todos-section-card">
-                <div class="todos-section-title">Painel de resultados</div>
-                <div class="todos-section-desc">
-                    Acompanhe o desempenho por indicador, valide quantidades adicionadas e confira
-                    a situação final de cada processamento.
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        detalhe_log = f'\n\nLog salvo em: {log_path}' if log_path else ''
+        if cancelled:
+            messagebox.showwarning('Execução interrompida', summary_text + detalhe_log)
+        elif fail_count == 0 and cancelled_count == 0:
+            messagebox.showinfo('Execução concluída', summary_text + detalhe_log)
+        else:
+            messagebox.showwarning('Execução concluída com ressalvas', summary_text + detalhe_log)
 
-        df_resultados = st.session_state.todos_df_resultados
-        total_ok = int((df_resultados["Status"] == "Sucesso").sum())
-        total_erro = int((df_resultados["Status"] == "Erro").sum())
-        total_adicionados = int(df_resultados["Adicionados"].fillna(0).sum())
-        total_geo = int(df_resultados["Geocodificados"].fillna(0).sum())
+        self.cancel_requested = False
+        self.update_action_buttons()
 
-        col_r1, col_r2, col_r3, col_r4 = st.columns(4)
-        col_r1.metric("Processados com sucesso", total_ok)
-        col_r2.metric("Com erro", total_erro)
-        col_r3.metric("Registros adicionados", f"{total_adicionados:,}".replace(",", "."))
-        col_r4.metric("Geocodificados", f"{total_geo:,}".replace(",", "."))
+    def clear_logs(self):
+        self.log_text.configure(state='normal')
+        self.log_text.delete('1.0', 'end')
+        self.log_text.configure(state='disabled')
 
-        st.dataframe(df_resultados, use_container_width=True, hide_index=True)
+EMBEDDED_MODULES = {
+    '1-CVLI.py': 'import os\nimport traceback\nimport pandas as pd\nfrom tkinter import Tk, filedialog, messagebox\n\nNOME_ARQUIVO_FINAL = "1- CVLI - 2026 - QGP.xlsx"\n\n\ndef selecionar_arquivo(titulo):\n    caminho = filedialog.askopenfilename(\n        title=titulo,\n        filetypes=[("Arquivos Excel", "*.xlsx *.xls")]\n    )\n    return caminho\n\n\ndef selecionar_pasta_saida():\n    pasta = filedialog.askdirectory(\n        title="Selecione a pasta onde o arquivo final será salvo"\n    )\n    return pasta\n\n\ndef normalizar_colunas(df):\n    df.columns = [str(c).strip() for c in df.columns]\n    return df\n\n\ndef encontrar_coluna_data(df):\n    candidatos = [c for c in df.columns if str(c).strip().lower() == "data"]\n    if candidatos:\n        return candidatos[0]\n\n    candidatos_aprox = [c for c in df.columns if "data" in str(c).strip().lower()]\n    if candidatos_aprox:\n        return candidatos_aprox[0]\n\n    raise ValueError("Nenhuma coluna de data foi encontrada. Verifique se existe uma coluna chamada \'Data\'.")\n\n\ndef converter_coluna_data(df, coluna_data):\n    df[coluna_data] = pd.to_datetime(df[coluna_data], errors="coerce", dayfirst=True)\n    return df\n\n\ndef renomear_colunas_equivalentes(df_base, df_novo):\n    mapa_equivalencias = {\n        "AIS": ["AISNova", "AIS Nova", "AIS_NOVA", "aisnova", "ais_nova"]\n    }\n\n    colunas_base_map = {str(c).strip().lower(): c for c in df_base.columns}\n    colunas_novo_map = {str(c).strip().lower(): c for c in df_novo.columns}\n\n    renomeacoes = {}\n\n    for coluna_base_oficial, aliases in mapa_equivalencias.items():\n        chave_base = coluna_base_oficial.strip().lower()\n\n        if chave_base not in colunas_base_map:\n            continue\n\n        nome_real_base = colunas_base_map[chave_base]\n\n        if nome_real_base in df_novo.columns:\n            continue\n\n        for alias in aliases:\n            chave_alias = alias.strip().lower()\n            if chave_alias in colunas_novo_map:\n                nome_real_novo = colunas_novo_map[chave_alias]\n                renomeacoes[nome_real_novo] = nome_real_base\n                break\n\n    if renomeacoes:\n        df_novo = df_novo.rename(columns=renomeacoes)\n\n    return df_novo\n\n\ndef filtrar_colunas_do_arquivo_01(df_base, df_novo):\n    colunas_base = list(df_base.columns)\n    faltantes = [col for col in colunas_base if col not in df_novo.columns]\n\n    for col in faltantes:\n        df_novo[col] = pd.NA\n\n    df_novo = df_novo[colunas_base]\n    return df_novo\n\n\ndef obter_meses_anos(df, coluna_data):\n    base_valida = df[df[coluna_data].notna()].copy()\n    pares = set(zip(base_valida[coluna_data].dt.year, base_valida[coluna_data].dt.month))\n    return pares\n\n\ndef atualizar_base(df_base, df_novo, coluna_data):\n    total_inicial = len(df_base)\n\n    df_novo = renomear_colunas_equivalentes(df_base, df_novo)\n    df_novo = filtrar_colunas_do_arquivo_01(df_base, df_novo)\n\n    meses_anos_novo = obter_meses_anos(df_novo, coluna_data)\n\n    if not meses_anos_novo:\n        raise ValueError("O Arquivo 02 não possui datas válidas na coluna de data.")\n\n    mask_remover = df_base[coluna_data].notna() & df_base[coluna_data].apply(\n        lambda x: (x.year, x.month) in meses_anos_novo\n    )\n\n    houve_substituicao = mask_remover.any()\n\n    if houve_substituicao:\n        df_base_atualizada = df_base.loc[~mask_remover].copy()\n    else:\n        df_base_atualizada = df_base.copy()\n\n    total_antes_add = len(df_base_atualizada)\n    df_final = pd.concat([df_base_atualizada, df_novo], ignore_index=True)\n    df_final = df_final.sort_values(by=coluna_data, ascending=True, na_position="last").reset_index(drop=True)\n\n    adicionados = len(df_final) - total_antes_add\n    total_final = len(df_final)\n\n    return df_final, adicionados, total_final, total_inicial, houve_substituicao\n\n\ndef salvar_excel(df, caminho_saida):\n    with pd.ExcelWriter(caminho_saida, engine="openpyxl") as writer:\n        df.to_excel(writer, index=False, sheet_name="CVLI")\n\n\ndef executar():\n    root = Tk()\n    root.withdraw()\n\n    try:\n        arquivo_01 = selecionar_arquivo("Selecione o Arquivo 01 - Base de dados")\n        if not arquivo_01:\n            messagebox.showwarning("Aviso", "Processo cancelado: Arquivo 01 não selecionado.")\n            return\n\n        arquivo_02 = selecionar_arquivo("Selecione o Arquivo 02 - Dados complementares")\n        if not arquivo_02:\n            messagebox.showwarning("Aviso", "Processo cancelado: Arquivo 02 não selecionado.")\n            return\n\n        pasta_saida = selecionar_pasta_saida()\n        if not pasta_saida:\n            messagebox.showwarning("Aviso", "Processo cancelado: pasta de destino não selecionada.")\n            return\n\n        df_base = pd.read_excel(arquivo_01)\n        df_novo = pd.read_excel(arquivo_02)\n\n        df_base = normalizar_colunas(df_base)\n        df_novo = normalizar_colunas(df_novo)\n\n        coluna_data_base = encontrar_coluna_data(df_base)\n        coluna_data_novo = encontrar_coluna_data(df_novo)\n\n        df_base = converter_coluna_data(df_base, coluna_data_base)\n        df_novo = converter_coluna_data(df_novo, coluna_data_novo)\n\n        if coluna_data_base != coluna_data_novo:\n            df_novo = df_novo.rename(columns={coluna_data_novo: coluna_data_base})\n\n        coluna_data = coluna_data_base\n\n        df_final, adicionados, total_final, total_inicial, houve_substituicao = atualizar_base(\n            df_base, df_novo, coluna_data\n        )\n\n        caminho_saida = os.path.join(pasta_saida, NOME_ARQUIVO_FINAL)\n        salvar_excel(df_final, caminho_saida)\n\n        acao = "atualizado" if houve_substituicao else "complementado"\n        mensagem = (\n            f"Processo Finalizado, adicionado {adicionados} CVLI\'s novos, total de {total_final} CVLI\'s.\\n\\n"\n            f"Arquivo {acao} com sucesso.\\n"\n            f"O arquivo será salvo com o nome:\\n{NOME_ARQUIVO_FINAL}"\n        )\n        messagebox.showinfo("Sucesso", mensagem)\n\n    except Exception as e:\n        erro = f"Ocorreu um erro durante o processamento:\\n\\n{str(e)}"\n        messagebox.showerror("Erro", erro)\n        traceback.print_exc()\n\n\nif __name__ == "__main__":\n    executar()',
+    '2-CVP-SPORTAL-2.py': 'import os\nimport traceback\nimport pandas as pd\nfrom pyproj import Transformer\nfrom tkinter import Tk, filedialog, messagebox\n\nNOME_ARQUIVO_FINAL = "2- CVP_SPORTAL - 2026 - QGP.xlsx"\n\n\ndef selecionar_arquivo(titulo):\n    return filedialog.askopenfilename(\n        title=titulo,\n        filetypes=[("Arquivos Excel", "*.xlsx *.xls")]\n    )\n\n\ndef selecionar_pasta_saida():\n    return filedialog.askdirectory(\n        title="Selecione a pasta onde o arquivo final será salvo"\n    )\n\n\ndef normalizar_colunas(df):\n    df.columns = [str(c).strip() for c in df.columns]\n    return df\n\n\ndef encontrar_coluna_data(df):\n    exatos = [c for c in df.columns if str(c).strip().lower() == "data"]\n    if exatos:\n        return exatos[0]\n    aproximados = [c for c in df.columns if "data" in str(c).strip().lower()]\n    if aproximados:\n        return aproximados[0]\n    raise ValueError("Não foi encontrada a coluna \'Data\'.")\n\n\ndef encontrar_coluna_hora(df):\n    exatos = [c for c in df.columns if str(c).strip().lower() == "hora"]\n    if exatos:\n        return exatos[0]\n    aproximados = [c for c in df.columns if "hora" in str(c).strip().lower()]\n    if aproximados:\n        return aproximados[0]\n    raise ValueError("Não foi encontrada a coluna \'Hora\'.")\n\n\ndef encontrar_coluna_por_nomes(df, nomes_possiveis, obrigatoria=True):\n    cols_map = {str(c).strip().lower(): c for c in df.columns}\n\n    for nome in nomes_possiveis:\n        if nome.lower() in cols_map:\n            return cols_map[nome.lower()]\n\n    for c in df.columns:\n        cl = str(c).strip().lower()\n        for nome in nomes_possiveis:\n            if nome.lower() in cl:\n                return c\n\n    if obrigatoria:\n        raise ValueError(f"Não foi possível localizar nenhuma das colunas esperadas: {nomes_possiveis}")\n    return None\n\n\ndef renomear_colunas_equivalentes(df_base, df_novo):\n    mapa_equivalencias = {\n        "AIS": ["AISNova", "AIS Nova", "AIS_NOVA", "aisnova", "ais_nova"],\n        "Território": ["Regiões", "Regioes", "Região", "Regiao", "regiões", "regioes", "região", "regiao"]\n    }\n\n    colunas_base_map = {str(c).strip().lower(): c for c in df_base.columns}\n    colunas_novo_map = {str(c).strip().lower(): c for c in df_novo.columns}\n\n    renomeacoes = {}\n\n    for coluna_base_oficial, aliases in mapa_equivalencias.items():\n        chave_base = coluna_base_oficial.strip().lower()\n\n        if chave_base not in colunas_base_map:\n            continue\n\n        nome_real_base = colunas_base_map[chave_base]\n\n        if nome_real_base in df_novo.columns:\n            continue\n\n        for alias in aliases:\n            chave_alias = alias.strip().lower()\n            if chave_alias in colunas_novo_map:\n                nome_real_novo = colunas_novo_map[chave_alias]\n                renomeacoes[nome_real_novo] = nome_real_base\n                break\n\n    if renomeacoes:\n        df_novo = df_novo.rename(columns=renomeacoes)\n\n    return df_novo\n\n\ndef valor_numerico_exato(v):\n    if pd.isna(v):\n        return None\n\n    if isinstance(v, str):\n        s = v.strip()\n        if s == "":\n            return None\n        s = s.replace(".", "").replace(",", ".")\n        try:\n            return float(s)\n        except ValueError:\n            return None\n\n    try:\n        return float(v)\n    except Exception:\n        return None\n\n\ndef normalizar_data_para_texto(v):\n    if pd.isna(v):\n        return None\n\n    if isinstance(v, pd.Timestamp):\n        return v.strftime("%d/%m/%Y")\n\n    try:\n        dt = pd.to_datetime(v, errors="coerce", dayfirst=True)\n        if pd.isna(dt):\n            return None\n        return dt.strftime("%d/%m/%Y")\n    except Exception:\n        return None\n\n\ndef normalizar_hora_para_texto(v):\n    if pd.isna(v):\n        return None\n\n    if isinstance(v, pd.Timestamp):\n        return v.strftime("%H:%M:%S")\n\n    s = str(v).strip()\n    if s == "":\n        return None\n\n    formatos = ["%H:%M:%S", "%H:%M"]\n    for fmt in formatos:\n        dt = pd.to_datetime(s, errors="coerce", format=fmt)\n        if not pd.isna(dt):\n            return dt.strftime("%H:%M:%S")\n\n    try:\n        dt = pd.to_datetime(s, errors="coerce")\n        if not pd.isna(dt):\n            return dt.strftime("%H:%M:%S")\n    except Exception:\n        pass\n\n    return None\n\n\ndef criar_coluna_datahora(df, coluna_data, coluna_hora, nome_coluna="__datahora__"):\n    datas = df[coluna_data].apply(normalizar_data_para_texto)\n    horas = df[coluna_hora].apply(normalizar_hora_para_texto)\n\n    combinado = []\n    for d, h in zip(datas, horas):\n        if d is None or h is None:\n            combinado.append(pd.NaT)\n        else:\n            combinado.append(pd.to_datetime(f"{d} {h}", errors="coerce", dayfirst=True))\n\n    df[nome_coluna] = combinado\n    return df\n\n\ndef excluir_coordenadas_invalidas(df, col_lat, col_lon):\n    manter = []\n\n    for lat_raw, lon_raw in zip(df[col_lat], df[col_lon]):\n        lat = valor_numerico_exato(lat_raw)\n        lon = valor_numerico_exato(lon_raw)\n\n        if lat is None or lon is None:\n            manter.append(False)\n        elif lat == 0 or lon == 0:\n            manter.append(False)\n        else:\n            manter.append(True)\n\n    return df.loc[manter].copy()\n\n\ndef reprojetar_utm_para_wgs84(df, col_y, col_x, col_lat_destino, col_lon_destino):\n    transformer = Transformer.from_crs("EPSG:31984", "EPSG:4326", always_xy=True)\n\n    lat_resultado = []\n    lon_resultado = []\n\n    for y_raw, x_raw in zip(df[col_y], df[col_x]):\n        y = valor_numerico_exato(y_raw)\n        x = valor_numerico_exato(x_raw)\n\n        if y is None or x is None:\n            lat_resultado.append(pd.NA)\n            lon_resultado.append(pd.NA)\n        else:\n            lon, lat = transformer.transform(x, y)\n            lat_resultado.append(lat)\n            lon_resultado.append(lon)\n\n    df[col_lat_destino] = lat_resultado\n    df[col_lon_destino] = lon_resultado\n    return df\n\n\ndef alinhar_colunas_arquivo_02_com_base(df_base, df_novo):\n    colunas_base = list(df_base.columns)\n\n    df_novo = renomear_colunas_equivalentes(df_base, df_novo)\n\n    for col in colunas_base:\n        if col not in df_novo.columns:\n            df_novo[col] = pd.NA\n\n    return df_novo[colunas_base]\n\n\ndef obter_ultimo_datahora(df, coluna_datahora):\n    df_valid = df[df[coluna_datahora].notna()].copy()\n    if df_valid.empty:\n        return None\n    return df_valid[coluna_datahora].max()\n\n\ndef filtrar_apenas_registros_posteriores(df, coluna_datahora, limite_datahora):\n    if limite_datahora is None:\n        return df.copy()\n    return df[df[coluna_datahora] > limite_datahora].copy()\n\n\ndef salvar_excel(df, caminho_saida):\n    with pd.ExcelWriter(caminho_saida, engine="openpyxl") as writer:\n        df.to_excel(writer, index=False, sheet_name="CVP_SPORTAL")\n\n\ndef processar():\n    root = Tk()\n    root.withdraw()\n\n    try:\n        arquivo_01 = selecionar_arquivo("Selecione o Arquivo 01 - Base CVP")\n        if not arquivo_01:\n            messagebox.showwarning("Aviso", "Processo cancelado: Arquivo 01 não selecionado.")\n            return\n\n        arquivo_02 = selecionar_arquivo("Selecione o Arquivo 02 - Complemento SPORTAL")\n        if not arquivo_02:\n            messagebox.showwarning("Aviso", "Processo cancelado: Arquivo 02 não selecionado.")\n            return\n\n        pasta_saida = selecionar_pasta_saida()\n        if not pasta_saida:\n            messagebox.showwarning("Aviso", "Processo cancelado: pasta de destino não selecionada.")\n            return\n\n        df_base = pd.read_excel(arquivo_01)\n        df_novo = pd.read_excel(arquivo_02)\n\n        df_base = normalizar_colunas(df_base)\n        df_novo = normalizar_colunas(df_novo)\n\n        col_data_base = encontrar_coluna_data(df_base)\n        col_data_novo = encontrar_coluna_data(df_novo)\n        col_hora_base = encontrar_coluna_hora(df_base)\n        col_hora_novo = encontrar_coluna_hora(df_novo)\n\n        if col_data_base != col_data_novo:\n            df_novo = df_novo.rename(columns={col_data_novo: col_data_base})\n        if col_hora_base != col_hora_novo:\n            df_novo = df_novo.rename(columns={col_hora_novo: col_hora_base})\n\n        col_data = col_data_base\n        col_hora = col_hora_base\n\n        col_lat_base = encontrar_coluna_por_nomes(df_base, ["lat", "latitude"], obrigatoria=True)\n        col_lon_base = encontrar_coluna_por_nomes(df_base, ["long", "longitude", "lon"], obrigatoria=True)\n\n        col_lat_novo = encontrar_coluna_por_nomes(df_novo, ["latitude"], obrigatoria=True)\n        col_lon_novo = encontrar_coluna_por_nomes(df_novo, ["longitude"], obrigatoria=True)\n\n        df_novo = renomear_colunas_equivalentes(df_base, df_novo)\n\n        total_lido_arquivo_02 = len(df_novo)\n\n        df_novo = excluir_coordenadas_invalidas(df_novo, col_lat_novo, col_lon_novo)\n        removidos_invalidos = total_lido_arquivo_02 - len(df_novo)\n\n        if df_novo.empty:\n            raise ValueError("Após excluir coordenadas inválidas, o Arquivo 02 ficou sem registros válidos.")\n\n        df_base = criar_coluna_datahora(df_base, col_data, col_hora)\n        df_novo = criar_coluna_datahora(df_novo, col_data, col_hora)\n\n        ultimo_datahora_base = obter_ultimo_datahora(df_base, "__datahora__")\n\n        total_antes_filtro_tempo = len(df_novo)\n        df_novo_filtrado = filtrar_apenas_registros_posteriores(df_novo, "__datahora__", ultimo_datahora_base)\n        removidos_por_datahora = total_antes_filtro_tempo - len(df_novo_filtrado)\n\n        base_sem_aux = df_base.drop(columns=["__datahora__"])\n\n        if ultimo_datahora_base is None:\n            df_novo_util = df_novo.copy()\n            situacao = "Base anterior sem Data/Hora válida: Arquivo 02 foi incluído integralmente."\n        elif df_novo_filtrado.empty:\n            df_novo_util = df_novo_filtrado.copy()\n            situacao = "Nenhum registro novo encontrado após a última Data/Hora da base: Arquivo 01 foi mantido sem acréscimos."\n        else:\n            df_novo_util = df_novo_filtrado.copy()\n            situacao = "Base anterior localizada: somente registros posteriores à última Data/Hora foram adicionados."\n\n        adicionados = len(df_novo_util)\n\n        if not df_novo_util.empty:\n            df_novo_util = reprojetar_utm_para_wgs84(\n                df_novo_util,\n                col_y=col_lat_novo,\n                col_x=col_lon_novo,\n                col_lat_destino=col_lat_base,\n                col_lon_destino=col_lon_base\n            )\n            df_novo_util = alinhar_colunas_arquivo_02_com_base(base_sem_aux, df_novo_util)\n            df_final = pd.concat([base_sem_aux, df_novo_util], ignore_index=True)\n        else:\n            df_final = base_sem_aux.copy()\n\n        df_final = criar_coluna_datahora(df_final, col_data, col_hora)\n        df_final = df_final.sort_values(by="__datahora__", ascending=True, na_position="last").reset_index(drop=True)\n        df_final = df_final.drop(columns=["__datahora__"])\n\n        total_final = len(df_final)\n\n        caminho_saida = os.path.join(pasta_saida, NOME_ARQUIVO_FINAL)\n        salvar_excel(df_final, caminho_saida)\n\n        ultima_ref = (\n            ultimo_datahora_base.strftime("%d/%m/%Y %H:%M:%S")\n            if ultimo_datahora_base is not None else "sem referência anterior válida"\n        )\n\n        mensagem = (\n            f"Processo Finalizado, adicionado {adicionados} CVP\'s novos, total de {total_final} CVP\'s.\\n"\n            f"Última Data/Hora da base: {ultima_ref}\\n"\n            f"Registros excluídos por coordenadas inválidas: {removidos_invalidos}\\n"\n            f"Registros excluídos por serem anteriores/iguais à última Data/Hora da base: {removidos_por_datahora}\\n\\n"\n            f"{situacao}\\n\\n"\n            f"O arquivo será salvo com o nome\\n{NOME_ARQUIVO_FINAL}"\n        )\n\n        messagebox.showinfo("Sucesso", mensagem)\n\n    except Exception as e:\n        messagebox.showerror("Erro", f"Ocorreu um erro durante o processamento:\\n\\n{str(e)}")\n        traceback.print_exc()\n\n\nif __name__ == "__main__":\n    processar()\n',
+    '3-CVP-SIP-3.py': 'import os\nimport re\nimport json\nimport traceback\nimport unicodedata\nimport importlib.util\nimport subprocess\nfrom datetime import datetime\nfrom pathlib import Path\n\nimport pandas as pd\nimport numpy as np\nimport tkinter as tk\nfrom tkinter import filedialog, messagebox, ttk\nfrom scipy.spatial import cKDTree\nfrom rapidfuzz import fuzz\nfrom geopy.geocoders import ArcGIS\nfrom geopy.extra.rate_limiter import RateLimiter\n\nNOME_ARQUIVO_FINAL = "3 - CVP_SIP ENDERECO - 2026 - QGP.xlsx"\nUSAR_EXTERNO = True\nCAMINHO_GPKG = "Faces_de_Quadra_-_Ceará_ARRUAMENTO.gpkg"\nCAMINHO_BASE_ENXUTA = "CVP_SIP_GEOCODIFICAR.parquet"\nLAYER_GPKG = "reprojetado"\nEPSG_GPKG = 31984\nLIMIAR_NOME = 88\nRAIO_CONFIRMA_M = 100.0\nRAIO_MUNICIPIO_KM = 8.0\nLIMIAR_SUSPEITO = 5\nUF_CODIGO = "23"\nARQ_CACHE_MUN = "municipios_ce.json"\n\nSUBST = {\n    "AV": "Avenida", "AVD": "Avenida", "AVENIDA": "Avenida",\n    "R": "Rua", "RUA": "Rua", "TV": "Travessa", "TRV": "Travessa",\n    "TRAV": "Travessa", "TRAVESSA": "Travessa", "PC": "Praca", "PCA": "Praca",\n    "PRACA": "Praca", "ROD": "Rodovia", "AL": "Alameda", "PSO": "Passeio",\n    "GRJ": "", "DR": "Doutor", "DRA": "Doutora", "PE": "Padre",\n    "PRES": "Presidente", "CEL": "Coronel", "GEN": "General",\n    "PROF": "Professor", "MAE": "Maestro",\n}\nCORR = {"RAIMUINDO": "RAIMUNDO", "OSWALDO": "OSVALDO"}\nRUIDO = ["LADO PAR", "LADO IMPAR", "- P", "FORTALEZA, CE", ", CE"]\nRE_BNI = re.compile(r"\\(?\\s*bairro\\s+n[aã]o\\s+identificad[oa]\\s*\\)?", flags=re.IGNORECASE)\nTIPOS = ("Rua", "Avenida", "Travessa", "Praca", "Rodovia", "Alameda", "Passeio")\nROOFTOP = ("pointaddress", "streetaddress", "subaddress", "pointaddressvd")\n\n\ndef _pip(pacote):\n    for args in ([os.sys.executable, "-m", "pip", "install", "-q", pacote],\n                 [os.sys.executable, "-m", "pip", "install", "-q", pacote, "--break-system-packages"]):\n        try:\n            subprocess.check_call(args)\n            return\n        except Exception:\n            continue\n\n\ndef garantir_dependencias():\n    req = [\n        ("fiona", "fiona"),\n        ("pyarrow", "pyarrow"),\n        ("shapely", "shapely"),\n        ("pyproj", "pyproj"),\n    ]\n    for mod, pk in req:\n        if importlib.util.find_spec(mod) is None:\n            _pip(pk)\n\n\ndef selecionar_arquivo(titulo):\n    return filedialog.askopenfilename(\n        title=titulo,\n        filetypes=[("Arquivos Excel", "*.xlsx *.xls")]\n    )\n\n\ndef selecionar_pasta_saida():\n    return filedialog.askdirectory(\n        title="Selecione a pasta onde o arquivo final será salvo"\n    )\n\n\ndef normalizar_colunas(df):\n    df.columns = [str(c).strip() for c in df.columns]\n    return df\n\n\ndef encontrar_coluna_data_base(df):\n    exatos = [c for c in df.columns if str(c).strip().lower() == "data"]\n    if exatos:\n        return exatos[0]\n    aproximados = [c for c in df.columns if "data" in str(c).strip().lower()]\n    if aproximados:\n        return aproximados[0]\n    raise ValueError("Não foi encontrada a coluna \'Data\' no Arquivo 01.")\n\n\ndef encontrar_coluna_hora_base(df):\n    exatos = [c for c in df.columns if str(c).strip().lower() == "hora"]\n    if exatos:\n        return exatos[0]\n    aproximados = [c for c in df.columns if "hora" in str(c).strip().lower()]\n    if aproximados:\n        return aproximados[0]\n    raise ValueError("Não foi encontrada a coluna \'Hora\' no Arquivo 01.")\n\n\ndef encontrar_coluna_datahora_arquivo_02(df):\n    exatos = [c for c in df.columns if str(c).strip().lower() == "data"]\n    if exatos:\n        return exatos[0]\n    raise ValueError("Não foi encontrada a coluna \'data\' no Arquivo 02.")\n\n\ndef encontrar_coluna_por_nomes(df, nomes_possiveis, obrigatoria=True):\n    cols_map = {str(c).strip().lower(): c for c in df.columns}\n    for nome in nomes_possiveis:\n        if nome.lower() in cols_map:\n            return cols_map[nome.lower()]\n    for c in df.columns:\n        cl = str(c).strip().lower()\n        for nome in nomes_possiveis:\n            if nome.lower() in cl:\n                return c\n    if obrigatoria:\n        raise ValueError(f"Não foi possível localizar nenhuma das colunas esperadas: {nomes_possiveis}")\n    return None\n\n\ndef renomear_colunas_equivalentes(df_base, df_novo):\n    mapa_equivalencias = {\n        "AIS": ["AISNova", "AIS Nova", "AIS_NOVA", "aisnova", "ais_nova"],\n        "Território": ["Regiões", "Regioes", "Região", "Regiao", "regiões", "regioes", "região", "regiao"]\n    }\n    colunas_base_map = {str(c).strip().lower(): c for c in df_base.columns}\n    colunas_novo_map = {str(c).strip().lower(): c for c in df_novo.columns}\n    renomeacoes = {}\n    for coluna_base_oficial, aliases in mapa_equivalencias.items():\n        chave_base = coluna_base_oficial.strip().lower()\n        if chave_base not in colunas_base_map:\n            continue\n        nome_real_base = colunas_base_map[chave_base]\n        if nome_real_base in df_novo.columns:\n            continue\n        for alias in aliases:\n            chave_alias = alias.strip().lower()\n            if chave_alias in colunas_novo_map:\n                renomeacoes[colunas_novo_map[chave_alias]] = nome_real_base\n                break\n    if renomeacoes:\n        df_novo = df_novo.rename(columns=renomeacoes)\n    return df_novo\n\n\ndef normalizar_data_para_texto(v):\n    if pd.isna(v):\n        return None\n    if isinstance(v, pd.Timestamp):\n        return v.strftime("%d/%m/%Y")\n    try:\n        dt = pd.to_datetime(v, errors="coerce", dayfirst=True)\n        if pd.isna(dt):\n            return None\n        return dt.strftime("%d/%m/%Y")\n    except Exception:\n        return None\n\n\ndef normalizar_hora_para_texto(v):\n    if pd.isna(v):\n        return None\n    if isinstance(v, pd.Timestamp):\n        return v.strftime("%H:%M:%S")\n    s = str(v).strip()\n    if s == "":\n        return None\n    formatos = ["%H:%M:%S", "%H:%M"]\n    for fmt in formatos:\n        dt = pd.to_datetime(s, errors="coerce", format=fmt)\n        if not pd.isna(dt):\n            return dt.strftime("%H:%M:%S")\n    try:\n        dt = pd.to_datetime(s, errors="coerce")\n        if not pd.isna(dt):\n            return dt.strftime("%H:%M:%S")\n    except Exception:\n        pass\n    return None\n\n\ndef criar_datahora_base(df, coluna_data, coluna_hora, nome_coluna="__datahora__"):\n    datas = df[coluna_data].apply(normalizar_data_para_texto)\n    horas = df[coluna_hora].apply(normalizar_hora_para_texto)\n    combinado = []\n    for d, h in zip(datas, horas):\n        if d is None or h is None:\n            combinado.append(pd.NaT)\n        else:\n            combinado.append(pd.to_datetime(f"{d} {h}", errors="coerce", dayfirst=True))\n    df[nome_coluna] = combinado\n    return df\n\n\ndef criar_datahora_arquivo_02(df, coluna_datahora, nome_coluna="__datahora__"):\n    df[nome_coluna] = pd.to_datetime(df[coluna_datahora], errors="coerce", dayfirst=True)\n    return df\n\n\ndef obter_ultimo_datahora(df, coluna_datahora):\n    df_valid = df[df[coluna_datahora].notna()].copy()\n    if df_valid.empty:\n        return None\n    return df_valid[coluna_datahora].max()\n\n\ndef filtrar_apenas_registros_posteriores(df, coluna_datahora, limite_datahora):\n    if limite_datahora is None:\n        return df.copy()\n    return df[df[coluna_datahora] > limite_datahora].copy()\n\n\ndef alinhar_colunas_arquivo_02_com_base(df_base, df_novo):\n    colunas_base = list(df_base.columns)\n    df_novo = renomear_colunas_equivalentes(df_base, df_novo)\n    for col in colunas_base:\n        if col not in df_novo.columns:\n            df_novo[col] = pd.NA\n    return df_novo[colunas_base]\n\n\ndef sem_acento(s):\n    n = unicodedata.normalize("NFKD", str(s or ""))\n    return "".join(c for c in n if not unicodedata.combining(c)).upper().strip()\n\n\ndef limpar_logradouro(texto):\n    t = str(texto or "").upper().strip()\n    if t in ("NAN", "NONE", ""):\n        return ""\n    for a, b in CORR.items():\n        t = t.replace(a, b)\n    for r in RUIDO:\n        t = t.replace(r.upper(), " ")\n    t = re.sub(r"\\d{4,}", " ", t)\n    t = re.sub(r"[.\\,/\\\\-]", " ", t)\n    toks = [SUBST.get(tok, tok) for tok in t.split()]\n    toks = [x for x in toks if x != ""]\n    while len(toks) > 1 and toks[0] in TIPOS and toks[1] in TIPOS:\n        toks.pop(0)\n    return " ".join(" ".join(toks).split()).title()\n\n\ndef limpar_bairro(b, municipio):\n    v = str(b or "").strip()\n    if v.lower() in ("nan", "none", ""):\n        return ""\n    v = RE_BNI.sub("", v)\n    v = re.sub(r"\\(.*?\\)", "", v)\n    v = " ".join(v.strip(" ()-").split())\n    if v == "" or sem_acento(v) == sem_acento(municipio):\n        return ""\n    return v\n\n\ndef limpar_numero(n):\n    s = str(n or "").strip()\n    if s.lower() in ("nan", "none", "", "0", "0.0", "s/n", "sn"):\n        return ""\n    try:\n        return str(int(float(s)))\n    except Exception:\n        return re.sub(r"\\D", "", s)\n\n\ndef _construir_base_enxuta(gpkg, parquet_saida):\n    garantir_dependencias()\n    import fiona\n    from shapely.geometry import shape\n    from pyproj import Transformer\n\n    tr = Transformer.from_crs(f"EPSG:{EPSG_GPKG}", "EPSG:4326", always_xy=True)\n    regs = []\n    with fiona.open(gpkg, layer=LAYER_GPKG) as src:\n        for f in src:\n            p = f["properties"]\n            tip = str(p.get("NM_TIP_LOG") or "").strip()\n            tit = str(p.get("NM_TIT_LOG") or "").strip()\n            log = str(p.get("NM_LOG") or "").strip()\n            nome = " ".join(x for x in (tip, tit, log) if x and x.lower() != "none")\n            if not nome:\n                continue\n            try:\n                geom = shape(f["geometry"])\n                c = geom.centroid\n                lon, lat = tr.transform(c.x, c.y)\n            except Exception:\n                continue\n            cod = str(p.get("CD_SETOR") or "")[:7]\n            try:\n                tot = int(p.get("TOT_GERAL") or 0)\n            except Exception:\n                tot = 0\n            regs.append((cod, sem_acento(nome), nome, lat, lon, tot))\n    base = pd.DataFrame(regs, columns=["cod_mun", "nome_norm", "nome_orig", "lat", "lon", "tot_geral"])\n    base.to_parquet(parquet_saida, index=False)\n    return base\n\n\ndef carregar_base_geografica():\n    if os.path.exists(CAMINHO_BASE_ENXUTA):\n        return pd.read_parquet(CAMINHO_BASE_ENXUTA).reset_index(drop=True)\n    if os.path.exists(CAMINHO_GPKG):\n        return _construir_base_enxuta(CAMINHO_GPKG, CAMINHO_BASE_ENXUTA).reset_index(drop=True)\n    return None\n\n\ndef carregar_municipios():\n    if os.path.exists(ARQ_CACHE_MUN):\n        try:\n            return json.load(open(ARQ_CACHE_MUN, encoding="utf-8"))\n        except Exception:\n            pass\n    url = f"https://servicodados.ibge.gov.br/api/v1/localidades/estados/{UF_CODIGO}/municipios"\n    try:\n        import urllib.request\n        import gzip\n        req = urllib.request.Request(url, headers={"Accept-Encoding": "gzip"})\n        with urllib.request.urlopen(req, timeout=30) as r:\n            dados = r.read()\n            if r.info().get("Content-Encoding") == "gzip":\n                dados = gzip.decompress(dados)\n            lista = json.loads(dados.decode("utf-8"))\n        mapa = {sem_acento(m["nome"]): str(m["id"])[:7] for m in lista}\n        json.dump(mapa, open(ARQ_CACHE_MUN, "w", encoding="utf-8"))\n        return mapa\n    except Exception:\n        return {}\n\n\ndef _hav(lat1, lon1, lat2, lon2):\n    dlat = np.radians(lat2 - lat1)\n    dlon = np.radians(lon2 - lon1)\n    a = np.sin(dlat / 2) ** 2 + np.cos(np.radians(lat1)) * np.cos(np.radians(lat2)) * np.sin(dlon / 2) ** 2\n    return 2 * 6371000.0 * np.arcsin(np.sqrt(a))\n\n\nclass MotorGeocodificacaoSoberana:\n    def __init__(self):\n        self.base = carregar_base_geografica()\n        self.mun = carregar_municipios()\n        self.tree = None\n        self.cent_mun = {}\n\n        if self.base is not None and len(self.base):\n            self.glat = self.base["lat"].values.astype(float)\n            self.glon = self.base["lon"].values.astype(float)\n            self.gnome = self.base["nome_norm"].astype(str).values\n            self.gcod = self.base["cod_mun"].astype(str).values\n            self.tree = cKDTree(np.c_[self.glat, self.glon])\n            cm = self.base.groupby("cod_mun")[["lat", "lon"]].mean()\n            self.cent_mun = {k: (v["lat"], v["lon"]) for k, v in cm.iterrows()}\n\n        self.geocode_ext = None\n        if USAR_EXTERNO:\n            arc = ArcGIS(timeout=15)\n            self.geocode_ext = RateLimiter(\n                arc.geocode,\n                min_delay_seconds=0.4,\n                max_retries=2,\n                swallow_exceptions=True\n            )\n\n    def cod_municipio(self, municipio):\n        return self.mun.get(sem_acento(municipio), "")\n\n    def _idx_municipio(self, cod, ancora):\n        if cod and self.tree is not None:\n            ix = np.where(self.gcod == cod)[0]\n            if len(ix):\n                return ix\n        if ancora is not None and self.tree is not None:\n            ix = self.tree.query_ball_point([ancora[0], ancora[1]], r=RAIO_MUNICIPIO_KM / 111.0)\n            return np.array(ix, dtype=int)\n        return np.array([], dtype=int)\n\n    def casar_rua(self, rua_norm, cod, ancora):\n        ix = self._idx_municipio(cod, ancora)\n        if not len(ix):\n            return None\n        melhor, mscore = None, 0\n        for j in ix:\n            s = fuzz.token_set_ratio(rua_norm, self.gnome[j])\n            if s > mscore:\n                mscore, melhor = s, j\n        if melhor is not None and mscore >= LIMIAR_NOME:\n            return float(self.glat[melhor]), float(self.glon[melhor]), mscore\n        return None\n\n    def validar(self, lat, lon, rua_norm, cod, ancora):\n        ix = self._idx_municipio(cod, ancora or (lat, lon))\n        if not len(ix):\n            return False, None\n        nomes = self.gnome[ix]\n        msk = np.array([fuzz.token_set_ratio(rua_norm, n) >= LIMIAR_NOME for n in nomes])\n        if not msk.any():\n            return False, None\n        mi = ix[msk]\n        d = _hav(lat, lon, self.glat[mi], self.glon[mi])\n        best = float(d.min())\n        return best <= RAIO_CONFIRMA_M, best\n\n    def geocodificar(self, rua, num, bairro, municipio):\n        rua_l = limpar_logradouro(rua)\n        bai_l = limpar_bairro(bairro, municipio)\n        rua_n = sem_acento(rua_l)\n        cod = self.cod_municipio(municipio)\n\n        if not rua_l:\n            c = self.cent_mun.get(cod)\n            if c:\n                return (c[0], c[1], "Centroide de Cidade", "Centroide Municipio", False, None)\n            return (None, None, "Nao Encontrado", "-", False, None)\n\n        partes = [f"{rua_l}, {num}" if num else rua_l]\n        if bai_l:\n            partes.append(bai_l)\n        partes += [str(municipio).strip(), "Ceará", "Brasil"]\n        consulta = ", ".join(p for p in partes if p)\n\n        ext = None\n        if self.geocode_ext is not None:\n            loc = self.geocode_ext(consulta, out_fields="*")\n            if loc:\n                at = ((loc.raw or {}).get("attributes", {}) or {}).get("Addr_type", "")\n                ext = (float(loc.latitude), float(loc.longitude), str(at).lower())\n\n        ancora = (ext[0], ext[1]) if ext else None\n\n        if ext and ext[2] in ROOFTOP and num:\n            ok, dist = self.validar(ext[0], ext[1], rua_n, cod, ancora)\n            if ok:\n                return (ext[0], ext[1], "Exato (Numero)", "ArcGIS+GPKG", True, dist)\n\n        g = self.casar_rua(rua_n, cod, ancora)\n        if g:\n            return (g[0], g[1], "Centroide de Rua", "GPKG (Faces de Quadra)", True, 0.0)\n\n        if ext:\n            if ext[2] in ("streetname", "streetmidblock", "streetint") or num:\n                nivel = "Centroide de Rua"\n            elif ext[2] in ("locality", "neighborhood", "district"):\n                nivel = "Centroide de Bairro"\n            else:\n                nivel = "Centroide de Cidade"\n            return (ext[0], ext[1], nivel, "ArcGIS (nao confirmado)", False, None)\n\n        c = self.cent_mun.get(cod)\n        if c:\n            return (c[0], c[1], "Centroide de Cidade", "Centroide Municipio", False, None)\n        return (None, None, "Nao Encontrado", "-", False, None)\n\n\nclass JanelaProgresso:\n    def __init__(self, total):\n        self.total = max(total, 1)\n        self.root = tk.Toplevel()\n        self.root.title("Processando geocodificação")\n        self.root.geometry("560x220")\n        self.root.resizable(False, False)\n        self.label_status = tk.Label(self.root, text="Iniciando processamento...")\n        self.label_status.pack(pady=(15, 8))\n        self.progress = ttk.Progressbar(self.root, orient="horizontal", length=500, mode="determinate")\n        self.progress.pack(pady=5)\n        self.progress["maximum"] = 100\n        self.label_percentual = tk.Label(self.root, text="0%")\n        self.label_percentual.pack(pady=(8, 5))\n        self.label_detalhe = tk.Label(self.root, text="Aguardando...")\n        self.label_detalhe.pack(pady=(4, 4))\n        self.label_contadores = tk.Label(self.root, text="Processados: 0 | Geocodificados: 0")\n        self.label_contadores.pack(pady=(4, 5))\n        self.root.update_idletasks()\n\n    def atualizar(self, atual, texto="Processando...", detalhe="", processados=0, geocodificados=0):\n        percentual = int((atual / self.total) * 100)\n        self.progress["value"] = percentual\n        self.label_status.config(text=texto)\n        self.label_percentual.config(text=f"{percentual}%")\n        self.label_detalhe.config(text=detalhe)\n        self.label_contadores.config(text=f"Processados: {processados} | Geocodificados: {geocodificados}")\n        self.root.update_idletasks()\n        self.root.update()\n\n    def fechar(self):\n        try:\n            if self.root.winfo_exists():\n                self.root.destroy()\n        except Exception:\n            pass\n\n\ndef geocodificar_linhas_novas(df, col_lat_destino, col_lon_destino, root_master):\n    motor = MotorGeocodificacaoSoberana()\n    progresso = JanelaProgresso(len(df))\n    progresso.root.transient(root_master)\n\n    lats, lons, niveis, fontes, confirmados, distancias, ocorrencias = [], [], [], [], [], [], []\n    geocodificados = 0\n\n    try:\n        for i, (_, row) in enumerate(df.iterrows(), start=1):\n            num = limpar_numero(row.get("numero_busca", ""))\n            r = motor.geocodificar(\n                row.get("logradouro_busca", ""),\n                num,\n                row.get("bairro_busca", ""),\n                row.get("municipio_busca", "")\n            )\n            lats.append(r[0])\n            lons.append(r[1])\n            niveis.append(r[2])\n            fontes.append(r[3])\n            confirmados.append(r[4])\n            distancias.append(r[5])\n            ocorrencias.append(1)\n            if r[0] is not None and r[1] is not None:\n                geocodificados += 1\n            progresso.atualizar(i, "Geocodificando linhas novas...", f"Linha {i} de {len(df)}", i, geocodificados)\n    finally:\n        progresso.fechar()\n\n    df[col_lat_destino] = lats\n    df[col_lon_destino] = lons\n    df["Nivel_Geocodificacao"] = niveis\n    df["Fonte"] = fontes\n    df["_confirmado_base"] = confirmados\n    df["_dist_validacao_m"] = distancias\n\n    chave = df[col_lat_destino].round(6).astype(str) + "," + df[col_lon_destino].round(6).astype(str)\n    cont = chave.value_counts()\n    df["Ocorrencias_Mesmo_Ponto"] = chave.map(cont).fillna(1).astype(int)\n    df["_loc_aproximada"] = (df["Ocorrencias_Mesmo_Ponto"] >= LIMIAR_SUSPEITO) & (df["numero_busca"].fillna("").astype(str).str.strip() == "")\n    return df, geocodificados\n\n\ndef preparar_campos_geocodificacao(df, col_endereco, col_numero, col_bairro, col_municipio):\n    df = df.copy()\n    df["logradouro_busca"] = df[col_endereco].apply(limpar_logradouro)\n    df["numero_busca"] = df[col_numero].apply(limpar_numero)\n    df["bairro_busca"] = df.apply(lambda r: limpar_bairro(r[col_bairro], r[col_municipio]), axis=1)\n    df["municipio_busca"] = df[col_municipio].fillna("").astype(str).str.strip()\n    return df\n\n\ndef salvar_excel(df, caminho_saida):\n    with pd.ExcelWriter(caminho_saida, engine="openpyxl") as writer:\n        df.to_excel(writer, index=False, sheet_name="CVP_SIP_ENDERECO")\n\n\ndef registrar_erro(exc):\n    pasta_log = os.path.join(os.path.expanduser("~"), "logs_python_cvp")\n    os.makedirs(pasta_log, exist_ok=True)\n    caminho_log = os.path.join(pasta_log, f"erro_cvp_sip_{datetime.now().strftime(\'%Y%m%d_%H%M%S\')}.log")\n    with open(caminho_log, "w", encoding="utf-8") as f:\n        f.write("ERRO NO PROCESSAMENTO\\n")\n        f.write(f"Data/Hora: {datetime.now().strftime(\'%d/%m/%Y %H:%M:%S\')}\\n")\n        f.write(f"Tipo: {type(exc).__name__}\\n")\n        f.write(f"Mensagem: {str(exc).strip() or \'Exceção sem mensagem textual.\'}\\n\\n")\n        f.write("TRACEBACK COMPLETO:\\n")\n        f.write(traceback.format_exc())\n    return caminho_log\n\n\ndef processar():\n    root = tk.Tk()\n    root.withdraw()\n    try:\n        arquivo_01 = selecionar_arquivo("Selecione o Arquivo 01 - Base CVP")\n        if not arquivo_01:\n            messagebox.showwarning("Aviso", "Processo cancelado: Arquivo 01 não selecionado.")\n            return\n\n        arquivo_02 = selecionar_arquivo("Selecione o Arquivo 02 - Complemento SIP")\n        if not arquivo_02:\n            messagebox.showwarning("Aviso", "Processo cancelado: Arquivo 02 não selecionado.")\n            return\n\n        pasta_saida = selecionar_pasta_saida()\n        if not pasta_saida:\n            messagebox.showwarning("Aviso", "Processo cancelado: pasta de destino não selecionada.")\n            return\n\n        df_base = pd.read_excel(arquivo_01)\n        df_novo = pd.read_excel(arquivo_02)\n\n        df_base = normalizar_colunas(df_base)\n        df_novo = normalizar_colunas(df_novo)\n\n        col_data_base = encontrar_coluna_data_base(df_base)\n        col_hora_base = encontrar_coluna_hora_base(df_base)\n        col_datahora_novo = encontrar_coluna_datahora_arquivo_02(df_novo)\n\n        col_lat_base = encontrar_coluna_por_nomes(df_base, ["lat", "latitude"], obrigatoria=True)\n        col_lon_base = encontrar_coluna_por_nomes(df_base, ["long", "longitude", "lon"], obrigatoria=True)\n\n        col_endereco = encontrar_coluna_por_nomes(df_novo, ["endereço", "endereco", "logradouro", "rua"], obrigatoria=True)\n        col_numero = encontrar_coluna_por_nomes(df_novo, ["número", "numero", "localNumero", "num"], obrigatoria=True)\n        col_bairro = encontrar_coluna_por_nomes(df_novo, ["bairro"], obrigatoria=True)\n        col_municipio = encontrar_coluna_por_nomes(df_novo, ["município", "municipio", "cidade"], obrigatoria=True)\n\n        df_novo = renomear_colunas_equivalentes(df_base, df_novo)\n        df_base = criar_datahora_base(df_base, col_data_base, col_hora_base)\n        df_novo = criar_datahora_arquivo_02(df_novo, col_datahora_novo)\n\n        ultimo_datahora_base = obter_ultimo_datahora(df_base, "__datahora__")\n        total_antes_filtro_tempo = len(df_novo)\n        df_novo_filtrado = filtrar_apenas_registros_posteriores(df_novo, "__datahora__", ultimo_datahora_base)\n        removidos_por_datahora = total_antes_filtro_tempo - len(df_novo_filtrado)\n\n        base_sem_aux = df_base.drop(columns=["__datahora__"])\n        if "Nivel_Geocodificacao" not in base_sem_aux.columns:\n            base_sem_aux["Nivel_Geocodificacao"] = pd.NA\n        if "Fonte" not in base_sem_aux.columns:\n            base_sem_aux["Fonte"] = pd.NA\n        if "_confirmado_base" not in base_sem_aux.columns:\n            base_sem_aux["_confirmado_base"] = pd.NA\n        if "_dist_validacao_m" not in base_sem_aux.columns:\n            base_sem_aux["_dist_validacao_m"] = pd.NA\n        if "Ocorrencias_Mesmo_Ponto" not in base_sem_aux.columns:\n            base_sem_aux["Ocorrencias_Mesmo_Ponto"] = pd.NA\n        if "_loc_aproximada" not in base_sem_aux.columns:\n            base_sem_aux["_loc_aproximada"] = pd.NA\n\n        if ultimo_datahora_base is None:\n            df_novo_util = df_novo.copy()\n            situacao = "Base anterior sem Data/Hora válida: Arquivo 02 foi incluído integralmente."\n        elif df_novo_filtrado.empty:\n            df_novo_util = df_novo_filtrado.copy()\n            situacao = "Nenhum registro novo encontrado após a última Data/Hora da base: Arquivo 01 foi mantido sem acréscimos."\n        else:\n            df_novo_util = df_novo_filtrado.copy()\n            situacao = "Base anterior localizada: somente registros posteriores à última Data/Hora foram adicionados."\n\n        adicionados = len(df_novo_util)\n        geocodificados = 0\n\n        if not df_novo_util.empty:\n            df_novo_util = preparar_campos_geocodificacao(df_novo_util, col_endereco, col_numero, col_bairro, col_municipio)\n            df_novo_util, geocodificados = geocodificar_linhas_novas(df_novo_util, col_lat_base, col_lon_base, root)\n            df_novo_util = df_novo_util.drop(columns=[c for c in ["logradouro_busca", "numero_busca", "bairro_busca", "municipio_busca", "__datahora__"] if c in df_novo_util.columns])\n            df_novo_util = alinhar_colunas_arquivo_02_com_base(base_sem_aux, df_novo_util)\n            df_final = pd.concat([base_sem_aux, df_novo_util], ignore_index=True)\n        else:\n            df_final = base_sem_aux.copy()\n\n        colunas_excluir_saida = [\n            "Fonte",\n            "_confirmado_base",\n            "_dist_validacao_m",\n            "Ocorrencias_Mesmo_Ponto",\n            "_loc_aproximada"\n        ]\n        df_final = df_final.drop(columns=[c for c in colunas_excluir_saida if c in df_final.columns])\n\n        df_final = criar_datahora_base(df_final, col_data_base, col_hora_base)\n        df_final = df_final.sort_values(by="__datahora__", ascending=True, na_position="last").reset_index(drop=True)\n        df_final = df_final.drop(columns=["__datahora__"])\n\n        total_final = len(df_final)\n        caminho_saida = os.path.join(pasta_saida, NOME_ARQUIVO_FINAL)\n        salvar_excel(df_final, caminho_saida)\n\n        ultima_ref = ultimo_datahora_base.strftime("%d/%m/%Y %H:%M:%S") if ultimo_datahora_base is not None else "sem referência anterior válida"\n        messagebox.showinfo(\n            "Sucesso",\n            f"Processo Finalizado, adicionado {adicionados} CVP\'s novos, total de {total_final} CVP\'s.\\n"\n            f"Última Data/Hora da base: {ultima_ref}\\n"\n            f"Registros excluídos por serem anteriores/iguais à última Data/Hora da base: {removidos_por_datahora}\\n"\n            f"Registros geocodificados nas linhas novas: {geocodificados}\\n\\n"\n            f"{situacao}\\n\\n"\n            f"O arquivo será salvo com o nome\\n{NOME_ARQUIVO_FINAL}"\n        )\n\n    except Exception as e:\n        caminho_log = registrar_erro(e)\n        messagebox.showerror(\n            "Erro",\n            f"Ocorreu um erro durante o processamento.\\n\\n"\n            f"Tipo: {type(e).__name__}\\n"\n            f"Mensagem: {str(e).strip() or \'Exceção sem mensagem textual.\'}\\n\\n"\n            f"Log salvo em:\\n{caminho_log}"\n        )\n    finally:\n        try:\n            root.destroy()\n        except Exception:\n            pass\n\n\nif __name__ == "__main__":\n    processar()\n',
+    '4-Pertubacao-do-Sossego-Alheio-4.py': 'import os\nimport traceback\nimport pandas as pd\nfrom pyproj import Transformer\nfrom tkinter import Tk, filedialog, messagebox\n\nNOME_ARQUIVO_FINAL = "4 - Pertubação de Sossego Alheio - 2026 - QGP.xlsx"\n\n\ndef selecionar_arquivo(titulo):\n    return filedialog.askopenfilename(\n        title=titulo,\n        filetypes=[("Arquivos Excel", "*.xlsx *.xls")]\n    )\n\n\ndef selecionar_pasta_saida():\n    return filedialog.askdirectory(\n        title="Selecione a pasta onde o arquivo final será salvo"\n    )\n\n\ndef normalizar_colunas(df):\n    df.columns = [str(c).strip() for c in df.columns]\n    return df\n\n\ndef encontrar_coluna_data(df):\n    exatos = [c for c in df.columns if str(c).strip().lower() == "data"]\n    if exatos:\n        return exatos[0]\n    aproximados = [c for c in df.columns if "data" in str(c).strip().lower()]\n    if aproximados:\n        return aproximados[0]\n    raise ValueError("Não foi encontrada a coluna \'Data\'.")\n\n\ndef encontrar_coluna_hora(df):\n    exatos = [c for c in df.columns if str(c).strip().lower() == "hora"]\n    if exatos:\n        return exatos[0]\n    aproximados = [c for c in df.columns if "hora" in str(c).strip().lower()]\n    if aproximados:\n        return aproximados[0]\n    raise ValueError("Não foi encontrada a coluna \'Hora\'.")\n\n\ndef encontrar_coluna_por_nomes(df, nomes_possiveis, obrigatoria=True):\n    cols_map = {str(c).strip().lower(): c for c in df.columns}\n\n    for nome in nomes_possiveis:\n        if nome.lower() in cols_map:\n            return cols_map[nome.lower()]\n\n    for c in df.columns:\n        cl = str(c).strip().lower()\n        for nome in nomes_possiveis:\n            if nome.lower() in cl:\n                return c\n\n    if obrigatoria:\n        raise ValueError(f"Não foi possível localizar nenhuma das colunas esperadas: {nomes_possiveis}")\n    return None\n\n\ndef renomear_colunas_equivalentes(df_base, df_novo):\n    mapa_equivalencias = {\n        "AIS": ["AISNova", "AIS Nova", "AIS_NOVA", "aisnova", "ais_nova"],\n        "Território": ["Regiões", "Regioes", "Região", "Regiao", "regiões", "regioes", "região", "regiao"]\n    }\n\n    colunas_base_map = {str(c).strip().lower(): c for c in df_base.columns}\n    colunas_novo_map = {str(c).strip().lower(): c for c in df_novo.columns}\n\n    renomeacoes = {}\n\n    for coluna_base_oficial, aliases in mapa_equivalencias.items():\n        chave_base = coluna_base_oficial.strip().lower()\n\n        if chave_base not in colunas_base_map:\n            continue\n\n        nome_real_base = colunas_base_map[chave_base]\n\n        if nome_real_base in df_novo.columns:\n            continue\n\n        for alias in aliases:\n            chave_alias = alias.strip().lower()\n            if chave_alias in colunas_novo_map:\n                nome_real_novo = colunas_novo_map[chave_alias]\n                renomeacoes[nome_real_novo] = nome_real_base\n                break\n\n    if renomeacoes:\n        df_novo = df_novo.rename(columns=renomeacoes)\n\n    return df_novo\n\n\ndef valor_numerico_exato(v):\n    if pd.isna(v):\n        return None\n\n    if isinstance(v, str):\n        s = v.strip()\n        if s == "":\n            return None\n        s = s.replace(".", "").replace(",", ".")\n        try:\n            return float(s)\n        except ValueError:\n            return None\n\n    try:\n        return float(v)\n    except Exception:\n        return None\n\n\ndef normalizar_data_para_texto(v):\n    if pd.isna(v):\n        return None\n\n    if isinstance(v, pd.Timestamp):\n        return v.strftime("%d/%m/%Y")\n\n    try:\n        dt = pd.to_datetime(v, errors="coerce", dayfirst=True)\n        if pd.isna(dt):\n            return None\n        return dt.strftime("%d/%m/%Y")\n    except Exception:\n        return None\n\n\ndef normalizar_hora_para_texto(v):\n    if pd.isna(v):\n        return None\n\n    if isinstance(v, pd.Timestamp):\n        return v.strftime("%H:%M:%S")\n\n    s = str(v).strip()\n    if s == "":\n        return None\n\n    formatos = ["%H:%M:%S", "%H:%M"]\n    for fmt in formatos:\n        dt = pd.to_datetime(s, errors="coerce", format=fmt)\n        if not pd.isna(dt):\n            return dt.strftime("%H:%M:%S")\n\n    try:\n        dt = pd.to_datetime(s, errors="coerce")\n        if not pd.isna(dt):\n            return dt.strftime("%H:%M:%S")\n    except Exception:\n        pass\n\n    return None\n\n\ndef criar_coluna_datahora(df, coluna_data, coluna_hora, nome_coluna="__datahora__"):\n    datas = df[coluna_data].apply(normalizar_data_para_texto)\n    horas = df[coluna_hora].apply(normalizar_hora_para_texto)\n\n    combinado = []\n    for d, h in zip(datas, horas):\n        if d is None or h is None:\n            combinado.append(pd.NaT)\n        else:\n            combinado.append(pd.to_datetime(f"{d} {h}", errors="coerce", dayfirst=True))\n\n    df[nome_coluna] = combinado\n    return df\n\n\ndef excluir_coordenadas_invalidas(df, col_lat, col_lon):\n    manter = []\n\n    for lat_raw, lon_raw in zip(df[col_lat], df[col_lon]):\n        lat = valor_numerico_exato(lat_raw)\n        lon = valor_numerico_exato(lon_raw)\n\n        if lat is None or lon is None:\n            manter.append(False)\n        elif lat == 0 or lon == 0:\n            manter.append(False)\n        else:\n            manter.append(True)\n\n    return df.loc[manter].copy()\n\n\ndef reprojetar_utm_para_wgs84(df, col_y, col_x, col_lat_destino, col_lon_destino):\n    transformer = Transformer.from_crs("EPSG:31984", "EPSG:4326", always_xy=True)\n\n    lat_resultado = []\n    lon_resultado = []\n\n    for y_raw, x_raw in zip(df[col_y], df[col_x]):\n        y = valor_numerico_exato(y_raw)\n        x = valor_numerico_exato(x_raw)\n\n        if y is None or x is None:\n            lat_resultado.append(pd.NA)\n            lon_resultado.append(pd.NA)\n        else:\n            lon, lat = transformer.transform(x, y)\n            lat_resultado.append(lat)\n            lon_resultado.append(lon)\n\n    df[col_lat_destino] = lat_resultado\n    df[col_lon_destino] = lon_resultado\n    return df\n\n\ndef alinhar_colunas_arquivo_02_com_base(df_base, df_novo):\n    colunas_base = list(df_base.columns)\n\n    df_novo = renomear_colunas_equivalentes(df_base, df_novo)\n\n    for col in colunas_base:\n        if col not in df_novo.columns:\n            df_novo[col] = pd.NA\n\n    return df_novo[colunas_base]\n\n\ndef obter_ultimo_datahora(df, coluna_datahora):\n    df_valid = df[df[coluna_datahora].notna()].copy()\n    if df_valid.empty:\n        return None\n    return df_valid[coluna_datahora].max()\n\n\ndef filtrar_apenas_registros_posteriores(df, coluna_datahora, limite_datahora):\n    if limite_datahora is None:\n        return df.copy()\n    return df[df[coluna_datahora] > limite_datahora].copy()\n\n\ndef ler_arquivo_02_com_aba_automatica(caminho_arquivo):\n    abas_preferenciais = [\n        "Perturbação de Sossego Alheio",\n        "Perturbação ao Sossego Alheio",\n        "Perturbacao de Sossego Alheio",\n        "Perturbacao ao Sossego Alheio",\n    ]\n    for aba in abas_preferenciais:\n        try:\n            return pd.read_excel(caminho_arquivo, sheet_name=aba)\n        except Exception:\n            continue\n    xls = pd.ExcelFile(caminho_arquivo)\n    abas_norm = {str(a).strip().lower(): a for a in xls.sheet_names}\n    for aba in abas_preferenciais:\n        chave = aba.strip().lower()\n        if chave in abas_norm:\n            return pd.read_excel(caminho_arquivo, sheet_name=abas_norm[chave])\n    raise ValueError(\n        "Não foi possível localizar a aba do Arquivo 02. Abas esperadas: "\n        "\'Perturbação de Sossego Alheio\' ou \'Perturbação ao Sossego Alheio\'."\n    )\n\ndef salvar_excel(df, caminho_saida):\n    with pd.ExcelWriter(caminho_saida, engine="openpyxl") as writer:\n        df.to_excel(writer, index=False, sheet_name="PERTURBACAO_SOSSEGO")\n\n\ndef processar():\n    root = Tk()\n    root.withdraw()\n\n    try:\n        arquivo_01 = selecionar_arquivo("Selecione o Arquivo 01 - Base Pertubação de Sossego Alheio")\n        if not arquivo_01:\n            messagebox.showwarning("Aviso", "Processo cancelado: Arquivo 01 não selecionado.")\n            return\n\n        arquivo_02 = selecionar_arquivo("Selecione o Arquivo 02 - Complemento")\n        if not arquivo_02:\n            messagebox.showwarning("Aviso", "Processo cancelado: Arquivo 02 não selecionado.")\n            return\n\n        pasta_saida = selecionar_pasta_saida()\n        if not pasta_saida:\n            messagebox.showwarning("Aviso", "Processo cancelado: pasta de destino não selecionada.")\n            return\n\n        df_base = pd.read_excel(arquivo_01)\n        df_novo = ler_arquivo_02_com_aba_automatica(arquivo_02)\n\n        df_base = normalizar_colunas(df_base)\n        df_novo = normalizar_colunas(df_novo)\n\n        col_data_base = encontrar_coluna_data(df_base)\n        col_data_novo = encontrar_coluna_data(df_novo)\n        col_hora_base = encontrar_coluna_hora(df_base)\n        col_hora_novo = encontrar_coluna_hora(df_novo)\n\n        if col_data_base != col_data_novo:\n            df_novo = df_novo.rename(columns={col_data_novo: col_data_base})\n        if col_hora_base != col_hora_novo:\n            df_novo = df_novo.rename(columns={col_hora_novo: col_hora_base})\n\n        col_data = col_data_base\n        col_hora = col_hora_base\n\n        col_lat_base = encontrar_coluna_por_nomes(df_base, ["lat", "latitude"], obrigatoria=True)\n        col_lon_base = encontrar_coluna_por_nomes(df_base, ["long", "longitude", "lon"], obrigatoria=True)\n\n        col_lat_novo = encontrar_coluna_por_nomes(df_novo, ["latitude"], obrigatoria=True)\n        col_lon_novo = encontrar_coluna_por_nomes(df_novo, ["longitude"], obrigatoria=True)\n\n        df_novo = renomear_colunas_equivalentes(df_base, df_novo)\n\n        total_lido_arquivo_02 = len(df_novo)\n\n        df_novo = excluir_coordenadas_invalidas(df_novo, col_lat_novo, col_lon_novo)\n        removidos_invalidos = total_lido_arquivo_02 - len(df_novo)\n\n        if df_novo.empty:\n            raise ValueError("Após excluir coordenadas inválidas, o Arquivo 02 ficou sem registros válidos.")\n\n        df_base = criar_coluna_datahora(df_base, col_data, col_hora)\n        df_novo = criar_coluna_datahora(df_novo, col_data, col_hora)\n\n        ultimo_datahora_base = obter_ultimo_datahora(df_base, "__datahora__")\n\n        total_antes_filtro_tempo = len(df_novo)\n        df_novo_filtrado = filtrar_apenas_registros_posteriores(df_novo, "__datahora__", ultimo_datahora_base)\n        removidos_por_datahora = total_antes_filtro_tempo - len(df_novo_filtrado)\n\n        base_sem_aux = df_base.drop(columns=["__datahora__"])\n\n        if ultimo_datahora_base is None:\n            df_novo_util = df_novo.copy()\n            situacao = "Base anterior sem Data/Hora válida: Arquivo 02 foi incluído integralmente."\n        elif df_novo_filtrado.empty:\n            df_novo_util = df_novo_filtrado.copy()\n            situacao = "Nenhum registro novo encontrado após a última Data/Hora da base: Arquivo 01 foi mantido sem acréscimos."\n        else:\n            df_novo_util = df_novo_filtrado.copy()\n            situacao = "Base anterior localizada: somente registros posteriores à última Data/Hora foram adicionados."\n\n        adicionados = len(df_novo_util)\n\n        if not df_novo_util.empty:\n            df_novo_util = reprojetar_utm_para_wgs84(\n                df_novo_util,\n                col_y=col_lat_novo,\n                col_x=col_lon_novo,\n                col_lat_destino=col_lat_base,\n                col_lon_destino=col_lon_base\n            )\n            df_novo_util = alinhar_colunas_arquivo_02_com_base(base_sem_aux, df_novo_util)\n            df_final = pd.concat([base_sem_aux, df_novo_util], ignore_index=True)\n        else:\n            df_final = base_sem_aux.copy()\n\n        df_final = criar_coluna_datahora(df_final, col_data, col_hora)\n        df_final = df_final.sort_values(by="__datahora__", ascending=True, na_position="last").reset_index(drop=True)\n        df_final = df_final.drop(columns=["__datahora__"])\n\n        total_final = len(df_final)\n\n        caminho_saida = os.path.join(pasta_saida, NOME_ARQUIVO_FINAL)\n        salvar_excel(df_final, caminho_saida)\n\n        ultima_ref = (\n            ultimo_datahora_base.strftime("%d/%m/%Y %H:%M:%S")\n            if ultimo_datahora_base is not None else "sem referência anterior válida"\n        )\n\n        mensagem = (\n            f"Processo Finalizado, adicionado {adicionados} registros novos de Pertubação de Sossego Alheio, total de {total_final} registros.\\n"\n            f"Última Data/Hora da base: {ultima_ref}\\n"\n            f"Registros excluídos por coordenadas inválidas: {removidos_invalidos}\\n"\n            f"Registros excluídos por serem anteriores/iguais à última Data/Hora da base: {removidos_por_datahora}\\n\\n"\n            f"{situacao}\\n\\n"\n            f"O arquivo será salvo com o nome\\n{NOME_ARQUIVO_FINAL}"\n        )\n\n        messagebox.showinfo("Sucesso", mensagem)\n\n    except Exception as e:\n        messagebox.showerror("Erro", f"Ocorreu um erro durante o processamento:\\n\\n{str(e)}")\n        traceback.print_exc()\n\n\nif __name__ == "__main__":\n    processar()\n',
+    '5-Deslocamento-Forcado-5.py': 'import os\nimport traceback\nimport pandas as pd\nfrom pyproj import Transformer\nfrom tkinter import Tk, filedialog, messagebox\n\nNOME_ARQUIVO_FINAL = "5 - DESLOCAMENTO FORÇADO - 2026 - QGP.xlsx"\n\n\ndef selecionar_arquivo(titulo):\n    return filedialog.askopenfilename(\n        title=titulo,\n        filetypes=[("Arquivos Excel", "*.xlsx *.xls")]\n    )\n\n\ndef selecionar_pasta_saida():\n    return filedialog.askdirectory(\n        title="Selecione a pasta onde o arquivo final será salvo"\n    )\n\n\ndef normalizar_colunas(df):\n    df.columns = [str(c).strip() for c in df.columns]\n    return df\n\n\ndef encontrar_coluna_data(df):\n    exatos = [c for c in df.columns if str(c).strip().lower() == "data"]\n    if exatos:\n        return exatos[0]\n    aproximados = [c for c in df.columns if "data" in str(c).strip().lower()]\n    if aproximados:\n        return aproximados[0]\n    raise ValueError("Não foi encontrada a coluna \'Data\'.")\n\n\ndef encontrar_coluna_hora(df):\n    exatos = [c for c in df.columns if str(c).strip().lower() == "hora"]\n    if exatos:\n        return exatos[0]\n    aproximados = [c for c in df.columns if "hora" in str(c).strip().lower()]\n    if aproximados:\n        return aproximados[0]\n    raise ValueError("Não foi encontrada a coluna \'Hora\'.")\n\n\ndef encontrar_coluna_por_nomes(df, nomes_possiveis, obrigatoria=True):\n    cols_map = {str(c).strip().lower(): c for c in df.columns}\n\n    for nome in nomes_possiveis:\n        if nome.lower() in cols_map:\n            return cols_map[nome.lower()]\n\n    for c in df.columns:\n        cl = str(c).strip().lower()\n        for nome in nomes_possiveis:\n            if nome.lower() in cl:\n                return c\n\n    if obrigatoria:\n        raise ValueError(f"Não foi possível localizar nenhuma das colunas esperadas: {nomes_possiveis}")\n    return None\n\n\ndef renomear_colunas_equivalentes(df_base, df_novo):\n    mapa_equivalencias = {\n        "AIS": ["AISNova", "AIS Nova", "AIS_NOVA", "aisnova", "ais_nova"],\n        "Território": ["Regiões", "Regioes", "Região", "Regiao", "território", "territorio", "regiões", "regioes"]\n    }\n\n    colunas_base_map = {str(c).strip().lower(): c for c in df_base.columns}\n    colunas_novo_map = {str(c).strip().lower(): c for c in df_novo.columns}\n\n    renomeacoes = {}\n\n    for coluna_base_oficial, aliases in mapa_equivalencias.items():\n        chave_base = coluna_base_oficial.strip().lower()\n\n        if chave_base not in colunas_base_map:\n            continue\n\n        nome_real_base = colunas_base_map[chave_base]\n\n        if nome_real_base in df_novo.columns:\n            continue\n\n        for alias in aliases:\n            chave_alias = alias.strip().lower()\n            if chave_alias in colunas_novo_map:\n                nome_real_novo = colunas_novo_map[chave_alias]\n                renomeacoes[nome_real_novo] = nome_real_base\n                break\n\n    if renomeacoes:\n        df_novo = df_novo.rename(columns=renomeacoes)\n\n    return df_novo\n\n\ndef valor_numerico_exato(v):\n    if pd.isna(v):\n        return None\n\n    if isinstance(v, str):\n        s = v.strip()\n        if s == "":\n            return None\n        s = s.replace(".", "").replace(",", ".")\n        try:\n            return float(s)\n        except ValueError:\n            return None\n\n    try:\n        return float(v)\n    except Exception:\n        return None\n\n\ndef normalizar_data_para_texto(v):\n    if pd.isna(v):\n        return None\n\n    if isinstance(v, pd.Timestamp):\n        return v.strftime("%d/%m/%Y")\n\n    try:\n        dt = pd.to_datetime(v, errors="coerce", dayfirst=True)\n        if pd.isna(dt):\n            return None\n        return dt.strftime("%d/%m/%Y")\n    except Exception:\n        return None\n\n\ndef normalizar_hora_para_texto(v):\n    if pd.isna(v):\n        return None\n\n    if isinstance(v, pd.Timestamp):\n        return v.strftime("%H:%M:%S")\n\n    s = str(v).strip()\n    if s == "":\n        return None\n\n    formatos = ["%H:%M:%S", "%H:%M"]\n    for fmt in formatos:\n        dt = pd.to_datetime(s, errors="coerce", format=fmt)\n        if not pd.isna(dt):\n            return dt.strftime("%H:%M:%S")\n\n    try:\n        dt = pd.to_datetime(s, errors="coerce")\n        if not pd.isna(dt):\n            return dt.strftime("%H:%M:%S")\n    except Exception:\n        pass\n\n    return None\n\n\ndef criar_coluna_datahora(df, coluna_data, coluna_hora, nome_coluna="__datahora__"):\n    datas = df[coluna_data].apply(normalizar_data_para_texto)\n    horas = df[coluna_hora].apply(normalizar_hora_para_texto)\n\n    combinado = []\n    for d, h in zip(datas, horas):\n        if d is None or h is None:\n            combinado.append(pd.NaT)\n        else:\n            combinado.append(pd.to_datetime(f"{d} {h}", errors="coerce", dayfirst=True))\n\n    df[nome_coluna] = combinado\n    return df\n\n\ndef excluir_coordenadas_invalidas(df, col_lat, col_lon):\n    manter = []\n\n    for lat_raw, lon_raw in zip(df[col_lat], df[col_lon]):\n        lat = valor_numerico_exato(lat_raw)\n        lon = valor_numerico_exato(lon_raw)\n\n        if lat is None or lon is None:\n            manter.append(False)\n        elif lat == 0 or lon == 0:\n            manter.append(False)\n        else:\n            manter.append(True)\n\n    return df.loc[manter].copy()\n\n\ndef reprojetar_utm_para_wgs84(df, col_y, col_x, col_lat_destino, col_lon_destino):\n    transformer = Transformer.from_crs("EPSG:31984", "EPSG:4326", always_xy=True)\n\n    lat_resultado = []\n    lon_resultado = []\n\n    for y_raw, x_raw in zip(df[col_y], df[col_x]):\n        y = valor_numerico_exato(y_raw)\n        x = valor_numerico_exato(x_raw)\n\n        if y is None or x is None:\n            lat_resultado.append(pd.NA)\n            lon_resultado.append(pd.NA)\n        else:\n            lon, lat = transformer.transform(x, y)\n            lat_resultado.append(lat)\n            lon_resultado.append(lon)\n\n    df[col_lat_destino] = lat_resultado\n    df[col_lon_destino] = lon_resultado\n    return df\n\n\ndef alinhar_colunas_arquivo_02_com_base(df_base, df_novo):\n    colunas_base = list(df_base.columns)\n\n    df_novo = renomear_colunas_equivalentes(df_base, df_novo)\n\n    for col in colunas_base:\n        if col not in df_novo.columns:\n            df_novo[col] = pd.NA\n\n    return df_novo[colunas_base]\n\n\ndef obter_ultimo_datahora(df, coluna_datahora):\n    df_valid = df[df[coluna_datahora].notna()].copy()\n    if df_valid.empty:\n        return None\n    return df_valid[coluna_datahora].max()\n\n\ndef filtrar_apenas_registros_posteriores(df, coluna_datahora, limite_datahora):\n    if limite_datahora is None:\n        return df.copy()\n    return df[df[coluna_datahora] > limite_datahora].copy()\n\n\ndef salvar_excel(df, caminho_saida):\n    with pd.ExcelWriter(caminho_saida, engine="openpyxl") as writer:\n        df.to_excel(writer, index=False, sheet_name="DESLOCAMENTO_FORCADO")\n\n\ndef processar():\n    root = Tk()\n    root.withdraw()\n\n    try:\n        arquivo_01 = selecionar_arquivo("Selecione o Arquivo 01 - Base Deslocamento Forçado")\n        if not arquivo_01:\n            messagebox.showwarning("Aviso", "Processo cancelado: Arquivo 01 não selecionado.")\n            return\n\n        arquivo_02 = selecionar_arquivo("Selecione o Arquivo 02 - Complemento")\n        if not arquivo_02:\n            messagebox.showwarning("Aviso", "Processo cancelado: Arquivo 02 não selecionado.")\n            return\n\n        pasta_saida = selecionar_pasta_saida()\n        if not pasta_saida:\n            messagebox.showwarning("Aviso", "Processo cancelado: pasta de destino não selecionada.")\n            return\n\n        df_base = pd.read_excel(arquivo_01)\n        df_novo = pd.read_excel(arquivo_02)\n\n        df_base = normalizar_colunas(df_base)\n        df_novo = normalizar_colunas(df_novo)\n\n        col_data_base = encontrar_coluna_data(df_base)\n        col_data_novo = encontrar_coluna_data(df_novo)\n        col_hora_base = encontrar_coluna_hora(df_base)\n        col_hora_novo = encontrar_coluna_hora(df_novo)\n\n        if col_data_base != col_data_novo:\n            df_novo = df_novo.rename(columns={col_data_novo: col_data_base})\n        if col_hora_base != col_hora_novo:\n            df_novo = df_novo.rename(columns={col_hora_novo: col_hora_base})\n\n        col_data = col_data_base\n        col_hora = col_hora_base\n\n        col_lat_base = encontrar_coluna_por_nomes(df_base, ["lat", "latitude"], obrigatoria=True)\n        col_lon_base = encontrar_coluna_por_nomes(df_base, ["long", "longitude", "lon"], obrigatoria=True)\n\n        col_lat_novo = encontrar_coluna_por_nomes(df_novo, ["latitude"], obrigatoria=True)\n        col_lon_novo = encontrar_coluna_por_nomes(df_novo, ["longitude"], obrigatoria=True)\n\n        df_novo = renomear_colunas_equivalentes(df_base, df_novo)\n\n        total_lido_arquivo_02 = len(df_novo)\n\n        df_novo = excluir_coordenadas_invalidas(df_novo, col_lat_novo, col_lon_novo)\n        removidos_invalidos = total_lido_arquivo_02 - len(df_novo)\n\n        if df_novo.empty:\n            raise ValueError("Após excluir coordenadas inválidas, o Arquivo 02 ficou sem registros válidos.")\n\n        df_base = criar_coluna_datahora(df_base, col_data, col_hora)\n        df_novo = criar_coluna_datahora(df_novo, col_data, col_hora)\n\n        ultimo_datahora_base = obter_ultimo_datahora(df_base, "__datahora__")\n\n        total_antes_filtro_tempo = len(df_novo)\n        df_novo_filtrado = filtrar_apenas_registros_posteriores(df_novo, "__datahora__", ultimo_datahora_base)\n        removidos_por_datahora = total_antes_filtro_tempo - len(df_novo_filtrado)\n\n        base_sem_aux = df_base.drop(columns=["__datahora__"])\n\n        if ultimo_datahora_base is None:\n            df_novo_util = df_novo.copy()\n            situacao = "Base anterior sem Data/Hora válida: Arquivo 02 foi incluído integralmente."\n        elif df_novo_filtrado.empty:\n            df_novo_util = df_novo_filtrado.copy()\n            situacao = "Nenhum registro novo encontrado após a última Data/Hora da base: Arquivo 01 foi mantido sem acréscimos."\n        else:\n            df_novo_util = df_novo_filtrado.copy()\n            situacao = "Base anterior localizada: somente registros posteriores à última Data/Hora foram adicionados."\n\n        adicionados = len(df_novo_util)\n\n        if not df_novo_util.empty:\n            df_novo_util = reprojetar_utm_para_wgs84(\n                df_novo_util,\n                col_y=col_lat_novo,\n                col_x=col_lon_novo,\n                col_lat_destino=col_lat_base,\n                col_lon_destino=col_lon_base\n            )\n            df_novo_util = alinhar_colunas_arquivo_02_com_base(base_sem_aux, df_novo_util)\n            df_final = pd.concat([base_sem_aux, df_novo_util], ignore_index=True)\n        else:\n            df_final = base_sem_aux.copy()\n\n        df_final = criar_coluna_datahora(df_final, col_data, col_hora)\n        df_final = df_final.sort_values(by="__datahora__", ascending=True, na_position="last").reset_index(drop=True)\n        df_final = df_final.drop(columns=["__datahora__"])\n\n        total_final = len(df_final)\n\n        caminho_saida = os.path.join(pasta_saida, NOME_ARQUIVO_FINAL)\n        salvar_excel(df_final, caminho_saida)\n\n        ultima_ref = (\n            ultimo_datahora_base.strftime("%d/%m/%Y %H:%M:%S")\n            if ultimo_datahora_base is not None else "sem referência anterior válida"\n        )\n\n        mensagem = (\n            f"Processo Finalizado, adicionado {adicionados} registros novos de DESLOCAMENTO FORÇADO, total de {total_final} registros.\\n"\n            f"Última Data/Hora da base: {ultima_ref}\\n"\n            f"Registros excluídos por coordenadas inválidas: {removidos_invalidos}\\n"\n            f"Registros excluídos por serem anteriores/iguais à última Data/Hora da base: {removidos_por_datahora}\\n\\n"\n            f"{situacao}\\n\\n"\n            f"O arquivo será salvo com o nome\\n{NOME_ARQUIVO_FINAL}"\n        )\n\n        messagebox.showinfo("Sucesso", mensagem)\n\n    except Exception as e:\n        messagebox.showerror("Erro", f"Ocorreu um erro durante o processamento:\\n\\n{str(e)}")\n        traceback.print_exc()\n\n\nif __name__ == "__main__":\n    processar()',
+    '6-Roubo-de-Veiculo-Sportal-6.py': 'import os\nimport traceback\nimport pandas as pd\nfrom pyproj import Transformer\nfrom tkinter import Tk, filedialog, messagebox\n\nNOME_ARQUIVO_FINAL = "6 - ROUBO DE VEÍCULO_SPORTAL LAT LONG - 2026 - QGP.xlsx"\n\n\ndef selecionar_arquivo(titulo):\n    return filedialog.askopenfilename(\n        title=titulo,\n        filetypes=[("Arquivos Excel", "*.xlsx *.xls")]\n    )\n\n\ndef selecionar_pasta_saida():\n    return filedialog.askdirectory(\n        title="Selecione a pasta onde o arquivo final será salvo"\n    )\n\n\ndef normalizar_colunas(df):\n    df.columns = [str(c).strip() for c in df.columns]\n    return df\n\n\ndef encontrar_coluna_data(df):\n    exatos = [c for c in df.columns if str(c).strip().lower() == "data"]\n    if exatos:\n        return exatos[0]\n    aproximados = [c for c in df.columns if "data" in str(c).strip().lower()]\n    if aproximados:\n        return aproximados[0]\n    raise ValueError("Não foi encontrada a coluna \'Data\'.")\n\n\ndef encontrar_coluna_hora(df):\n    exatos = [c for c in df.columns if str(c).strip().lower() == "hora"]\n    if exatos:\n        return exatos[0]\n    aproximados = [c for c in df.columns if "hora" in str(c).strip().lower()]\n    if aproximados:\n        return aproximados[0]\n    raise ValueError("Não foi encontrada a coluna \'Hora\'.")\n\n\ndef encontrar_coluna_por_nomes(df, nomes_possiveis, obrigatoria=True):\n    cols_map = {str(c).strip().lower(): c for c in df.columns}\n\n    for nome in nomes_possiveis:\n        if nome.lower() in cols_map:\n            return cols_map[nome.lower()]\n\n    for c in df.columns:\n        cl = str(c).strip().lower()\n        for nome in nomes_possiveis:\n            if nome.lower() in cl:\n                return c\n\n    if obrigatoria:\n        raise ValueError(f"Não foi possível localizar nenhuma das colunas esperadas: {nomes_possiveis}")\n    return None\n\n\ndef renomear_colunas_equivalentes(df_base, df_novo):\n    mapa_equivalencias = {\n        "AIS": ["AISNova", "AIS Nova", "AIS_NOVA", "aisnova", "ais_nova"],\n        "Território": ["Regiões", "Regioes", "Região", "Regiao", "território", "territorio", "regiões", "regioes"]\n    }\n\n    colunas_base_map = {str(c).strip().lower(): c for c in df_base.columns}\n    colunas_novo_map = {str(c).strip().lower(): c for c in df_novo.columns}\n\n    renomeacoes = {}\n\n    for coluna_base_oficial, aliases in mapa_equivalencias.items():\n        chave_base = coluna_base_oficial.strip().lower()\n\n        if chave_base not in colunas_base_map:\n            continue\n\n        nome_real_base = colunas_base_map[chave_base]\n\n        if nome_real_base in df_novo.columns:\n            continue\n\n        for alias in aliases:\n            chave_alias = alias.strip().lower()\n            if chave_alias in colunas_novo_map:\n                nome_real_novo = colunas_novo_map[chave_alias]\n                renomeacoes[nome_real_novo] = nome_real_base\n                break\n\n    if renomeacoes:\n        df_novo = df_novo.rename(columns=renomeacoes)\n\n    return df_novo\n\n\ndef filtrar_por_nome_ocorrencia(df, coluna_nome_ocorrencia, valor_filtro="ROUBO DE VEÍCULO"):\n    serie = df[coluna_nome_ocorrencia].astype(str).str.strip().str.upper()\n    return df.loc[serie == valor_filtro.upper()].copy()\n\n\ndef valor_numerico_exato(v):\n    if pd.isna(v):\n        return None\n\n    if isinstance(v, str):\n        s = v.strip()\n        if s == "":\n            return None\n        s = s.replace(".", "").replace(",", ".")\n        try:\n            return float(s)\n        except ValueError:\n            return None\n\n    try:\n        return float(v)\n    except Exception:\n        return None\n\n\ndef normalizar_data_para_texto(v):\n    if pd.isna(v):\n        return None\n\n    if isinstance(v, pd.Timestamp):\n        return v.strftime("%d/%m/%Y")\n\n    try:\n        dt = pd.to_datetime(v, errors="coerce", dayfirst=True)\n        if pd.isna(dt):\n            return None\n        return dt.strftime("%d/%m/%Y")\n    except Exception:\n        return None\n\n\ndef normalizar_hora_para_texto(v):\n    if pd.isna(v):\n        return None\n\n    if isinstance(v, pd.Timestamp):\n        return v.strftime("%H:%M:%S")\n\n    s = str(v).strip()\n    if s == "":\n        return None\n\n    formatos = ["%H:%M:%S", "%H:%M"]\n    for fmt in formatos:\n        dt = pd.to_datetime(s, errors="coerce", format=fmt)\n        if not pd.isna(dt):\n            return dt.strftime("%H:%M:%S")\n\n    try:\n        dt = pd.to_datetime(s, errors="coerce")\n        if not pd.isna(dt):\n            return dt.strftime("%H:%M:%S")\n    except Exception:\n        pass\n\n    return None\n\n\ndef criar_coluna_datahora(df, coluna_data, coluna_hora, nome_coluna="__datahora__"):\n    datas = df[coluna_data].apply(normalizar_data_para_texto)\n    horas = df[coluna_hora].apply(normalizar_hora_para_texto)\n\n    combinado = []\n    for d, h in zip(datas, horas):\n        if d is None or h is None:\n            combinado.append(pd.NaT)\n        else:\n            combinado.append(pd.to_datetime(f"{d} {h}", errors="coerce", dayfirst=True))\n\n    df[nome_coluna] = combinado\n    return df\n\n\ndef excluir_coordenadas_invalidas(df, col_lat, col_lon):\n    manter = []\n\n    for lat_raw, lon_raw in zip(df[col_lat], df[col_lon]):\n        lat = valor_numerico_exato(lat_raw)\n        lon = valor_numerico_exato(lon_raw)\n\n        if lat is None or lon is None:\n            manter.append(False)\n        elif lat == 0 or lon == 0:\n            manter.append(False)\n        else:\n            manter.append(True)\n\n    return df.loc[manter].copy()\n\n\ndef reprojetar_utm_para_wgs84(df, col_y, col_x, col_lat_destino, col_lon_destino):\n    transformer = Transformer.from_crs("EPSG:31984", "EPSG:4326", always_xy=True)\n\n    lat_resultado = []\n    lon_resultado = []\n\n    for y_raw, x_raw in zip(df[col_y], df[col_x]):\n        y = valor_numerico_exato(y_raw)\n        x = valor_numerico_exato(x_raw)\n\n        if y is None or x is None:\n            lat_resultado.append(pd.NA)\n            lon_resultado.append(pd.NA)\n        else:\n            lon, lat = transformer.transform(x, y)\n            lat_resultado.append(lat)\n            lon_resultado.append(lon)\n\n    df[col_lat_destino] = lat_resultado\n    df[col_lon_destino] = lon_resultado\n    return df\n\n\ndef alinhar_colunas_arquivo_02_com_base(df_base, df_novo):\n    colunas_base = list(df_base.columns)\n\n    df_novo = renomear_colunas_equivalentes(df_base, df_novo)\n\n    for col in colunas_base:\n        if col not in df_novo.columns:\n            df_novo[col] = pd.NA\n\n    return df_novo[colunas_base]\n\n\ndef obter_ultimo_datahora(df, coluna_datahora):\n    df_valid = df[df[coluna_datahora].notna()].copy()\n    if df_valid.empty:\n        return None\n    return df_valid[coluna_datahora].max()\n\n\ndef filtrar_apenas_registros_posteriores(df, coluna_datahora, limite_datahora):\n    if limite_datahora is None:\n        return df.copy()\n    return df[df[coluna_datahora] > limite_datahora].copy()\n\n\ndef salvar_excel(df, caminho_saida):\n    with pd.ExcelWriter(caminho_saida, engine="openpyxl") as writer:\n        df.to_excel(writer, index=False, sheet_name="ROUBO_VEICULOS")\n\n\ndef processar():\n    root = Tk()\n    root.withdraw()\n\n    try:\n        arquivo_01 = selecionar_arquivo("Selecione o Arquivo 01 - Base Roubo de Veículo")\n        if not arquivo_01:\n            messagebox.showwarning("Aviso", "Processo cancelado: Arquivo 01 não selecionado.")\n            return\n\n        arquivo_02 = selecionar_arquivo("Selecione o Arquivo 02 - Complemento SPORTAL")\n        if not arquivo_02:\n            messagebox.showwarning("Aviso", "Processo cancelado: Arquivo 02 não selecionado.")\n            return\n\n        pasta_saida = selecionar_pasta_saida()\n        if not pasta_saida:\n            messagebox.showwarning("Aviso", "Processo cancelado: pasta de destino não selecionada.")\n            return\n\n        df_base = pd.read_excel(arquivo_01)\n        df_novo = pd.read_excel(arquivo_02)\n\n        df_base = normalizar_colunas(df_base)\n        df_novo = normalizar_colunas(df_novo)\n\n        col_data_base = encontrar_coluna_data(df_base)\n        col_data_novo = encontrar_coluna_data(df_novo)\n        col_hora_base = encontrar_coluna_hora(df_base)\n        col_hora_novo = encontrar_coluna_hora(df_novo)\n\n        if col_data_base != col_data_novo:\n            df_novo = df_novo.rename(columns={col_data_novo: col_data_base})\n        if col_hora_base != col_hora_novo:\n            df_novo = df_novo.rename(columns={col_hora_novo: col_hora_base})\n\n        col_data = col_data_base\n        col_hora = col_hora_base\n\n        col_nome_ocorrencia = encontrar_coluna_por_nomes(\n            df_novo,\n            ["nome da ocorrência", "nome ocorrencia", "ocorrência", "ocorrencia"],\n            obrigatoria=True\n        )\n\n        df_novo = renomear_colunas_equivalentes(df_base, df_novo)\n\n        total_lido_arquivo_02 = len(df_novo)\n\n        df_novo = filtrar_por_nome_ocorrencia(df_novo, col_nome_ocorrencia, "ROUBO DE VEÍCULO")\n        removidos_por_tipo = total_lido_arquivo_02 - len(df_novo)\n\n        if df_novo.empty:\n            raise ValueError("Após filtrar a coluna \'Nome da Ocorrência\' por \'ROUBO DE VEÍCULO\', o Arquivo 02 ficou sem registros válidos.")\n\n        col_lat_base = encontrar_coluna_por_nomes(df_base, ["lat", "latitude"], obrigatoria=True)\n        col_lon_base = encontrar_coluna_por_nomes(df_base, ["long", "longitude", "lon"], obrigatoria=True)\n\n        col_lat_novo = encontrar_coluna_por_nomes(df_novo, ["latitude"], obrigatoria=True)\n        col_lon_novo = encontrar_coluna_por_nomes(df_novo, ["longitude"], obrigatoria=True)\n\n        total_apos_filtro_tipo = len(df_novo)\n\n        df_novo = excluir_coordenadas_invalidas(df_novo, col_lat_novo, col_lon_novo)\n        removidos_invalidos = total_apos_filtro_tipo - len(df_novo)\n\n        if df_novo.empty:\n            raise ValueError("Após excluir coordenadas inválidas, o Arquivo 02 ficou sem registros válidos.")\n\n        df_base = criar_coluna_datahora(df_base, col_data, col_hora)\n        df_novo = criar_coluna_datahora(df_novo, col_data, col_hora)\n\n        ultimo_datahora_base = obter_ultimo_datahora(df_base, "__datahora__")\n\n        total_antes_filtro_tempo = len(df_novo)\n        df_novo_filtrado = filtrar_apenas_registros_posteriores(df_novo, "__datahora__", ultimo_datahora_base)\n        removidos_por_datahora = total_antes_filtro_tempo - len(df_novo_filtrado)\n\n        base_sem_aux = df_base.drop(columns=["__datahora__"])\n\n        if ultimo_datahora_base is None:\n            df_novo_util = df_novo.copy()\n            situacao = "Base anterior sem Data/Hora válida: Arquivo 02 foi incluído integralmente."\n        elif df_novo_filtrado.empty:\n            df_novo_util = df_novo_filtrado.copy()\n            situacao = "Nenhum registro novo encontrado após a última Data/Hora da base: Arquivo 01 foi mantido sem acréscimos."\n        else:\n            df_novo_util = df_novo_filtrado.copy()\n            situacao = "Base anterior localizada: somente registros posteriores à última Data/Hora foram adicionados."\n\n        adicionados = len(df_novo_util)\n\n        if not df_novo_util.empty:\n            df_novo_util = reprojetar_utm_para_wgs84(\n                df_novo_util,\n                col_y=col_lat_novo,\n                col_x=col_lon_novo,\n                col_lat_destino=col_lat_base,\n                col_lon_destino=col_lon_base\n            )\n            df_novo_util = alinhar_colunas_arquivo_02_com_base(base_sem_aux, df_novo_util)\n            df_final = pd.concat([base_sem_aux, df_novo_util], ignore_index=True)\n        else:\n            df_final = base_sem_aux.copy()\n\n        df_final = criar_coluna_datahora(df_final, col_data, col_hora)\n        df_final = df_final.sort_values(by="__datahora__", ascending=True, na_position="last").reset_index(drop=True)\n        df_final = df_final.drop(columns=["__datahora__"])\n\n        total_final = len(df_final)\n\n        caminho_saida = os.path.join(pasta_saida, NOME_ARQUIVO_FINAL)\n        salvar_excel(df_final, caminho_saida)\n\n        ultima_ref = (\n            ultimo_datahora_base.strftime("%d/%m/%Y %H:%M:%S")\n            if ultimo_datahora_base is not None else "sem referência anterior válida"\n        )\n\n        mensagem = (\n            f"Processo Finalizado, adicionado {adicionados} registros novos de ROUBO DE VEÍCULO, total de {total_final} registros.\\n"\n            f"Última Data/Hora da base: {ultima_ref}\\n"\n            f"Registros excluídos por tipo de ocorrência diferente de ROUBO DE VEÍCULO: {removidos_por_tipo}\\n"\n            f"Registros excluídos por coordenadas inválidas: {removidos_invalidos}\\n"\n            f"Registros excluídos por serem anteriores/iguais à última Data/Hora da base: {removidos_por_datahora}\\n\\n"\n            f"{situacao}\\n\\n"\n            f"O arquivo será salvo com o nome\\n{NOME_ARQUIVO_FINAL}"\n        )\n\n        messagebox.showinfo("Sucesso", mensagem)\n\n    except Exception as e:\n        messagebox.showerror("Erro", f"Ocorreu um erro durante o processamento:\\n\\n{str(e)}")\n        traceback.print_exc()\n\n\nif __name__ == "__main__":\n    processar()',
+    '7-Roubo-de-Veiculo-Sip-7.py': 'import os\nimport re\nimport json\nimport traceback\nimport unicodedata\nimport importlib.util\nimport subprocess\nfrom datetime import datetime\nfrom pathlib import Path\n\nimport pandas as pd\nimport numpy as np\nimport tkinter as tk\nfrom tkinter import filedialog, messagebox, ttk\nfrom scipy.spatial import cKDTree\nfrom rapidfuzz import fuzz\nfrom geopy.geocoders import ArcGIS\nfrom geopy.extra.rate_limiter import RateLimiter\n\nNOME_ARQUIVO_FINAL = "7 - ROUBO DE VEÍCULO_SIP ENDERECO - 2026 - QGP.xlsx"\nUSAR_EXTERNO = True\nCAMINHO_GPKG = "Faces_de_Quadra_-_Ceará_ARRUAMENTO.gpkg"\nCAMINHO_BASE_ENXUTA = "CVP_SIP_GEOCODIFICAR.parquet"\nLAYER_GPKG = "reprojetado"\nEPSG_GPKG = 31984\nLIMIAR_NOME = 88\nRAIO_CONFIRMA_M = 100.0\nRAIO_MUNICIPIO_KM = 8.0\nLIMIAR_SUSPEITO = 5\nUF_CODIGO = "23"\nARQ_CACHE_MUN = "municipios_ce.json"\n\nSUBST = {\n    "AV": "Avenida", "AVD": "Avenida", "AVENIDA": "Avenida",\n    "R": "Rua", "RUA": "Rua", "TV": "Travessa", "TRV": "Travessa",\n    "TRAV": "Travessa", "TRAVESSA": "Travessa", "PC": "Praca", "PCA": "Praca",\n    "PRACA": "Praca", "ROD": "Rodovia", "AL": "Alameda", "PSO": "Passeio",\n    "GRJ": "", "DR": "Doutor", "DRA": "Doutora", "PE": "Padre",\n    "PRES": "Presidente", "CEL": "Coronel", "GEN": "General",\n    "PROF": "Professor", "MAE": "Maestro",\n}\nCORR = {"RAIMUINDO": "RAIMUNDO", "OSWALDO": "OSVALDO"}\nRUIDO = ["LADO PAR", "LADO IMPAR", "- P", "FORTALEZA, CE", ", CE"]\nRE_BNI = re.compile(r"\\(?\\s*bairro\\s+n[aã]o\\s+identificad[oa]\\s*\\)?", flags=re.IGNORECASE)\nTIPOS = ("Rua", "Avenida", "Travessa", "Praca", "Rodovia", "Alameda", "Passeio")\nROOFTOP = ("pointaddress", "streetaddress", "subaddress", "pointaddressvd")\n\n\ndef _pip(pacote):\n    for args in ([os.sys.executable, "-m", "pip", "install", "-q", pacote],\n                 [os.sys.executable, "-m", "pip", "install", "-q", pacote, "--break-system-packages"]):\n        try:\n            subprocess.check_call(args)\n            return\n        except Exception:\n            continue\n\n\ndef garantir_dependencias():\n    req = [\n        ("fiona", "fiona"),\n        ("pyarrow", "pyarrow"),\n        ("shapely", "shapely"),\n        ("pyproj", "pyproj"),\n    ]\n    for mod, pk in req:\n        if importlib.util.find_spec(mod) is None:\n            _pip(pk)\n\n\ndef selecionar_arquivo(titulo):\n    return filedialog.askopenfilename(\n        title=titulo,\n        filetypes=[("Arquivos Excel", "*.xlsx *.xls")]\n    )\n\n\ndef selecionar_pasta_saida():\n    return filedialog.askdirectory(\n        title="Selecione a pasta onde o arquivo final será salvo"\n    )\n\n\ndef normalizar_colunas(df):\n    df.columns = [str(c).strip() for c in df.columns]\n    return df\n\n\ndef filtrar_por_natureza(df, natureza_alvo="ROUBO DE VEICULO"):\n    col_natureza = encontrar_coluna_por_nomes(df, ["Natureza"], obrigatoria=True)\n    alvo = sem_acento(natureza_alvo)\n    return df[df[col_natureza].apply(sem_acento) == alvo].copy()\n\n\ndef encontrar_coluna_data_base(df):\n    exatos = [c for c in df.columns if str(c).strip().lower() == "data"]\n    if exatos:\n        return exatos[0]\n    aproximados = [c for c in df.columns if "data" in str(c).strip().lower()]\n    if aproximados:\n        return aproximados[0]\n    raise ValueError("Não foi encontrada a coluna \'Data\' no Arquivo 01.")\n\n\ndef encontrar_coluna_hora_base(df):\n    exatos = [c for c in df.columns if str(c).strip().lower() == "hora"]\n    if exatos:\n        return exatos[0]\n    aproximados = [c for c in df.columns if "hora" in str(c).strip().lower()]\n    if aproximados:\n        return aproximados[0]\n    raise ValueError("Não foi encontrada a coluna \'Hora\' no Arquivo 01.")\n\n\ndef encontrar_coluna_datahora_arquivo_02(df):\n    exatos = [c for c in df.columns if str(c).strip().lower() == "data"]\n    if exatos:\n        return exatos[0]\n    raise ValueError("Não foi encontrada a coluna \'data\' no Arquivo 02.")\n\n\ndef encontrar_coluna_por_nomes(df, nomes_possiveis, obrigatoria=True):\n    cols_map = {str(c).strip().lower(): c for c in df.columns}\n    for nome in nomes_possiveis:\n        if nome.lower() in cols_map:\n            return cols_map[nome.lower()]\n    for c in df.columns:\n        cl = str(c).strip().lower()\n        for nome in nomes_possiveis:\n            if nome.lower() in cl:\n                return c\n    if obrigatoria:\n        raise ValueError(f"Não foi possível localizar nenhuma das colunas esperadas: {nomes_possiveis}")\n    return None\n\n\ndef renomear_colunas_equivalentes(df_base, df_novo):\n    mapa_equivalencias = {\n        "AIS": ["AISNova", "AIS Nova", "AIS_NOVA", "aisnova", "ais_nova"],\n        "Território": ["Regiões", "Regioes", "Região", "Regiao", "regiões", "regioes", "região", "regiao"]\n    }\n    colunas_base_map = {str(c).strip().lower(): c for c in df_base.columns}\n    colunas_novo_map = {str(c).strip().lower(): c for c in df_novo.columns}\n    renomeacoes = {}\n    for coluna_base_oficial, aliases in mapa_equivalencias.items():\n        chave_base = coluna_base_oficial.strip().lower()\n        if chave_base not in colunas_base_map:\n            continue\n        nome_real_base = colunas_base_map[chave_base]\n        if nome_real_base in df_novo.columns:\n            continue\n        for alias in aliases:\n            chave_alias = alias.strip().lower()\n            if chave_alias in colunas_novo_map:\n                renomeacoes[colunas_novo_map[chave_alias]] = nome_real_base\n                break\n    if renomeacoes:\n        df_novo = df_novo.rename(columns=renomeacoes)\n    return df_novo\n\n\ndef normalizar_data_para_texto(v):\n    if pd.isna(v):\n        return None\n    if isinstance(v, pd.Timestamp):\n        return v.strftime("%d/%m/%Y")\n    try:\n        dt = pd.to_datetime(v, errors="coerce", dayfirst=True)\n        if pd.isna(dt):\n            return None\n        return dt.strftime("%d/%m/%Y")\n    except Exception:\n        return None\n\n\ndef normalizar_hora_para_texto(v):\n    if pd.isna(v):\n        return None\n    if isinstance(v, pd.Timestamp):\n        return v.strftime("%H:%M:%S")\n    s = str(v).strip()\n    if s == "":\n        return None\n    formatos = ["%H:%M:%S", "%H:%M"]\n    for fmt in formatos:\n        dt = pd.to_datetime(s, errors="coerce", format=fmt)\n        if not pd.isna(dt):\n            return dt.strftime("%H:%M:%S")\n    try:\n        dt = pd.to_datetime(s, errors="coerce")\n        if not pd.isna(dt):\n            return dt.strftime("%H:%M:%S")\n    except Exception:\n        pass\n    return None\n\n\ndef criar_datahora_base(df, coluna_data, coluna_hora, nome_coluna="__datahora__"):\n    datas = df[coluna_data].apply(normalizar_data_para_texto)\n    horas = df[coluna_hora].apply(normalizar_hora_para_texto)\n    combinado = []\n    for d, h in zip(datas, horas):\n        if d is None or h is None:\n            combinado.append(pd.NaT)\n        else:\n            combinado.append(pd.to_datetime(f"{d} {h}", errors="coerce", dayfirst=True))\n    df[nome_coluna] = combinado\n    return df\n\n\ndef criar_datahora_arquivo_02(df, coluna_datahora, nome_coluna="__datahora__"):\n    df[nome_coluna] = pd.to_datetime(df[coluna_datahora], errors="coerce", dayfirst=True)\n    return df\n\n\ndef obter_ultimo_datahora(df, coluna_datahora):\n    df_valid = df[df[coluna_datahora].notna()].copy()\n    if df_valid.empty:\n        return None\n    return df_valid[coluna_datahora].max()\n\n\ndef filtrar_apenas_registros_posteriores(df, coluna_datahora, limite_datahora):\n    if limite_datahora is None:\n        return df.copy()\n    return df[df[coluna_datahora] > limite_datahora].copy()\n\n\ndef alinhar_colunas_arquivo_02_com_base(df_base, df_novo):\n    colunas_base = list(df_base.columns)\n    df_novo = renomear_colunas_equivalentes(df_base, df_novo)\n    for col in colunas_base:\n        if col not in df_novo.columns:\n            df_novo[col] = pd.NA\n    return df_novo[colunas_base]\n\n\ndef sem_acento(s):\n    n = unicodedata.normalize("NFKD", str(s or ""))\n    return "".join(c for c in n if not unicodedata.combining(c)).upper().strip()\n\n\ndef limpar_logradouro(texto):\n    t = str(texto or "").upper().strip()\n    if t in ("NAN", "NONE", ""):\n        return ""\n    for a, b in CORR.items():\n        t = t.replace(a, b)\n    for r in RUIDO:\n        t = t.replace(r.upper(), " ")\n    t = re.sub(r"\\d{4,}", " ", t)\n    t = re.sub(r"[.\\,/\\\\-]", " ", t)\n    toks = [SUBST.get(tok, tok) for tok in t.split()]\n    toks = [x for x in toks if x != ""]\n    while len(toks) > 1 and toks[0] in TIPOS and toks[1] in TIPOS:\n        toks.pop(0)\n    return " ".join(" ".join(toks).split()).title()\n\n\ndef limpar_bairro(b, municipio):\n    v = str(b or "").strip()\n    if v.lower() in ("nan", "none", ""):\n        return ""\n    v = RE_BNI.sub("", v)\n    v = re.sub(r"\\(.*?\\)", "", v)\n    v = " ".join(v.strip(" ()-").split())\n    if v == "" or sem_acento(v) == sem_acento(municipio):\n        return ""\n    return v\n\n\ndef limpar_numero(n):\n    s = str(n or "").strip()\n    if s.lower() in ("nan", "none", "", "0", "0.0", "s/n", "sn"):\n        return ""\n    try:\n        return str(int(float(s)))\n    except Exception:\n        return re.sub(r"\\D", "", s)\n\n\ndef _construir_base_enxuta(gpkg, parquet_saida):\n    garantir_dependencias()\n    import fiona\n    from shapely.geometry import shape\n    from pyproj import Transformer\n\n    tr = Transformer.from_crs(f"EPSG:{EPSG_GPKG}", "EPSG:4326", always_xy=True)\n    regs = []\n    with fiona.open(gpkg, layer=LAYER_GPKG) as src:\n        for f in src:\n            p = f["properties"]\n            tip = str(p.get("NM_TIP_LOG") or "").strip()\n            tit = str(p.get("NM_TIT_LOG") or "").strip()\n            log = str(p.get("NM_LOG") or "").strip()\n            nome = " ".join(x for x in (tip, tit, log) if x and x.lower() != "none")\n            if not nome:\n                continue\n            try:\n                geom = shape(f["geometry"])\n                c = geom.centroid\n                lon, lat = tr.transform(c.x, c.y)\n            except Exception:\n                continue\n            cod = str(p.get("CD_SETOR") or "")[:7]\n            try:\n                tot = int(p.get("TOT_GERAL") or 0)\n            except Exception:\n                tot = 0\n            regs.append((cod, sem_acento(nome), nome, lat, lon, tot))\n    base = pd.DataFrame(regs, columns=["cod_mun", "nome_norm", "nome_orig", "lat", "lon", "tot_geral"])\n    base.to_parquet(parquet_saida, index=False)\n    return base\n\n\ndef carregar_base_geografica():\n    if os.path.exists(CAMINHO_BASE_ENXUTA):\n        return pd.read_parquet(CAMINHO_BASE_ENXUTA).reset_index(drop=True)\n    if os.path.exists(CAMINHO_GPKG):\n        return _construir_base_enxuta(CAMINHO_GPKG, CAMINHO_BASE_ENXUTA).reset_index(drop=True)\n    return None\n\n\ndef carregar_municipios():\n    if os.path.exists(ARQ_CACHE_MUN):\n        try:\n            return json.load(open(ARQ_CACHE_MUN, encoding="utf-8"))\n        except Exception:\n            pass\n    url = f"https://servicodados.ibge.gov.br/api/v1/localidades/estados/{UF_CODIGO}/municipios"\n    try:\n        import urllib.request\n        import gzip\n        req = urllib.request.Request(url, headers={"Accept-Encoding": "gzip"})\n        with urllib.request.urlopen(req, timeout=30) as r:\n            dados = r.read()\n            if r.info().get("Content-Encoding") == "gzip":\n                dados = gzip.decompress(dados)\n            lista = json.loads(dados.decode("utf-8"))\n        mapa = {sem_acento(m["nome"]): str(m["id"])[:7] for m in lista}\n        json.dump(mapa, open(ARQ_CACHE_MUN, "w", encoding="utf-8"))\n        return mapa\n    except Exception:\n        return {}\n\n\ndef _hav(lat1, lon1, lat2, lon2):\n    dlat = np.radians(lat2 - lat1)\n    dlon = np.radians(lon2 - lon1)\n    a = np.sin(dlat / 2) ** 2 + np.cos(np.radians(lat1)) * np.cos(np.radians(lat2)) * np.sin(dlon / 2) ** 2\n    return 2 * 6371000.0 * np.arcsin(np.sqrt(a))\n\n\nclass MotorGeocodificacaoSoberana:\n    def __init__(self):\n        self.base = carregar_base_geografica()\n        self.mun = carregar_municipios()\n        self.tree = None\n        self.cent_mun = {}\n\n        if self.base is not None and len(self.base):\n            self.glat = self.base["lat"].values.astype(float)\n            self.glon = self.base["lon"].values.astype(float)\n            self.gnome = self.base["nome_norm"].astype(str).values\n            self.gcod = self.base["cod_mun"].astype(str).values\n            self.tree = cKDTree(np.c_[self.glat, self.glon])\n            cm = self.base.groupby("cod_mun")[["lat", "lon"]].mean()\n            self.cent_mun = {k: (v["lat"], v["lon"]) for k, v in cm.iterrows()}\n\n        self.geocode_ext = None\n        if USAR_EXTERNO:\n            arc = ArcGIS(timeout=15)\n            self.geocode_ext = RateLimiter(\n                arc.geocode,\n                min_delay_seconds=0.4,\n                max_retries=2,\n                swallow_exceptions=True\n            )\n\n    def cod_municipio(self, municipio):\n        return self.mun.get(sem_acento(municipio), "")\n\n    def _idx_municipio(self, cod, ancora):\n        if cod and self.tree is not None:\n            ix = np.where(self.gcod == cod)[0]\n            if len(ix):\n                return ix\n        if ancora is not None and self.tree is not None:\n            ix = self.tree.query_ball_point([ancora[0], ancora[1]], r=RAIO_MUNICIPIO_KM / 111.0)\n            return np.array(ix, dtype=int)\n        return np.array([], dtype=int)\n\n    def casar_rua(self, rua_norm, cod, ancora):\n        ix = self._idx_municipio(cod, ancora)\n        if not len(ix):\n            return None\n        melhor, mscore = None, 0\n        for j in ix:\n            s = fuzz.token_set_ratio(rua_norm, self.gnome[j])\n            if s > mscore:\n                mscore, melhor = s, j\n        if melhor is not None and mscore >= LIMIAR_NOME:\n            return float(self.glat[melhor]), float(self.glon[melhor]), mscore\n        return None\n\n    def validar(self, lat, lon, rua_norm, cod, ancora):\n        ix = self._idx_municipio(cod, ancora or (lat, lon))\n        if not len(ix):\n            return False, None\n        nomes = self.gnome[ix]\n        msk = np.array([fuzz.token_set_ratio(rua_norm, n) >= LIMIAR_NOME for n in nomes])\n        if not msk.any():\n            return False, None\n        mi = ix[msk]\n        d = _hav(lat, lon, self.glat[mi], self.glon[mi])\n        best = float(d.min())\n        return best <= RAIO_CONFIRMA_M, best\n\n    def geocodificar(self, rua, num, bairro, municipio):\n        rua_l = limpar_logradouro(rua)\n        bai_l = limpar_bairro(bairro, municipio)\n        rua_n = sem_acento(rua_l)\n        cod = self.cod_municipio(municipio)\n\n        if not rua_l:\n            c = self.cent_mun.get(cod)\n            if c:\n                return (c[0], c[1], "Centroide de Cidade", "Centroide Municipio", False, None)\n            return (None, None, "Nao Encontrado", "-", False, None)\n\n        partes = [f"{rua_l}, {num}" if num else rua_l]\n        if bai_l:\n            partes.append(bai_l)\n        partes += [str(municipio).strip(), "Ceará", "Brasil"]\n        consulta = ", ".join(p for p in partes if p)\n\n        ext = None\n        if self.geocode_ext is not None:\n            loc = self.geocode_ext(consulta, out_fields="*")\n            if loc:\n                at = ((loc.raw or {}).get("attributes", {}) or {}).get("Addr_type", "")\n                ext = (float(loc.latitude), float(loc.longitude), str(at).lower())\n\n        ancora = (ext[0], ext[1]) if ext else None\n\n        if ext and ext[2] in ROOFTOP and num:\n            ok, dist = self.validar(ext[0], ext[1], rua_n, cod, ancora)\n            if ok:\n                return (ext[0], ext[1], "Exato (Numero)", "ArcGIS+GPKG", True, dist)\n\n        g = self.casar_rua(rua_n, cod, ancora)\n        if g:\n            return (g[0], g[1], "Centroide de Rua", "GPKG (Faces de Quadra)", True, 0.0)\n\n        if ext:\n            if ext[2] in ("streetname", "streetmidblock", "streetint") or num:\n                nivel = "Centroide de Rua"\n            elif ext[2] in ("locality", "neighborhood", "district"):\n                nivel = "Centroide de Bairro"\n            else:\n                nivel = "Centroide de Cidade"\n            return (ext[0], ext[1], nivel, "ArcGIS (nao confirmado)", False, None)\n\n        c = self.cent_mun.get(cod)\n        if c:\n            return (c[0], c[1], "Centroide de Cidade", "Centroide Municipio", False, None)\n        return (None, None, "Nao Encontrado", "-", False, None)\n\n\nclass JanelaProgresso:\n    def __init__(self, total):\n        self.total = max(total, 1)\n        self.root = tk.Toplevel()\n        self.root.title("Processando geocodificação")\n        self.root.geometry("560x220")\n        self.root.resizable(False, False)\n        self.label_status = tk.Label(self.root, text="Iniciando processamento...")\n        self.label_status.pack(pady=(15, 8))\n        self.progress = ttk.Progressbar(self.root, orient="horizontal", length=500, mode="determinate")\n        self.progress.pack(pady=5)\n        self.progress["maximum"] = 100\n        self.label_percentual = tk.Label(self.root, text="0%")\n        self.label_percentual.pack(pady=(8, 5))\n        self.label_detalhe = tk.Label(self.root, text="Aguardando...")\n        self.label_detalhe.pack(pady=(4, 4))\n        self.label_contadores = tk.Label(self.root, text="Processados: 0 | Geocodificados: 0")\n        self.label_contadores.pack(pady=(4, 5))\n        self.root.update_idletasks()\n\n    def atualizar(self, atual, texto="Processando...", detalhe="", processados=0, geocodificados=0):\n        percentual = int((atual / self.total) * 100)\n        self.progress["value"] = percentual\n        self.label_status.config(text=texto)\n        self.label_percentual.config(text=f"{percentual}%")\n        self.label_detalhe.config(text=detalhe)\n        self.label_contadores.config(text=f"Processados: {processados} | Geocodificados: {geocodificados}")\n        self.root.update_idletasks()\n        self.root.update()\n\n    def fechar(self):\n        try:\n            if self.root.winfo_exists():\n                self.root.destroy()\n        except Exception:\n            pass\n\n\ndef geocodificar_linhas_novas(df, col_lat_destino, col_lon_destino, root_master):\n    motor = MotorGeocodificacaoSoberana()\n    progresso = JanelaProgresso(len(df))\n    progresso.root.transient(root_master)\n\n    lats, lons, niveis, fontes, confirmados, distancias, ocorrencias = [], [], [], [], [], [], []\n    geocodificados = 0\n\n    try:\n        for i, (_, row) in enumerate(df.iterrows(), start=1):\n            num = limpar_numero(row.get("numero_busca", ""))\n            r = motor.geocodificar(\n                row.get("logradouro_busca", ""),\n                num,\n                row.get("bairro_busca", ""),\n                row.get("municipio_busca", "")\n            )\n            lats.append(r[0])\n            lons.append(r[1])\n            niveis.append(r[2])\n            fontes.append(r[3])\n            confirmados.append(r[4])\n            distancias.append(r[5])\n            ocorrencias.append(1)\n            if r[0] is not None and r[1] is not None:\n                geocodificados += 1\n            progresso.atualizar(i, "Geocodificando linhas novas...", f"Linha {i} de {len(df)}", i, geocodificados)\n    finally:\n        progresso.fechar()\n\n    df[col_lat_destino] = lats\n    df[col_lon_destino] = lons\n    df["Nivel_Geocodificacao"] = niveis\n    df["Fonte"] = fontes\n    df["_confirmado_base"] = confirmados\n    df["_dist_validacao_m"] = distancias\n\n    chave = df[col_lat_destino].round(6).astype(str) + "," + df[col_lon_destino].round(6).astype(str)\n    cont = chave.value_counts()\n    df["Ocorrencias_Mesmo_Ponto"] = chave.map(cont).fillna(1).astype(int)\n    df["_loc_aproximada"] = (df["Ocorrencias_Mesmo_Ponto"] >= LIMIAR_SUSPEITO) & (df["numero_busca"].fillna("").astype(str).str.strip() == "")\n    return df, geocodificados\n\n\ndef preparar_campos_geocodificacao(df, col_endereco, col_numero, col_bairro, col_municipio):\n    df = df.copy()\n    df["logradouro_busca"] = df[col_endereco].apply(limpar_logradouro)\n    df["numero_busca"] = df[col_numero].apply(limpar_numero)\n    df["bairro_busca"] = df.apply(lambda r: limpar_bairro(r[col_bairro], r[col_municipio]), axis=1)\n    df["municipio_busca"] = df[col_municipio].fillna("").astype(str).str.strip()\n    return df\n\n\ndef salvar_excel(df, caminho_saida):\n    with pd.ExcelWriter(caminho_saida, engine="openpyxl") as writer:\n        df.to_excel(writer, index=False, sheet_name="CVP_SIP_ENDERECO")\n\n\ndef registrar_erro(exc):\n    pasta_log = os.path.join(os.path.expanduser("~"), "logs_python_cvp")\n    os.makedirs(pasta_log, exist_ok=True)\n    caminho_log = os.path.join(pasta_log, f"erro_cvp_sip_{datetime.now().strftime(\'%Y%m%d_%H%M%S\')}.log")\n    with open(caminho_log, "w", encoding="utf-8") as f:\n        f.write("ERRO NO PROCESSAMENTO\\n")\n        f.write(f"Data/Hora: {datetime.now().strftime(\'%d/%m/%Y %H:%M:%S\')}\\n")\n        f.write(f"Tipo: {type(exc).__name__}\\n")\n        f.write(f"Mensagem: {str(exc).strip() or \'Exceção sem mensagem textual.\'}\\n\\n")\n        f.write("TRACEBACK COMPLETO:\\n")\n        f.write(traceback.format_exc())\n    return caminho_log\n\n\ndef processar():\n    root = tk.Tk()\n    root.withdraw()\n    try:\n        arquivo_01 = selecionar_arquivo("Selecione o Arquivo 01 - Base CVP")\n        if not arquivo_01:\n            messagebox.showwarning("Aviso", "Processo cancelado: Arquivo 01 não selecionado.")\n            return\n\n        arquivo_02 = selecionar_arquivo("Selecione o Arquivo 02 - Complemento SIP")\n        if not arquivo_02:\n            messagebox.showwarning("Aviso", "Processo cancelado: Arquivo 02 não selecionado.")\n            return\n\n        pasta_saida = selecionar_pasta_saida()\n        if not pasta_saida:\n            messagebox.showwarning("Aviso", "Processo cancelado: pasta de destino não selecionada.")\n            return\n\n        df_base = pd.read_excel(arquivo_01)\n        df_novo = pd.read_excel(arquivo_02)\n\n        df_base = normalizar_colunas(df_base)\n        df_novo = normalizar_colunas(df_novo)\n\n        # O filtro por Natureza deve ser aplicado somente no Arquivo 02.\n        df_novo = filtrar_por_natureza(df_novo, "ROUBO DE VEICULO")\n\n        if df_base.empty:\n            raise ValueError("O Arquivo 01 foi carregado, mas está sem registros.")\n        if df_novo.empty:\n            raise ValueError("Após filtrar a coluna \'Natureza\' por \'ROUBO DE VEICULO\', o Arquivo 02 ficou sem registros.")\n\n        col_data_base = encontrar_coluna_data_base(df_base)\n        col_hora_base = encontrar_coluna_hora_base(df_base)\n        col_datahora_novo = encontrar_coluna_datahora_arquivo_02(df_novo)\n\n        col_lat_base = encontrar_coluna_por_nomes(df_base, ["lat", "latitude"], obrigatoria=True)\n        col_lon_base = encontrar_coluna_por_nomes(df_base, ["lon", "long", "longitude"], obrigatoria=True)\n\n        col_endereco = encontrar_coluna_por_nomes(df_novo, ["endereço", "endereco", "logradouro", "rua"], obrigatoria=True)\n        col_numero = encontrar_coluna_por_nomes(df_novo, ["número", "numero", "localNumero", "num"], obrigatoria=True)\n        col_bairro = encontrar_coluna_por_nomes(df_novo, ["bairro"], obrigatoria=True)\n        col_municipio = encontrar_coluna_por_nomes(df_novo, ["município", "municipio", "cidade"], obrigatoria=True)\n\n        df_novo = renomear_colunas_equivalentes(df_base, df_novo)\n        df_base = criar_datahora_base(df_base, col_data_base, col_hora_base)\n        df_novo = criar_datahora_arquivo_02(df_novo, col_datahora_novo)\n\n        ultimo_datahora_base = obter_ultimo_datahora(df_base, "__datahora__")\n        total_antes_filtro_tempo = len(df_novo)\n        df_novo_filtrado = filtrar_apenas_registros_posteriores(df_novo, "__datahora__", ultimo_datahora_base)\n        removidos_por_datahora = total_antes_filtro_tempo - len(df_novo_filtrado)\n\n        base_sem_aux = df_base.drop(columns=["__datahora__"])\n        if "Nivel_Geocodificacao" not in base_sem_aux.columns:\n            base_sem_aux["Nivel_Geocodificacao"] = pd.NA\n        if "Fonte" not in base_sem_aux.columns:\n            base_sem_aux["Fonte"] = pd.NA\n        if "_confirmado_base" not in base_sem_aux.columns:\n            base_sem_aux["_confirmado_base"] = pd.NA\n        if "_dist_validacao_m" not in base_sem_aux.columns:\n            base_sem_aux["_dist_validacao_m"] = pd.NA\n        if "Ocorrencias_Mesmo_Ponto" not in base_sem_aux.columns:\n            base_sem_aux["Ocorrencias_Mesmo_Ponto"] = pd.NA\n        if "_loc_aproximada" not in base_sem_aux.columns:\n            base_sem_aux["_loc_aproximada"] = pd.NA\n\n        if ultimo_datahora_base is None:\n            df_novo_util = df_novo.copy()\n            situacao = "Base anterior sem Data/Hora válida: Arquivo 02 foi incluído integralmente."\n        elif df_novo_filtrado.empty:\n            df_novo_util = df_novo_filtrado.copy()\n            situacao = "Nenhum registro novo encontrado após a última Data/Hora da base: Arquivo 01 foi mantido sem acréscimos."\n        else:\n            df_novo_util = df_novo_filtrado.copy()\n            situacao = "Base anterior localizada: somente registros posteriores à última Data/Hora foram adicionados."\n\n        adicionados = len(df_novo_util)\n        geocodificados = 0\n\n        if not df_novo_util.empty:\n            df_novo_util = preparar_campos_geocodificacao(df_novo_util, col_endereco, col_numero, col_bairro, col_municipio)\n            df_novo_util, geocodificados = geocodificar_linhas_novas(df_novo_util, col_lat_base, col_lon_base, root)\n            df_novo_util = df_novo_util.drop(columns=[c for c in ["logradouro_busca", "numero_busca", "bairro_busca", "municipio_busca", "__datahora__"] if c in df_novo_util.columns])\n            df_novo_util = alinhar_colunas_arquivo_02_com_base(base_sem_aux, df_novo_util)\n            df_final = pd.concat([base_sem_aux, df_novo_util], ignore_index=True)\n        else:\n            df_final = base_sem_aux.copy()\n\n        colunas_excluir_saida = [\n            "Fonte",\n            "_confirmado_base",\n            "_dist_validacao_m",\n            "Ocorrencias_Mesmo_Ponto",\n            "_loc_aproximada"\n        ]\n        df_final = df_final.drop(columns=[c for c in colunas_excluir_saida if c in df_final.columns])\n\n        df_final = criar_datahora_base(df_final, col_data_base, col_hora_base)\n        df_final = df_final.sort_values(by="__datahora__", ascending=True, na_position="last").reset_index(drop=True)\n        df_final = df_final.drop(columns=["__datahora__"])\n\n        total_final = len(df_final)\n        caminho_saida = os.path.join(pasta_saida, NOME_ARQUIVO_FINAL)\n        salvar_excel(df_final, caminho_saida)\n\n        ultima_ref = ultimo_datahora_base.strftime("%d/%m/%Y %H:%M:%S") if ultimo_datahora_base is not None else "sem referência anterior válida"\n        messagebox.showinfo(\n            "Sucesso",\n            f"Processo Finalizado, adicionado {adicionados} CVP\'s novos, total de {total_final} CVP\'s.\\n"\n            f"Última Data/Hora da base: {ultima_ref}\\n"\n            f"Registros excluídos por serem anteriores/iguais à última Data/Hora da base: {removidos_por_datahora}\\n"\n            f"Registros geocodificados nas linhas novas: {geocodificados}\\n\\n"\n            f"{situacao}\\n\\n"\n            f"O arquivo será salvo com o nome\\n{NOME_ARQUIVO_FINAL}"\n        )\n\n    except Exception as e:\n        caminho_log = registrar_erro(e)\n        messagebox.showerror(\n            "Erro",\n            f"Ocorreu um erro durante o processamento.\\n\\n"\n            f"Tipo: {type(e).__name__}\\n"\n            f"Mensagem: {str(e).strip() or \'Exceção sem mensagem textual.\'}\\n\\n"\n            f"Log salvo em:\\n{caminho_log}"\n        )\n    finally:\n        try:\n            root.destroy()\n        except Exception:\n            pass\n\n\nif __name__ == "__main__":\n    processar()\n',
+    '8-Acidente-de-Transito-8.py': 'import os\nimport traceback\nimport pandas as pd\nfrom pyproj import Transformer\nfrom tkinter import Tk, filedialog, messagebox\n\nNOME_ARQUIVO_FINAL = "8 - ACIDENTE DE TRÂNSITO_SPORTAL_QGP.xlsx"\n\n\ndef selecionar_arquivo(titulo):\n    return filedialog.askopenfilename(\n        title=titulo,\n        filetypes=[("Arquivos Excel", "*.xlsx *.xls")]\n    )\n\n\ndef selecionar_pasta_saida():\n    return filedialog.askdirectory(\n        title="Selecione a pasta onde o arquivo final será salvo"\n    )\n\n\ndef normalizar_colunas(df):\n    df.columns = [str(c).strip() for c in df.columns]\n    return df\n\n\ndef encontrar_coluna_data(df):\n    exatos = [c for c in df.columns if str(c).strip().lower() == "data"]\n    if exatos:\n        return exatos[0]\n    aproximados = [c for c in df.columns if "data" in str(c).strip().lower()]\n    if aproximados:\n        return aproximados[0]\n    raise ValueError("Não foi encontrada a coluna \'Data\'.")\n\n\ndef encontrar_coluna_hora(df):\n    exatos = [c for c in df.columns if str(c).strip().lower() == "hora"]\n    if exatos:\n        return exatos[0]\n    aproximados = [c for c in df.columns if "hora" in str(c).strip().lower()]\n    if aproximados:\n        return aproximados[0]\n    raise ValueError("Não foi encontrada a coluna \'Hora\'.")\n\n\ndef encontrar_coluna_por_nomes(df, nomes_possiveis, obrigatoria=True):\n    cols_map = {str(c).strip().lower(): c for c in df.columns}\n\n    for nome in nomes_possiveis:\n        if nome.lower() in cols_map:\n            return cols_map[nome.lower()]\n\n    for c in df.columns:\n        cl = str(c).strip().lower()\n        for nome in nomes_possiveis:\n            if nome.lower() in cl:\n                return c\n\n    if obrigatoria:\n        raise ValueError(f"Não foi possível localizar nenhuma das colunas esperadas: {nomes_possiveis}")\n    return None\n\n\ndef valor_numerico_exato(v):\n    if pd.isna(v):\n        return None\n\n    if isinstance(v, str):\n        s = v.strip()\n        if s == "":\n            return None\n        s = s.replace(".", "").replace(",", ".")\n        try:\n            return float(s)\n        except ValueError:\n            return None\n\n    try:\n        return float(v)\n    except Exception:\n        return None\n\n\ndef normalizar_data_para_texto(v):\n    if pd.isna(v):\n        return None\n\n    if isinstance(v, pd.Timestamp):\n        return v.strftime("%d/%m/%Y")\n\n    try:\n        dt = pd.to_datetime(v, errors="coerce", dayfirst=True)\n        if pd.isna(dt):\n            return None\n        return dt.strftime("%d/%m/%Y")\n    except Exception:\n        return None\n\n\ndef normalizar_hora_para_texto(v):\n    if pd.isna(v):\n        return None\n\n    if isinstance(v, pd.Timestamp):\n        return v.strftime("%H:%M:%S")\n\n    s = str(v).strip()\n    if s == "":\n        return None\n\n    formatos = ["%H:%M:%S", "%H:%M"]\n    for fmt in formatos:\n        dt = pd.to_datetime(s, errors="coerce", format=fmt)\n        if not pd.isna(dt):\n            return dt.strftime("%H:%M:%S")\n\n    try:\n        dt = pd.to_datetime(s, errors="coerce")\n        if not pd.isna(dt):\n            return dt.strftime("%H:%M:%S")\n    except Exception:\n        pass\n\n    return None\n\n\ndef criar_coluna_datahora(df, coluna_data, coluna_hora, nome_coluna="__datahora__"):\n    datas = df[coluna_data].apply(normalizar_data_para_texto)\n    horas = df[coluna_hora].apply(normalizar_hora_para_texto)\n\n    combinado = []\n    for d, h in zip(datas, horas):\n        if d is None or h is None:\n            combinado.append(pd.NaT)\n        else:\n            combinado.append(pd.to_datetime(f"{d} {h}", errors="coerce", dayfirst=True))\n\n    df[nome_coluna] = combinado\n    return df\n\n\ndef excluir_coordenadas_invalidas(df, col_lat, col_lon):\n    manter = []\n\n    for lat_raw, lon_raw in zip(df[col_lat], df[col_lon]):\n        lat = valor_numerico_exato(lat_raw)\n        lon = valor_numerico_exato(lon_raw)\n\n        if lat is None or lon is None:\n            manter.append(False)\n        elif lat == 0 or lon == 0:\n            manter.append(False)\n        else:\n            manter.append(True)\n\n    return df.loc[manter].copy()\n\n\ndef reprojetar_utm_para_wgs84(df, col_y, col_x, col_lat_destino, col_lon_destino):\n    transformer = Transformer.from_crs("EPSG:31984", "EPSG:4326", always_xy=True)\n\n    lat_resultado = []\n    lon_resultado = []\n\n    for y_raw, x_raw in zip(df[col_y], df[col_x]):\n        y = valor_numerico_exato(y_raw)\n        x = valor_numerico_exato(x_raw)\n\n        if y is None or x is None:\n            lat_resultado.append(pd.NA)\n            lon_resultado.append(pd.NA)\n        else:\n            lon, lat = transformer.transform(x, y)\n            lat_resultado.append(lat)\n            lon_resultado.append(lon)\n\n    df[col_lat_destino] = lat_resultado\n    df[col_lon_destino] = lon_resultado\n    return df\n\n\ndef alinhar_colunas_arquivo_02_com_base(df_base, df_novo):\n    colunas_base = list(df_base.columns)\n\n    for col in colunas_base:\n        if col not in df_novo.columns:\n            df_novo[col] = pd.NA\n\n    return df_novo[colunas_base]\n\n\ndef obter_ultimo_datahora(df, coluna_datahora):\n    df_valid = df[df[coluna_datahora].notna()].copy()\n    if df_valid.empty:\n        return None\n    return df_valid[coluna_datahora].max()\n\n\ndef filtrar_apenas_registros_posteriores(df, coluna_datahora, limite_datahora):\n    if limite_datahora is None:\n        return df.copy()\n    return df[df[coluna_datahora] > limite_datahora].copy()\n\n\ndef salvar_excel(df, caminho_saida):\n    with pd.ExcelWriter(caminho_saida, engine="openpyxl") as writer:\n        df.to_excel(writer, index=False, sheet_name="ACIDENTE_TRANSITO_SPORTAL")\n\n\ndef processar():\n    root = Tk()\n    root.withdraw()\n\n    try:\n        arquivo_01 = selecionar_arquivo("Selecione o Arquivo 01 - Base Acidente de Trânsito")\n        if not arquivo_01:\n            messagebox.showwarning("Aviso", "Processo cancelado: Arquivo 01 não selecionado.")\n            return\n\n        arquivo_02 = selecionar_arquivo("Selecione o Arquivo 02 - Complemento SPORTAL")\n        if not arquivo_02:\n            messagebox.showwarning("Aviso", "Processo cancelado: Arquivo 02 não selecionado.")\n            return\n\n        pasta_saida = selecionar_pasta_saida()\n        if not pasta_saida:\n            messagebox.showwarning("Aviso", "Processo cancelado: pasta de destino não selecionada.")\n            return\n\n        df_base = pd.read_excel(arquivo_01)\n        df_novo = pd.read_excel(arquivo_02)\n\n        df_base = normalizar_colunas(df_base)\n        df_novo = normalizar_colunas(df_novo)\n\n        col_data_base = encontrar_coluna_data(df_base)\n        col_data_novo = encontrar_coluna_data(df_novo)\n        col_hora_base = encontrar_coluna_hora(df_base)\n        col_hora_novo = encontrar_coluna_hora(df_novo)\n\n        if col_data_base != col_data_novo:\n            df_novo = df_novo.rename(columns={col_data_novo: col_data_base})\n        if col_hora_base != col_hora_novo:\n            df_novo = df_novo.rename(columns={col_hora_novo: col_hora_base})\n\n        col_data = col_data_base\n        col_hora = col_hora_base\n\n        col_lat_base = encontrar_coluna_por_nomes(df_base, ["lat", "latitude"], obrigatoria=True)\n        col_lon_base = encontrar_coluna_por_nomes(df_base, ["long", "longitude", "lon"], obrigatoria=True)\n\n        col_lat_novo = encontrar_coluna_por_nomes(df_novo, ["latitude"], obrigatoria=True)\n        col_lon_novo = encontrar_coluna_por_nomes(df_novo, ["longitude"], obrigatoria=True)\n\n        total_lido_arquivo_02 = len(df_novo)\n\n        df_novo = excluir_coordenadas_invalidas(df_novo, col_lat_novo, col_lon_novo)\n        removidos_invalidos = total_lido_arquivo_02 - len(df_novo)\n\n        if df_novo.empty:\n            raise ValueError("Após excluir coordenadas inválidas, o Arquivo 02 ficou sem registros válidos.")\n\n        df_base = criar_coluna_datahora(df_base, col_data, col_hora)\n        df_novo = criar_coluna_datahora(df_novo, col_data, col_hora)\n\n        ultimo_datahora_base = obter_ultimo_datahora(df_base, "__datahora__")\n\n        total_antes_filtro_tempo = len(df_novo)\n        df_novo_filtrado = filtrar_apenas_registros_posteriores(df_novo, "__datahora__", ultimo_datahora_base)\n        removidos_por_datahora = total_antes_filtro_tempo - len(df_novo_filtrado)\n\n        base_sem_aux = df_base.drop(columns=["__datahora__"])\n\n        if ultimo_datahora_base is None:\n            df_novo_util = df_novo.copy()\n            situacao = "Base anterior sem Data/Hora válida: Arquivo 02 foi incluído integralmente."\n        elif df_novo_filtrado.empty:\n            df_novo_util = df_novo_filtrado.copy()\n            situacao = "Nenhum registro novo encontrado após a última Data/Hora da base: Arquivo 01 foi mantido sem acréscimos."\n        else:\n            df_novo_util = df_novo_filtrado.copy()\n            situacao = "Base anterior localizada: somente registros posteriores à última Data/Hora foram adicionados."\n\n        adicionados = len(df_novo_util)\n\n        if not df_novo_util.empty:\n            df_novo_util = reprojetar_utm_para_wgs84(\n                df_novo_util,\n                col_y=col_lat_novo,\n                col_x=col_lon_novo,\n                col_lat_destino=col_lat_base,\n                col_lon_destino=col_lon_base\n            )\n            df_novo_util = alinhar_colunas_arquivo_02_com_base(base_sem_aux, df_novo_util)\n            df_final = pd.concat([base_sem_aux, df_novo_util], ignore_index=True)\n        else:\n            df_final = base_sem_aux.copy()\n\n        df_final = criar_coluna_datahora(df_final, col_data, col_hora)\n        df_final = df_final.sort_values(by="__datahora__", ascending=True, na_position="last").reset_index(drop=True)\n        df_final = df_final.drop(columns=["__datahora__"])\n\n        total_final = len(df_final)\n\n        caminho_saida = os.path.join(pasta_saida, NOME_ARQUIVO_FINAL)\n        salvar_excel(df_final, caminho_saida)\n\n        ultima_ref = (\n            ultimo_datahora_base.strftime("%d/%m/%Y %H:%M:%S")\n            if ultimo_datahora_base is not None else "sem referência anterior válida"\n        )\n\n        mensagem = (\n            f"Processo Finalizado, adicionado {adicionados} registros novos de Acidente de Trânsito, total de {total_final} registros.\\n"\n            f"Última Data/Hora da base: {ultima_ref}\\n"\n            f"Registros excluídos por coordenadas inválidas: {removidos_invalidos}\\n"\n            f"Registros excluídos por serem anteriores/iguais à última Data/Hora da base: {removidos_por_datahora}\\n\\n"\n            f"{situacao}\\n\\n"\n            f"O arquivo será salvo com o nome\\n{NOME_ARQUIVO_FINAL}"\n        )\n\n        messagebox.showinfo("Sucesso", mensagem)\n\n    except Exception as e:\n        messagebox.showerror("Erro", f"Ocorreu um erro durante o processamento:\\n\\n{str(e)}")\n        traceback.print_exc()\n\n\nif __name__ == "__main__":\n    processar()',
+    '9-Furto-Sportal-9.py': 'import os\nimport traceback\nimport unicodedata\nimport pandas as pd\nfrom pyproj import Transformer\nfrom tkinter import Tk, filedialog, messagebox\n\nNOME_ARQUIVO_FINAL = "9 - FURTO DE VEICULO_SPORTAL - QGP.xlsx"\n\n\ndef selecionar_arquivo(titulo):\n    return filedialog.askopenfilename(\n        title=titulo,\n        filetypes=[("Arquivos Excel", "*.xlsx *.xls")]\n    )\n\n\ndef selecionar_pasta_saida():\n    return filedialog.askdirectory(\n        title="Selecione a pasta onde o arquivo final será salvo"\n    )\n\n\ndef normalizar_colunas(df):\n    df.columns = [str(c).strip() for c in df.columns]\n    return df\n\n\ndef sem_acento(texto):\n    normalizado = unicodedata.normalize("NFKD", str(texto or ""))\n    return "".join(c for c in normalizado if not unicodedata.combining(c)).upper().strip()\n\n\ndef filtrar_ocorrencias_arquivo_02(df):\n    col_nome_ocorrencia = encontrar_coluna_por_nomes(\n        df,\n        ["Nome da Ocorrência", "Nome da Ocorrencia"],\n        obrigatoria=True\n    )\n    col_subnome_ocorrencia = encontrar_coluna_por_nomes(\n        df,\n        ["Subnome da Ocorrência", "Subnome da Ocorrencia"],\n        obrigatoria=True\n    )\n\n    nome_alvo = "FURTO DE VEICULO"\n    subnomes_excluidos = {"BICICLETA", "BICICLETA DE APLICATIVO"}\n\n    filtro_nome = df[col_nome_ocorrencia].apply(sem_acento) == nome_alvo\n    filtro_subnome = ~df[col_subnome_ocorrencia].apply(sem_acento).isin(subnomes_excluidos)\n\n    return df[filtro_nome & filtro_subnome].copy()\n\n\ndef encontrar_coluna_data(df):\n    exatos = [c for c in df.columns if str(c).strip().lower() == "data"]\n    if exatos:\n        return exatos[0]\n    aproximados = [c for c in df.columns if "data" in str(c).strip().lower()]\n    if aproximados:\n        return aproximados[0]\n    raise ValueError("Não foi encontrada a coluna \'Data\'.")\n\n\ndef encontrar_coluna_hora(df):\n    exatos = [c for c in df.columns if str(c).strip().lower() == "hora"]\n    if exatos:\n        return exatos[0]\n    aproximados = [c for c in df.columns if "hora" in str(c).strip().lower()]\n    if aproximados:\n        return aproximados[0]\n    raise ValueError("Não foi encontrada a coluna \'Hora\'.")\n\n\ndef encontrar_coluna_por_nomes(df, nomes_possiveis, obrigatoria=True):\n    cols_map = {str(c).strip().lower(): c for c in df.columns}\n\n    for nome in nomes_possiveis:\n        if nome.lower() in cols_map:\n            return cols_map[nome.lower()]\n\n    for c in df.columns:\n        cl = str(c).strip().lower()\n        for nome in nomes_possiveis:\n            if nome.lower() in cl:\n                return c\n\n    if obrigatoria:\n        raise ValueError(f"Não foi possível localizar nenhuma das colunas esperadas: {nomes_possiveis}")\n    return None\n\n\ndef renomear_colunas_equivalentes(df_base, df_novo):\n    mapa_equivalencias = {\n        "AIS": ["AISNova", "AIS Nova", "AIS_NOVA", "aisnova", "ais_nova"],\n        "Território": ["Regiões", "Regioes", "Região", "Regiao", "regiões", "regioes", "região", "regiao"]\n    }\n\n    colunas_base_map = {str(c).strip().lower(): c for c in df_base.columns}\n    colunas_novo_map = {str(c).strip().lower(): c for c in df_novo.columns}\n\n    renomeacoes = {}\n\n    for coluna_base_oficial, aliases in mapa_equivalencias.items():\n        chave_base = coluna_base_oficial.strip().lower()\n\n        if chave_base not in colunas_base_map:\n            continue\n\n        nome_real_base = colunas_base_map[chave_base]\n\n        if nome_real_base in df_novo.columns:\n            continue\n\n        for alias in aliases:\n            chave_alias = alias.strip().lower()\n            if chave_alias in colunas_novo_map:\n                nome_real_novo = colunas_novo_map[chave_alias]\n                renomeacoes[nome_real_novo] = nome_real_base\n                break\n\n    if renomeacoes:\n        df_novo = df_novo.rename(columns=renomeacoes)\n\n    return df_novo\n\n\ndef valor_numerico_exato(v):\n    if pd.isna(v):\n        return None\n\n    if isinstance(v, str):\n        s = v.strip()\n        if s == "":\n            return None\n        s = s.replace(".", "").replace(",", ".")\n        try:\n            return float(s)\n        except ValueError:\n            return None\n\n    try:\n        return float(v)\n    except Exception:\n        return None\n\n\ndef normalizar_data_para_texto(v):\n    if pd.isna(v):\n        return None\n\n    if isinstance(v, pd.Timestamp):\n        return v.strftime("%d/%m/%Y")\n\n    try:\n        dt = pd.to_datetime(v, errors="coerce", dayfirst=True)\n        if pd.isna(dt):\n            return None\n        return dt.strftime("%d/%m/%Y")\n    except Exception:\n        return None\n\n\ndef normalizar_hora_para_texto(v):\n    if pd.isna(v):\n        return None\n\n    if isinstance(v, pd.Timestamp):\n        return v.strftime("%H:%M:%S")\n\n    s = str(v).strip()\n    if s == "":\n        return None\n\n    formatos = ["%H:%M:%S", "%H:%M"]\n    for fmt in formatos:\n        dt = pd.to_datetime(s, errors="coerce", format=fmt)\n        if not pd.isna(dt):\n            return dt.strftime("%H:%M:%S")\n\n    try:\n        dt = pd.to_datetime(s, errors="coerce")\n        if not pd.isna(dt):\n            return dt.strftime("%H:%M:%S")\n    except Exception:\n        pass\n\n    return None\n\n\ndef criar_coluna_datahora(df, coluna_data, coluna_hora, nome_coluna="__datahora__"):\n    datas = df[coluna_data].apply(normalizar_data_para_texto)\n    horas = df[coluna_hora].apply(normalizar_hora_para_texto)\n\n    combinado = []\n    for d, h in zip(datas, horas):\n        if d is None or h is None:\n            combinado.append(pd.NaT)\n        else:\n            combinado.append(pd.to_datetime(f"{d} {h}", errors="coerce", dayfirst=True))\n\n    df[nome_coluna] = combinado\n    return df\n\n\ndef excluir_coordenadas_invalidas(df, col_lat, col_lon):\n    manter = []\n\n    for lat_raw, lon_raw in zip(df[col_lat], df[col_lon]):\n        lat = valor_numerico_exato(lat_raw)\n        lon = valor_numerico_exato(lon_raw)\n\n        if lat is None or lon is None:\n            manter.append(False)\n        elif lat == 0 or lon == 0:\n            manter.append(False)\n        else:\n            manter.append(True)\n\n    return df.loc[manter].copy()\n\n\ndef reprojetar_utm_para_wgs84(df, col_y, col_x, col_lat_destino, col_lon_destino):\n    transformer = Transformer.from_crs("EPSG:31984", "EPSG:4326", always_xy=True)\n\n    lat_resultado = []\n    lon_resultado = []\n\n    for y_raw, x_raw in zip(df[col_y], df[col_x]):\n        y = valor_numerico_exato(y_raw)\n        x = valor_numerico_exato(x_raw)\n\n        if y is None or x is None:\n            lat_resultado.append(pd.NA)\n            lon_resultado.append(pd.NA)\n        else:\n            lon, lat = transformer.transform(x, y)\n            lat_resultado.append(lat)\n            lon_resultado.append(lon)\n\n    df[col_lat_destino] = lat_resultado\n    df[col_lon_destino] = lon_resultado\n    return df\n\n\ndef alinhar_colunas_arquivo_02_com_base(df_base, df_novo):\n    colunas_base = list(df_base.columns)\n\n    df_novo = renomear_colunas_equivalentes(df_base, df_novo)\n\n    for col in colunas_base:\n        if col not in df_novo.columns:\n            df_novo[col] = pd.NA\n\n    return df_novo[colunas_base]\n\n\ndef obter_ultimo_datahora(df, coluna_datahora):\n    df_valid = df[df[coluna_datahora].notna()].copy()\n    if df_valid.empty:\n        return None\n    return df_valid[coluna_datahora].max()\n\n\ndef filtrar_apenas_registros_posteriores(df, coluna_datahora, limite_datahora):\n    if limite_datahora is None:\n        return df.copy()\n    return df[df[coluna_datahora] > limite_datahora].copy()\n\n\ndef salvar_excel(df, caminho_saida):\n    with pd.ExcelWriter(caminho_saida, engine="openpyxl") as writer:\n        df.to_excel(writer, index=False, sheet_name="CVP_SPORTAL")\n\n\ndef processar():\n    root = Tk()\n    root.withdraw()\n\n    try:\n        arquivo_01 = selecionar_arquivo("Selecione o Arquivo 01 - Base CVP")\n        if not arquivo_01:\n            messagebox.showwarning("Aviso", "Processo cancelado: Arquivo 01 não selecionado.")\n            return\n\n        arquivo_02 = selecionar_arquivo("Selecione o Arquivo 02 - Complemento SPORTAL")\n        if not arquivo_02:\n            messagebox.showwarning("Aviso", "Processo cancelado: Arquivo 02 não selecionado.")\n            return\n\n        pasta_saida = selecionar_pasta_saida()\n        if not pasta_saida:\n            messagebox.showwarning("Aviso", "Processo cancelado: pasta de destino não selecionada.")\n            return\n\n        df_base = pd.read_excel(arquivo_01)\n        df_novo = pd.read_excel(arquivo_02)\n\n        df_base = normalizar_colunas(df_base)\n        df_novo = normalizar_colunas(df_novo)\n\n        total_lido_arquivo_02 = len(df_novo)\n        df_novo = filtrar_ocorrencias_arquivo_02(df_novo)\n        removidos_por_filtro_ocorrencia = total_lido_arquivo_02 - len(df_novo)\n\n        if df_novo.empty:\n            raise ValueError(\n                "Após filtrar \'Nome da Ocorrência\' por \'FURTO DE VEÍCULO\' e excluir \'BICICLETA\' e "\n                "\'BICICLETA DE APLICATIVO\' em \'Subnome da Ocorrência\', o Arquivo 02 ficou sem registros válidos."\n            )\n\n        col_data_base = encontrar_coluna_data(df_base)\n        col_data_novo = encontrar_coluna_data(df_novo)\n        col_hora_base = encontrar_coluna_hora(df_base)\n        col_hora_novo = encontrar_coluna_hora(df_novo)\n\n        if col_data_base != col_data_novo:\n            df_novo = df_novo.rename(columns={col_data_novo: col_data_base})\n        if col_hora_base != col_hora_novo:\n            df_novo = df_novo.rename(columns={col_hora_novo: col_hora_base})\n\n        col_data = col_data_base\n        col_hora = col_hora_base\n\n        col_lat_base = encontrar_coluna_por_nomes(df_base, ["lat", "latitude"], obrigatoria=True)\n        col_lon_base = encontrar_coluna_por_nomes(df_base, ["long", "longitude", "lon"], obrigatoria=True)\n\n        col_lat_novo = encontrar_coluna_por_nomes(df_novo, ["latitude"], obrigatoria=True)\n        col_lon_novo = encontrar_coluna_por_nomes(df_novo, ["longitude"], obrigatoria=True)\n\n        df_novo = renomear_colunas_equivalentes(df_base, df_novo)\n\n        total_apos_filtro_ocorrencia = len(df_novo)\n        df_novo = excluir_coordenadas_invalidas(df_novo, col_lat_novo, col_lon_novo)\n        removidos_invalidos = total_apos_filtro_ocorrencia - len(df_novo)\n\n        if df_novo.empty:\n            raise ValueError("Após excluir coordenadas inválidas, o Arquivo 02 ficou sem registros válidos.")\n\n        df_base = criar_coluna_datahora(df_base, col_data, col_hora)\n        df_novo = criar_coluna_datahora(df_novo, col_data, col_hora)\n\n        ultimo_datahora_base = obter_ultimo_datahora(df_base, "__datahora__")\n\n        total_antes_filtro_tempo = len(df_novo)\n        df_novo_filtrado = filtrar_apenas_registros_posteriores(df_novo, "__datahora__", ultimo_datahora_base)\n        removidos_por_datahora = total_antes_filtro_tempo - len(df_novo_filtrado)\n\n        base_sem_aux = df_base.drop(columns=["__datahora__"])\n\n        if ultimo_datahora_base is None:\n            df_novo_util = df_novo.copy()\n            situacao = "Base anterior sem Data/Hora válida: Arquivo 02 foi incluído integralmente."\n        elif df_novo_filtrado.empty:\n            df_novo_util = df_novo_filtrado.copy()\n            situacao = "Nenhum registro novo encontrado após a última Data/Hora da base: Arquivo 01 foi mantido sem acréscimos."\n        else:\n            df_novo_util = df_novo_filtrado.copy()\n            situacao = "Base anterior localizada: somente registros posteriores à última Data/Hora foram adicionados."\n\n        adicionados = len(df_novo_util)\n\n        if not df_novo_util.empty:\n            df_novo_util = reprojetar_utm_para_wgs84(\n                df_novo_util,\n                col_y=col_lat_novo,\n                col_x=col_lon_novo,\n                col_lat_destino=col_lat_base,\n                col_lon_destino=col_lon_base\n            )\n            df_novo_util = alinhar_colunas_arquivo_02_com_base(base_sem_aux, df_novo_util)\n            df_final = pd.concat([base_sem_aux, df_novo_util], ignore_index=True)\n        else:\n            df_final = base_sem_aux.copy()\n\n        df_final = criar_coluna_datahora(df_final, col_data, col_hora)\n        df_final = df_final.sort_values(by="__datahora__", ascending=True, na_position="last").reset_index(drop=True)\n        df_final = df_final.drop(columns=["__datahora__"])\n\n        total_final = len(df_final)\n\n        caminho_saida = os.path.join(pasta_saida, NOME_ARQUIVO_FINAL)\n        salvar_excel(df_final, caminho_saida)\n\n        ultima_ref = (\n            ultimo_datahora_base.strftime("%d/%m/%Y %H:%M:%S")\n            if ultimo_datahora_base is not None else "sem referência anterior válida"\n        )\n\n        mensagem = (\n            f"Processo Finalizado, adicionado {adicionados} Furto(s) de Veículo novo(s), total de {total_final} Furto(s) de Veículo.\\n"\n            f"Última Data/Hora da base: {ultima_ref}\\n"\n            f"Registros excluídos pelo filtro de ocorrência: {removidos_por_filtro_ocorrencia}\\n"\n            f"Registros excluídos por coordenadas inválidas: {removidos_invalidos}\\n"\n            f"Registros excluídos por serem anteriores/iguais à última Data/Hora da base: {removidos_por_datahora}\\n\\n"\n            f"{situacao}\\n\\n"\n            f"O arquivo será salvo com o nome\\n{NOME_ARQUIVO_FINAL}"\n        )\n\n        messagebox.showinfo("Sucesso", mensagem)\n\n    except Exception as e:\n        messagebox.showerror("Erro", f"Ocorreu um erro durante o processamento:\\n\\n{str(e)}")\n        traceback.print_exc()\n\n\nif __name__ == "__main__":\n    processar()\n',
+    '10-Furto-Sip-10.py': 'import os\nimport re\nimport json\nimport traceback\nimport unicodedata\nimport importlib.util\nimport subprocess\nfrom datetime import datetime\nfrom pathlib import Path\n\nimport pandas as pd\nimport numpy as np\nimport tkinter as tk\nfrom tkinter import filedialog, messagebox, ttk\nfrom scipy.spatial import cKDTree\nfrom rapidfuzz import fuzz\nfrom geopy.geocoders import ArcGIS\nfrom geopy.extra.rate_limiter import RateLimiter\n\nNOME_ARQUIVO_FINAL = "10 - FURTO DE VEICULO_SIP QGP.xlsx"\nUSAR_EXTERNO = True\nCAMINHO_GPKG = "Faces_de_Quadra_-_Ceará_ARRUAMENTO.gpkg"\nCAMINHO_BASE_ENXUTA = "CVP_SIP_GEOCODIFICAR.parquet"\nLAYER_GPKG = "reprojetado"\nEPSG_GPKG = 31984\nLIMIAR_NOME = 88\nRAIO_CONFIRMA_M = 100.0\nRAIO_MUNICIPIO_KM = 8.0\nLIMIAR_SUSPEITO = 5\nUF_CODIGO = "23"\nARQ_CACHE_MUN = "municipios_ce.json"\n\nSUBST = {\n    "AV": "Avenida", "AVD": "Avenida", "AVENIDA": "Avenida",\n    "R": "Rua", "RUA": "Rua", "TV": "Travessa", "TRV": "Travessa",\n    "TRAV": "Travessa", "TRAVESSA": "Travessa", "PC": "Praca", "PCA": "Praca",\n    "PRACA": "Praca", "ROD": "Rodovia", "AL": "Alameda", "PSO": "Passeio",\n    "GRJ": "", "DR": "Doutor", "DRA": "Doutora", "PE": "Padre",\n    "PRES": "Presidente", "CEL": "Coronel", "GEN": "General",\n    "PROF": "Professor", "MAE": "Maestro",\n}\nCORR = {"RAIMUINDO": "RAIMUNDO", "OSWALDO": "OSVALDO"}\nRUIDO = ["LADO PAR", "LADO IMPAR", "- P", "FORTALEZA, CE", ", CE"]\nRE_BNI = re.compile(r"\\(?\\s*bairro\\s+n[aã]o\\s+identificad[oa]\\s*\\)?", flags=re.IGNORECASE)\nTIPOS = ("Rua", "Avenida", "Travessa", "Praca", "Rodovia", "Alameda", "Passeio")\nROOFTOP = ("pointaddress", "streetaddress", "subaddress", "pointaddressvd")\n\n\ndef _pip(pacote):\n    for args in ([os.sys.executable, "-m", "pip", "install", "-q", pacote],\n                 [os.sys.executable, "-m", "pip", "install", "-q", pacote, "--break-system-packages"]):\n        try:\n            subprocess.check_call(args)\n            return\n        except Exception:\n            continue\n\n\ndef garantir_dependencias():\n    req = [\n        ("fiona", "fiona"),\n        ("pyarrow", "pyarrow"),\n        ("shapely", "shapely"),\n        ("pyproj", "pyproj"),\n    ]\n    for mod, pk in req:\n        if importlib.util.find_spec(mod) is None:\n            _pip(pk)\n\n\ndef selecionar_arquivo(titulo):\n    return filedialog.askopenfilename(\n        title=titulo,\n        filetypes=[("Arquivos Excel", "*.xlsx *.xls")]\n    )\n\n\ndef selecionar_pasta_saida():\n    return filedialog.askdirectory(\n        title="Selecione a pasta onde o arquivo final será salvo"\n    )\n\n\ndef normalizar_colunas(df):\n    df.columns = [str(c).strip() for c in df.columns]\n    return df\n\n\ndef filtrar_por_natureza(df, natureza_alvo="FURTO DE VEICULO"):\n    col_natureza = encontrar_coluna_por_nomes(df, ["Natureza"], obrigatoria=True)\n    alvo = sem_acento(natureza_alvo)\n    return df[df[col_natureza].apply(sem_acento) == alvo].copy()\n\n\ndef encontrar_coluna_data_base(df):\n    exatos = [c for c in df.columns if str(c).strip().lower() == "data"]\n    if exatos:\n        return exatos[0]\n    aproximados = [c for c in df.columns if "data" in str(c).strip().lower()]\n    if aproximados:\n        return aproximados[0]\n    raise ValueError("Não foi encontrada a coluna \'Data\' no Arquivo 01.")\n\n\ndef encontrar_coluna_hora_base(df):\n    exatos = [c for c in df.columns if str(c).strip().lower() == "hora"]\n    if exatos:\n        return exatos[0]\n    aproximados = [c for c in df.columns if "hora" in str(c).strip().lower()]\n    if aproximados:\n        return aproximados[0]\n    raise ValueError("Não foi encontrada a coluna \'Hora\' no Arquivo 01.")\n\n\ndef encontrar_coluna_datahora_arquivo_02(df):\n    exatos = [c for c in df.columns if str(c).strip().lower() == "data"]\n    if exatos:\n        return exatos[0]\n    raise ValueError("Não foi encontrada a coluna \'data\' no Arquivo 02.")\n\n\ndef encontrar_coluna_por_nomes(df, nomes_possiveis, obrigatoria=True):\n    cols_map = {str(c).strip().lower(): c for c in df.columns}\n    for nome in nomes_possiveis:\n        if nome.lower() in cols_map:\n            return cols_map[nome.lower()]\n    for c in df.columns:\n        cl = str(c).strip().lower()\n        for nome in nomes_possiveis:\n            if nome.lower() in cl:\n                return c\n    if obrigatoria:\n        raise ValueError(f"Não foi possível localizar nenhuma das colunas esperadas: {nomes_possiveis}")\n    return None\n\n\ndef renomear_colunas_equivalentes(df_base, df_novo):\n    mapa_equivalencias = {\n        "AIS": ["AISNova", "AIS Nova", "AIS_NOVA", "aisnova", "ais_nova"],\n        "Território": ["Regiões", "Regioes", "Região", "Regiao", "regiões", "regioes", "região", "regiao"],\n        "Endereço": ["Logradouro"],\n        "data": ["Data"],\n        "Complemento Endereço": ["Complemento do Endereço"],\n    }\n    colunas_base_map = {str(c).strip().lower(): c for c in df_base.columns}\n    colunas_novo_map = {str(c).strip().lower(): c for c in df_novo.columns}\n    renomeacoes = {}\n    for coluna_base_oficial, aliases in mapa_equivalencias.items():\n        chave_base = coluna_base_oficial.strip().lower()\n        if chave_base not in colunas_base_map:\n            continue\n        nome_real_base = colunas_base_map[chave_base]\n        if nome_real_base in df_novo.columns:\n            continue\n        for alias in aliases:\n            chave_alias = alias.strip().lower()\n            if chave_alias in colunas_novo_map:\n                renomeacoes[colunas_novo_map[chave_alias]] = nome_real_base\n                break\n    if renomeacoes:\n        df_novo = df_novo.rename(columns=renomeacoes)\n    return df_novo\n\n\ndef normalizar_data_para_texto(v):\n    if pd.isna(v):\n        return None\n    if isinstance(v, pd.Timestamp):\n        return v.strftime("%d/%m/%Y")\n    try:\n        dt = pd.to_datetime(v, errors="coerce", dayfirst=True)\n        if pd.isna(dt):\n            return None\n        return dt.strftime("%d/%m/%Y")\n    except Exception:\n        return None\n\n\ndef normalizar_hora_para_texto(v):\n    if pd.isna(v):\n        return None\n    if isinstance(v, pd.Timestamp):\n        return v.strftime("%H:%M:%S")\n    s = str(v).strip()\n    if s == "":\n        return None\n    formatos = ["%H:%M:%S", "%H:%M"]\n    for fmt in formatos:\n        dt = pd.to_datetime(s, errors="coerce", format=fmt)\n        if not pd.isna(dt):\n            return dt.strftime("%H:%M:%S")\n    try:\n        dt = pd.to_datetime(s, errors="coerce")\n        if not pd.isna(dt):\n            return dt.strftime("%H:%M:%S")\n    except Exception:\n        pass\n    return None\n\n\ndef criar_datahora_base(df, coluna_data, coluna_hora, nome_coluna="__datahora__"):\n    datas = df[coluna_data].apply(normalizar_data_para_texto)\n    horas = df[coluna_hora].apply(normalizar_hora_para_texto)\n    combinado = []\n    for d, h in zip(datas, horas):\n        if d is None or h is None:\n            combinado.append(pd.NaT)\n        else:\n            combinado.append(pd.to_datetime(f"{d} {h}", errors="coerce", dayfirst=True))\n    df[nome_coluna] = combinado\n    return df\n\n\ndef criar_datahora_arquivo_02(df, coluna_datahora, nome_coluna="__datahora__"):\n    df[nome_coluna] = pd.to_datetime(df[coluna_datahora], errors="coerce", dayfirst=True)\n    return df\n\n\ndef obter_ultimo_datahora(df, coluna_datahora):\n    df_valid = df[df[coluna_datahora].notna()].copy()\n    if df_valid.empty:\n        return None\n    return df_valid[coluna_datahora].max()\n\n\ndef filtrar_apenas_registros_posteriores(df, coluna_datahora, limite_datahora):\n    if limite_datahora is None:\n        return df.copy()\n    return df[df[coluna_datahora] > limite_datahora].copy()\n\n\ndef alinhar_colunas_arquivo_02_com_base(df_base, df_novo):\n    colunas_base = list(df_base.columns)\n    df_novo = renomear_colunas_equivalentes(df_base, df_novo)\n    for col in colunas_base:\n        if col not in df_novo.columns:\n            df_novo[col] = pd.NA\n    return df_novo[colunas_base]\n\n\ndef sem_acento(s):\n    n = unicodedata.normalize("NFKD", str(s or ""))\n    return "".join(c for c in n if not unicodedata.combining(c)).upper().strip()\n\n\ndef limpar_logradouro(texto):\n    t = str(texto or "").upper().strip()\n    if t in ("NAN", "NONE", ""):\n        return ""\n    for a, b in CORR.items():\n        t = t.replace(a, b)\n    for r in RUIDO:\n        t = t.replace(r.upper(), " ")\n    t = re.sub(r"\\d{4,}", " ", t)\n    t = re.sub(r"[.\\,/\\\\-]", " ", t)\n    toks = [SUBST.get(tok, tok) for tok in t.split()]\n    toks = [x for x in toks if x != ""]\n    while len(toks) > 1 and toks[0] in TIPOS and toks[1] in TIPOS:\n        toks.pop(0)\n    return " ".join(" ".join(toks).split()).title()\n\n\ndef limpar_bairro(b, municipio):\n    v = str(b or "").strip()\n    if v.lower() in ("nan", "none", ""):\n        return ""\n    v = RE_BNI.sub("", v)\n    v = re.sub(r"\\(.*?\\)", "", v)\n    v = " ".join(v.strip(" ()-").split())\n    if v == "" or sem_acento(v) == sem_acento(municipio):\n        return ""\n    return v\n\n\ndef limpar_numero(n):\n    s = str(n or "").strip()\n    if s.lower() in ("nan", "none", "", "0", "0.0", "s/n", "sn"):\n        return ""\n    try:\n        return str(int(float(s)))\n    except Exception:\n        return re.sub(r"\\D", "", s)\n\n\ndef _construir_base_enxuta(gpkg, parquet_saida):\n    garantir_dependencias()\n    import fiona\n    from shapely.geometry import shape\n    from pyproj import Transformer\n\n    tr = Transformer.from_crs(f"EPSG:{EPSG_GPKG}", "EPSG:4326", always_xy=True)\n    regs = []\n    with fiona.open(gpkg, layer=LAYER_GPKG) as src:\n        for f in src:\n            p = f["properties"]\n            tip = str(p.get("NM_TIP_LOG") or "").strip()\n            tit = str(p.get("NM_TIT_LOG") or "").strip()\n            log = str(p.get("NM_LOG") or "").strip()\n            nome = " ".join(x for x in (tip, tit, log) if x and x.lower() != "none")\n            if not nome:\n                continue\n            try:\n                geom = shape(f["geometry"])\n                c = geom.centroid\n                lon, lat = tr.transform(c.x, c.y)\n            except Exception:\n                continue\n            cod = str(p.get("CD_SETOR") or "")[:7]\n            try:\n                tot = int(p.get("TOT_GERAL") or 0)\n            except Exception:\n                tot = 0\n            regs.append((cod, sem_acento(nome), nome, lat, lon, tot))\n    base = pd.DataFrame(regs, columns=["cod_mun", "nome_norm", "nome_orig", "lat", "lon", "tot_geral"])\n    base.to_parquet(parquet_saida, index=False)\n    return base\n\n\ndef carregar_base_geografica():\n    if os.path.exists(CAMINHO_BASE_ENXUTA):\n        return pd.read_parquet(CAMINHO_BASE_ENXUTA).reset_index(drop=True)\n    if os.path.exists(CAMINHO_GPKG):\n        return _construir_base_enxuta(CAMINHO_GPKG, CAMINHO_BASE_ENXUTA).reset_index(drop=True)\n    return None\n\n\ndef carregar_municipios():\n    if os.path.exists(ARQ_CACHE_MUN):\n        try:\n            return json.load(open(ARQ_CACHE_MUN, encoding="utf-8"))\n        except Exception:\n            pass\n    url = f"https://servicodados.ibge.gov.br/api/v1/localidades/estados/{UF_CODIGO}/municipios"\n    try:\n        import urllib.request\n        import gzip\n        req = urllib.request.Request(url, headers={"Accept-Encoding": "gzip"})\n        with urllib.request.urlopen(req, timeout=30) as r:\n            dados = r.read()\n            if r.info().get("Content-Encoding") == "gzip":\n                dados = gzip.decompress(dados)\n            lista = json.loads(dados.decode("utf-8"))\n        mapa = {sem_acento(m["nome"]): str(m["id"])[:7] for m in lista}\n        json.dump(mapa, open(ARQ_CACHE_MUN, "w", encoding="utf-8"))\n        return mapa\n    except Exception:\n        return {}\n\n\ndef _hav(lat1, lon1, lat2, lon2):\n    dlat = np.radians(lat2 - lat1)\n    dlon = np.radians(lon2 - lon1)\n    a = np.sin(dlat / 2) ** 2 + np.cos(np.radians(lat1)) * np.cos(np.radians(lat2)) * np.sin(dlon / 2) ** 2\n    return 2 * 6371000.0 * np.arcsin(np.sqrt(a))\n\n\nclass MotorGeocodificacaoSoberana:\n    def __init__(self):\n        self.base = carregar_base_geografica()\n        self.mun = carregar_municipios()\n        self.tree = None\n        self.cent_mun = {}\n\n        if self.base is not None and len(self.base):\n            self.glat = self.base["lat"].values.astype(float)\n            self.glon = self.base["lon"].values.astype(float)\n            self.gnome = self.base["nome_norm"].astype(str).values\n            self.gcod = self.base["cod_mun"].astype(str).values\n            self.tree = cKDTree(np.c_[self.glat, self.glon])\n            cm = self.base.groupby("cod_mun")[["lat", "lon"]].mean()\n            self.cent_mun = {k: (v["lat"], v["lon"]) for k, v in cm.iterrows()}\n\n        self.geocode_ext = None\n        if USAR_EXTERNO:\n            arc = ArcGIS(timeout=15)\n            self.geocode_ext = RateLimiter(\n                arc.geocode,\n                min_delay_seconds=0.4,\n                max_retries=2,\n                swallow_exceptions=True\n            )\n\n    def cod_municipio(self, municipio):\n        return self.mun.get(sem_acento(municipio), "")\n\n    def _idx_municipio(self, cod, ancora):\n        if cod and self.tree is not None:\n            ix = np.where(self.gcod == cod)[0]\n            if len(ix):\n                return ix\n        if ancora is not None and self.tree is not None:\n            ix = self.tree.query_ball_point([ancora[0], ancora[1]], r=RAIO_MUNICIPIO_KM / 111.0)\n            return np.array(ix, dtype=int)\n        return np.array([], dtype=int)\n\n    def casar_rua(self, rua_norm, cod, ancora):\n        ix = self._idx_municipio(cod, ancora)\n        if not len(ix):\n            return None\n        melhor, mscore = None, 0\n        for j in ix:\n            s = fuzz.token_set_ratio(rua_norm, self.gnome[j])\n            if s > mscore:\n                mscore, melhor = s, j\n        if melhor is not None and mscore >= LIMIAR_NOME:\n            return float(self.glat[melhor]), float(self.glon[melhor]), mscore\n        return None\n\n    def validar(self, lat, lon, rua_norm, cod, ancora):\n        ix = self._idx_municipio(cod, ancora or (lat, lon))\n        if not len(ix):\n            return False, None\n        nomes = self.gnome[ix]\n        msk = np.array([fuzz.token_set_ratio(rua_norm, n) >= LIMIAR_NOME for n in nomes])\n        if not msk.any():\n            return False, None\n        mi = ix[msk]\n        d = _hav(lat, lon, self.glat[mi], self.glon[mi])\n        best = float(d.min())\n        return best <= RAIO_CONFIRMA_M, best\n\n    def geocodificar(self, rua, num, bairro, municipio):\n        rua_l = limpar_logradouro(rua)\n        bai_l = limpar_bairro(bairro, municipio)\n        rua_n = sem_acento(rua_l)\n        cod = self.cod_municipio(municipio)\n\n        if not rua_l:\n            c = self.cent_mun.get(cod)\n            if c:\n                return (c[0], c[1], "Centroide de Cidade", "Centroide Municipio", False, None)\n            return (None, None, "Nao Encontrado", "-", False, None)\n\n        partes = [f"{rua_l}, {num}" if num else rua_l]\n        if bai_l:\n            partes.append(bai_l)\n        partes += [str(municipio).strip(), "Ceará", "Brasil"]\n        consulta = ", ".join(p for p in partes if p)\n\n        ext = None\n        if self.geocode_ext is not None:\n            loc = self.geocode_ext(consulta, out_fields="*")\n            if loc:\n                at = ((loc.raw or {}).get("attributes", {}) or {}).get("Addr_type", "")\n                ext = (float(loc.latitude), float(loc.longitude), str(at).lower())\n\n        ancora = (ext[0], ext[1]) if ext else None\n\n        if ext and ext[2] in ROOFTOP and num:\n            ok, dist = self.validar(ext[0], ext[1], rua_n, cod, ancora)\n            if ok:\n                return (ext[0], ext[1], "Exato (Numero)", "ArcGIS+GPKG", True, dist)\n\n        g = self.casar_rua(rua_n, cod, ancora)\n        if g:\n            return (g[0], g[1], "Centroide de Rua", "GPKG (Faces de Quadra)", True, 0.0)\n\n        if ext:\n            if ext[2] in ("streetname", "streetmidblock", "streetint") or num:\n                nivel = "Centroide de Rua"\n            elif ext[2] in ("locality", "neighborhood", "district"):\n                nivel = "Centroide de Bairro"\n            else:\n                nivel = "Centroide de Cidade"\n            return (ext[0], ext[1], nivel, "ArcGIS (nao confirmado)", False, None)\n\n        c = self.cent_mun.get(cod)\n        if c:\n            return (c[0], c[1], "Centroide de Cidade", "Centroide Municipio", False, None)\n        return (None, None, "Nao Encontrado", "-", False, None)\n\n\nclass JanelaProgresso:\n    def __init__(self, total):\n        self.total = max(total, 1)\n        self.root = tk.Toplevel()\n        self.root.title("Processando geocodificação")\n        self.root.geometry("560x220")\n        self.root.resizable(False, False)\n        self.label_status = tk.Label(self.root, text="Iniciando processamento...")\n        self.label_status.pack(pady=(15, 8))\n        self.progress = ttk.Progressbar(self.root, orient="horizontal", length=500, mode="determinate")\n        self.progress.pack(pady=5)\n        self.progress["maximum"] = 100\n        self.label_percentual = tk.Label(self.root, text="0%")\n        self.label_percentual.pack(pady=(8, 5))\n        self.label_detalhe = tk.Label(self.root, text="Aguardando...")\n        self.label_detalhe.pack(pady=(4, 4))\n        self.label_contadores = tk.Label(self.root, text="Processados: 0 | Geocodificados: 0")\n        self.label_contadores.pack(pady=(4, 5))\n        self.root.update_idletasks()\n\n    def atualizar(self, atual, texto="Processando...", detalhe="", processados=0, geocodificados=0):\n        percentual = int((atual / self.total) * 100)\n        self.progress["value"] = percentual\n        self.label_status.config(text=texto)\n        self.label_percentual.config(text=f"{percentual}%")\n        self.label_detalhe.config(text=detalhe)\n        self.label_contadores.config(text=f"Processados: {processados} | Geocodificados: {geocodificados}")\n        self.root.update_idletasks()\n        self.root.update()\n\n    def fechar(self):\n        try:\n            if self.root.winfo_exists():\n                self.root.destroy()\n        except Exception:\n            pass\n\n\ndef geocodificar_linhas_novas(df, col_lat_destino, col_lon_destino, root_master):\n    motor = MotorGeocodificacaoSoberana()\n    progresso = JanelaProgresso(len(df))\n    progresso.root.transient(root_master)\n\n    lats, lons, niveis, fontes, confirmados, distancias, ocorrencias = [], [], [], [], [], [], []\n    geocodificados = 0\n\n    try:\n        for i, (_, row) in enumerate(df.iterrows(), start=1):\n            num = limpar_numero(row.get("numero_busca", ""))\n            r = motor.geocodificar(\n                row.get("logradouro_busca", ""),\n                num,\n                row.get("bairro_busca", ""),\n                row.get("municipio_busca", "")\n            )\n            lats.append(r[0])\n            lons.append(r[1])\n            niveis.append(r[2])\n            fontes.append(r[3])\n            confirmados.append(r[4])\n            distancias.append(r[5])\n            ocorrencias.append(1)\n            if r[0] is not None and r[1] is not None:\n                geocodificados += 1\n            progresso.atualizar(i, "Geocodificando linhas novas...", f"Linha {i} de {len(df)}", i, geocodificados)\n    finally:\n        progresso.fechar()\n\n    df[col_lat_destino] = lats\n    df[col_lon_destino] = lons\n    df["Nivel_Geocodificacao"] = niveis\n    df["Fonte"] = fontes\n    df["_confirmado_base"] = confirmados\n    df["_dist_validacao_m"] = distancias\n\n    chave = df[col_lat_destino].round(6).astype(str) + "," + df[col_lon_destino].round(6).astype(str)\n    cont = chave.value_counts()\n    df["Ocorrencias_Mesmo_Ponto"] = chave.map(cont).fillna(1).astype(int)\n    df["_loc_aproximada"] = (df["Ocorrencias_Mesmo_Ponto"] >= LIMIAR_SUSPEITO) & (df["numero_busca"].fillna("").astype(str).str.strip() == "")\n    return df, geocodificados\n\n\ndef preparar_campos_geocodificacao(df, col_endereco, col_numero, col_bairro, col_municipio):\n    df = df.copy()\n    df["logradouro_busca"] = df[col_endereco].apply(limpar_logradouro)\n    df["numero_busca"] = df[col_numero].apply(limpar_numero)\n    df["bairro_busca"] = df.apply(lambda r: limpar_bairro(r[col_bairro], r[col_municipio]), axis=1)\n    df["municipio_busca"] = df[col_municipio].fillna("").astype(str).str.strip()\n    return df\n\n\ndef salvar_excel(df, caminho_saida):\n    with pd.ExcelWriter(caminho_saida, engine="openpyxl") as writer:\n        df.to_excel(writer, index=False, sheet_name="CVP_SIP_ENDERECO")\n\n\ndef registrar_erro(exc):\n    pasta_log = os.path.join(os.path.expanduser("~"), "logs_python_furto")\n    os.makedirs(pasta_log, exist_ok=True)\n    caminho_log = os.path.join(pasta_log, f"erro_furto_sip_{datetime.now().strftime(\'%Y%m%d_%H%M%S\')}.log")\n    with open(caminho_log, "w", encoding="utf-8") as f:\n        f.write("ERRO NO PROCESSAMENTO\\n")\n        f.write(f"Data/Hora: {datetime.now().strftime(\'%d/%m/%Y %H:%M:%S\')}\\n")\n        f.write(f"Tipo: {type(exc).__name__}\\n")\n        f.write(f"Mensagem: {str(exc).strip() or \'Exceção sem mensagem textual.\'}\\n\\n")\n        f.write("TRACEBACK COMPLETO:\\n")\n        f.write(traceback.format_exc())\n    return caminho_log\n\n\ndef processar():\n    root = tk.Tk()\n    root.withdraw()\n    try:\n        arquivo_01 = selecionar_arquivo("Selecione o Arquivo 01 - Base CVP")\n        if not arquivo_01:\n            messagebox.showwarning("Aviso", "Processo cancelado: Arquivo 01 não selecionado.")\n            return\n\n        arquivo_02 = selecionar_arquivo("Selecione o Arquivo 02 - Complemento SIP")\n        if not arquivo_02:\n            messagebox.showwarning("Aviso", "Processo cancelado: Arquivo 02 não selecionado.")\n            return\n\n        pasta_saida = selecionar_pasta_saida()\n        if not pasta_saida:\n            messagebox.showwarning("Aviso", "Processo cancelado: pasta de destino não selecionada.")\n            return\n\n        df_base = pd.read_excel(arquivo_01)\n        df_novo = pd.read_excel(arquivo_02)\n\n        df_base = normalizar_colunas(df_base)\n        df_novo = normalizar_colunas(df_novo)\n\n        df_novo = renomear_colunas_equivalentes(df_base, df_novo)\n        df_novo = filtrar_por_natureza(df_novo, "FURTO DE VEICULO")\n        if df_novo.empty:\n            raise ValueError("Após filtrar a coluna \'Natureza\' por \'FURTO DE VEICULO\', o Arquivo 02 ficou sem registros.")\n\n        col_data_base = encontrar_coluna_data_base(df_base)\n        col_hora_base = encontrar_coluna_hora_base(df_base)\n        col_datahora_novo = encontrar_coluna_datahora_arquivo_02(df_novo)\n\n        col_lat_base = encontrar_coluna_por_nomes(df_base, ["lat", "latitude"], obrigatoria=True)\n        col_lon_base = encontrar_coluna_por_nomes(df_base, ["long", "longitude", "lon"], obrigatoria=True)\n\n        col_endereco = encontrar_coluna_por_nomes(df_novo, ["Endereço", "endereço", "Endereco", "endereco", "Logradouro", "logradouro", "rua"], obrigatoria=True)\n        col_numero = encontrar_coluna_por_nomes(df_novo, ["número", "numero", "localNumero", "num"], obrigatoria=True)\n        col_bairro = encontrar_coluna_por_nomes(df_novo, ["bairro"], obrigatoria=True)\n        col_municipio = encontrar_coluna_por_nomes(df_novo, ["município", "municipio", "cidade"], obrigatoria=True)\n\n        df_base = criar_datahora_base(df_base, col_data_base, col_hora_base)\n        df_novo = criar_datahora_arquivo_02(df_novo, col_datahora_novo)\n\n        ultimo_datahora_base = obter_ultimo_datahora(df_base, "__datahora__")\n        total_antes_filtro_tempo = len(df_novo)\n        df_novo_filtrado = filtrar_apenas_registros_posteriores(df_novo, "__datahora__", ultimo_datahora_base)\n        removidos_por_datahora = total_antes_filtro_tempo - len(df_novo_filtrado)\n\n        base_sem_aux = df_base.drop(columns=["__datahora__"])\n        if "Nivel_Geocodificacao" not in base_sem_aux.columns:\n            base_sem_aux["Nivel_Geocodificacao"] = pd.NA\n        if "Fonte" not in base_sem_aux.columns:\n            base_sem_aux["Fonte"] = pd.NA\n        if "_confirmado_base" not in base_sem_aux.columns:\n            base_sem_aux["_confirmado_base"] = pd.NA\n        if "_dist_validacao_m" not in base_sem_aux.columns:\n            base_sem_aux["_dist_validacao_m"] = pd.NA\n        if "Ocorrencias_Mesmo_Ponto" not in base_sem_aux.columns:\n            base_sem_aux["Ocorrencias_Mesmo_Ponto"] = pd.NA\n        if "_loc_aproximada" not in base_sem_aux.columns:\n            base_sem_aux["_loc_aproximada"] = pd.NA\n\n        if ultimo_datahora_base is None:\n            df_novo_util = df_novo.copy()\n            situacao = "Base anterior sem Data/Hora válida: Arquivo 02 foi incluído integralmente."\n        elif df_novo_filtrado.empty:\n            df_novo_util = df_novo_filtrado.copy()\n            situacao = "Nenhum registro novo encontrado após a última Data/Hora da base: Arquivo 01 foi mantido sem acréscimos."\n        else:\n            df_novo_util = df_novo_filtrado.copy()\n            situacao = "Base anterior localizada: somente registros posteriores à última Data/Hora foram adicionados."\n\n        adicionados = len(df_novo_util)\n        geocodificados = 0\n\n        if not df_novo_util.empty:\n            df_novo_util = preparar_campos_geocodificacao(df_novo_util, col_endereco, col_numero, col_bairro, col_municipio)\n            df_novo_util, geocodificados = geocodificar_linhas_novas(df_novo_util, col_lat_base, col_lon_base, root)\n            df_novo_util = df_novo_util.drop(columns=[c for c in ["logradouro_busca", "numero_busca", "bairro_busca", "municipio_busca", "__datahora__"] if c in df_novo_util.columns])\n            df_novo_util = alinhar_colunas_arquivo_02_com_base(base_sem_aux, df_novo_util)\n            df_final = pd.concat([base_sem_aux, df_novo_util], ignore_index=True)\n        else:\n            df_final = base_sem_aux.copy()\n\n        colunas_excluir_saida = [\n            "Fonte",\n            "_confirmado_base",\n            "_dist_validacao_m",\n            "Ocorrencias_Mesmo_Ponto",\n            "_loc_aproximada"\n        ]\n        df_final = df_final.drop(columns=[c for c in colunas_excluir_saida if c in df_final.columns])\n\n        df_final = criar_datahora_base(df_final, col_data_base, col_hora_base)\n        df_final = df_final.sort_values(by="__datahora__", ascending=True, na_position="last").reset_index(drop=True)\n        df_final = df_final.drop(columns=["__datahora__"])\n\n        total_final = len(df_final)\n        caminho_saida = os.path.join(pasta_saida, NOME_ARQUIVO_FINAL)\n        salvar_excel(df_final, caminho_saida)\n\n        ultima_ref = ultimo_datahora_base.strftime("%d/%m/%Y %H:%M:%S") if ultimo_datahora_base is not None else "sem referência anterior válida"\n        messagebox.showinfo(\n            "Sucesso",\n            f"Processo Finalizado, adicionado {adicionados} Furtos novos, total de {total_final} Furtos.\\n"\n            f"Última Data/Hora da base: {ultima_ref}\\n"\n            f"Registros excluídos por serem anteriores/iguais à última Data/Hora da base: {removidos_por_datahora}\\n"\n            f"Registros geocodificados nas linhas novas: {geocodificados}\\n\\n"\n            f"{situacao}\\n\\n"\n            f"O arquivo será salvo com o nome\\n{NOME_ARQUIVO_FINAL}"\n        )\n\n    except Exception as e:\n        caminho_log = registrar_erro(e)\n        messagebox.showerror(\n            "Erro",\n            f"Ocorreu um erro durante o processamento.\\n\\n"\n            f"Tipo: {type(e).__name__}\\n"\n            f"Mensagem: {str(e).strip() or \'Exceção sem mensagem textual.\'}\\n\\n"\n            f"Log salvo em:\\n{caminho_log}"\n        )\n    finally:\n        try:\n            root.destroy()\n        except Exception:\n            pass\n\n\nif __name__ == "__main__":\n    processar()\n',
+}
 
-    if st.session_state.todos_resultados_excel:
-        st.markdown(
-            """
-            <div class="todos-section-card">
-                <div class="todos-section-title">Downloads individuais</div>
-                <div class="todos-section-desc">
-                    Baixe os arquivos gerados por indicador ou exporte tudo em um único pacote ZIP.
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        for nome_ind in INDICADORES_ORDEM:
-            if nome_ind not in st.session_state.todos_resultados_excel:
-                continue
-
-            excel_bytes, nome_arq = st.session_state.todos_resultados_excel[nome_ind]
-            resumo = st.session_state.todos_resumos.get(nome_ind, {})
-            cfg = INDICADORES_CONFIG[nome_ind]
-
-            with st.expander(
-                f"{cfg['ordem']} - {cfg['label']} · "
-                f"Adicionados: {resumo.get('adicionados', 0)} · "
-                f"Total final: {resumo.get('total_final', 0)}",
-                expanded=False,
-            ):
-                st.caption(resumo.get("situacao", ""))
-                if resumo.get("geocodificados", 0):
-                    st.caption(f"Geocodificados: {resumo.get('geocodificados', 0)}")
-
-                st.download_button(
-                    label=f"Baixar {nome_arq}",
-                    data=excel_bytes,
-                    file_name=nome_arq,
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key=f"todos_dl_{cfg['key']}",
-                    use_container_width=True,
-                )
-
-        zip_buf = BytesIO()
-        with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
-            for nome_ind in INDICADORES_ORDEM:
-                if nome_ind not in st.session_state.todos_resultados_excel:
-                    continue
-                excel_bytes, nome_arq = st.session_state.todos_resultados_excel[nome_ind]
-                zf.writestr(nome_arq, excel_bytes)
-
-        zip_buf.seek(0)
-
-        st.download_button(
-            label=(
-                f"Baixar ZIP com todos os indicadores "
-                f"({len(st.session_state.todos_resultados_excel)} arquivos)"
-            ),
-            data=zip_buf.getvalue(),
-            file_name=f"QGP-TODOS-INDICADORES-{datetime.now().year}.zip",
-            mime="application/zip",
-            use_container_width=True,
-            key="todos_dl_zip",
-        )
-
-    if st.session_state.todos_erros:
-        st.markdown(
-            """
-            <div class="todos-section-card">
-                <div class="todos-section-title">Erros identificados</div>
-                <div class="todos-section-desc">
-                    Os indicadores abaixo apresentaram falha durante o processamento e devem ser revisados.
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        for nome_ind in INDICADORES_ORDEM:
-            if nome_ind not in st.session_state.todos_erros:
-                continue
-            erro = st.session_state.todos_erros[nome_ind]
-            cfg = INDICADORES_CONFIG[nome_ind]
-            st.error(f"{cfg['ordem']} - {cfg['label']}: {erro}")
-
-
-ProcessadorTodosIndicadores = interface_todos_indicadores
+if __name__ == "__main__":
+    app = IndicatorApp()
+    app.mainloop()
