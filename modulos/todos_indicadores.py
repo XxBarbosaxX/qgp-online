@@ -42,7 +42,7 @@ class IndicadorDef:
     chave: str
     ordem: int
     titulo: str
-    padroes_nome: list[str]
+    tokens_obrigatorios: list[str]
     processar: Callable
     nome_saida: str
 
@@ -52,10 +52,7 @@ INDICADORES: list[IndicadorDef] = [
         chave="cvli",
         ordem=1,
         titulo="CVLI",
-        padroes_nome=[
-            "CVLI - 2026 - QGP",
-            "CVLI 2026 QGP",
-        ],
+        tokens_obrigatorios=["CVLI", "QGP"],
         processar=processar_cvli,
         nome_saida=nome_arquivo_padrao(1, "CVLI"),
     ),
@@ -63,10 +60,7 @@ INDICADORES: list[IndicadorDef] = [
         chave="cvp_sportal",
         ordem=2,
         titulo="CVP Sportal",
-        padroes_nome=[
-            "CVP_SPORTAL - 2026 - QGP",
-            "CVP SPORTAL 2026 QGP",
-        ],
+        tokens_obrigatorios=["CVP", "SPORTAL", "QGP"],
         processar=processar_cvp_sportal,
         nome_saida=nome_arquivo_padrao(2, "CVP-SPORTAL"),
     ),
@@ -74,10 +68,7 @@ INDICADORES: list[IndicadorDef] = [
         chave="cvp_sip",
         ordem=3,
         titulo="CVP SIP Endereço",
-        padroes_nome=[
-            "CVP_SIP ENDERECO - 2026 - QGP",
-            "CVP SIP ENDERECO 2026 QGP",
-        ],
+        tokens_obrigatorios=["CVP", "SIP", "ENDERECO", "QGP"],
         processar=processar_cvp_sip,
         nome_saida=nome_arquivo_padrao(3, "CVP-SIP-ENDERECO"),
     ),
@@ -85,10 +76,7 @@ INDICADORES: list[IndicadorDef] = [
         chave="perturbacao_sossego",
         ordem=4,
         titulo="Perturbação ao Sossego Alheio",
-        padroes_nome=[
-            "PERTURBAÇÃO AO SOSSEGO ALHEIO - 2026 - QGP",
-            "PERTURBACAO AO SOSSEGO ALHEIO 2026 QGP",
-        ],
+        tokens_obrigatorios=["PERTURBACAO", "SOSSEGO", "ALHEIO", "QGP"],
         processar=processar_perturbacao_sossego,
         nome_saida=nome_arquivo_padrao(4, "PERTURBACAO-AO-SOSSEGO-ALHEIO"),
     ),
@@ -96,10 +84,7 @@ INDICADORES: list[IndicadorDef] = [
         chave="deslocamento_forcado",
         ordem=5,
         titulo="Deslocamento Forçado",
-        padroes_nome=[
-            "DESLOCAMENTO FORCADO - 2026 - QGP",
-            "DESLOCAMENTO FORCADO 2026 QGP",
-        ],
+        tokens_obrigatorios=["DESLOCAMENTO", "FORCADO", "QGP"],
         processar=processar_deslocamento_forcado,
         nome_saida=nome_arquivo_padrao(5, "DESLOCAMENTO-FORCADO"),
     ),
@@ -107,10 +92,7 @@ INDICADORES: list[IndicadorDef] = [
         chave="roubo_veiculo_sportal",
         ordem=6,
         titulo="Roubo de Veículo Sportal",
-        padroes_nome=[
-            "ROUBO DE VEÍCULO_SPORTAL LAT LONG - 2026 - QGP",
-            "ROUBO DE VEICULO SPORTAL LAT LONG 2026 QGP",
-        ],
+        tokens_obrigatorios=["ROUBO", "VEICULO", "SPORTAL", "LAT", "LONG", "QGP"],
         processar=processar_roubo_veiculo_sportal,
         nome_saida=nome_arquivo_padrao(6, "ROUBO-DE-VEICULO-SPORTAL-LAT-LONG"),
     ),
@@ -118,10 +100,7 @@ INDICADORES: list[IndicadorDef] = [
         chave="roubo_veiculo_sip",
         ordem=7,
         titulo="Roubo de Veículo SIP Endereço",
-        padroes_nome=[
-            "ROUBO DE VEÍCULO_SIP ENDERECO - 2026 - QGP",
-            "ROUBO DE VEICULO SIP ENDERECO 2026 QGP",
-        ],
+        tokens_obrigatorios=["ROUBO", "VEICULO", "SIP", "ENDERECO", "QGP"],
         processar=processar_roubo_veiculo_sip,
         nome_saida=nome_arquivo_padrao(7, "ROUBO-DE-VEICULO-SIP-ENDERECO"),
     ),
@@ -129,10 +108,7 @@ INDICADORES: list[IndicadorDef] = [
         chave="acidente_transito",
         ordem=8,
         titulo="Acidente de Trânsito Sportal",
-        padroes_nome=[
-            "ACIDENTE DE TRÂNSITO_SPORTAL_QGP",
-            "ACIDENTE DE TRANSITO SPORTAL QGP",
-        ],
+        tokens_obrigatorios=["ACIDENTE", "TRANSITO", "SPORTAL", "QGP"],
         processar=processar_acidente_transito,
         nome_saida=nome_arquivo_padrao(8, "ACIDENTE-DE-TRANSITO-SPORTAL"),
     ),
@@ -140,10 +116,7 @@ INDICADORES: list[IndicadorDef] = [
         chave="furto_veiculo_sportal",
         ordem=9,
         titulo="Furto de Veículo Sportal",
-        padroes_nome=[
-            "FURTO DE VEICULO_SPORTAL - QGP",
-            "FURTO DE VEICULO SPORTAL QGP",
-        ],
+        tokens_obrigatorios=["FURTO", "VEICULO", "SPORTAL", "QGP"],
         processar=processar_furto_veiculo_sportal,
         nome_saida=nome_arquivo_padrao(9, "FURTO-DE-VEICULO-SPORTAL"),
     ),
@@ -151,10 +124,7 @@ INDICADORES: list[IndicadorDef] = [
         chave="furto_veiculo_sip",
         ordem=10,
         titulo="Furto de Veículo SIP",
-        padroes_nome=[
-            "FURTO DE VEICULO_SIP QGP",
-            "FURTO DE VEICULO SIP QGP",
-        ],
+        tokens_obrigatorios=["FURTO", "VEICULO", "SIP", "QGP"],
         processar=processar_furto_veiculo_sip,
         nome_saida=nome_arquivo_padrao(10, "FURTO-DE-VEICULO-SIP"),
     ),
@@ -176,11 +146,13 @@ def normalizar_nome_arquivo(nome: str) -> str:
 def identificar_indicador_por_nome(nome_arquivo: str) -> IndicadorDef | None:
     nome_norm = normalizar_nome_arquivo(nome_arquivo)
 
+    candidatos: list[IndicadorDef] = []
     for indicador in INDICADORES:
-        for padrao in indicador.padroes_nome:
-            padrao_norm = normalizar_nome_arquivo(padrao)
-            if nome_norm == padrao_norm:
-                return indicador
+        if all(token in nome_norm for token in indicador.tokens_obrigatorios):
+            candidatos.append(indicador)
+
+    if len(candidatos) == 1:
+        return candidatos[0]
 
     return None
 
@@ -350,6 +322,8 @@ def render() -> None:
     st.subheader("Validação dos arquivos")
 
     linhas_validacao = []
+    pendentes: list[str] = []
+
     for indicador in INDICADORES:
         info = (
             uploads_identificados.get(indicador.chave)
@@ -366,6 +340,7 @@ def render() -> None:
                 }
             )
         else:
+            pendentes.append(indicador.titulo)
             linhas_validacao.append(
                 {
                     "Ordem": indicador.ordem,
@@ -386,6 +361,9 @@ def render() -> None:
 
     if conflitos:
         st.error("Conflitos encontrados: " + " | ".join(conflitos))
+
+    if pendentes:
+        st.info("Indicadores pendentes: " + " | ".join(pendentes))
 
     total_ok = len(st.session_state.todos_indicadores_uploads)
     mestre_ok = st.session_state.todos_indicadores_arquivo_mestre_bytes is not None
