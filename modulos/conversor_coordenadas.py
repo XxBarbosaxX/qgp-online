@@ -1,26 +1,19 @@
 from __future__ import annotations
 
 import traceback
+from typing import Any
 
 import pandas as pd
 import streamlit as st
 
 from modulos.utils import (
-    alinhar_colunas_com_base,
     converter_coordenadas_para_wgs84_auto,
-    criar_coluna_datahora,
-    encontrar_coluna_data,
-    encontrar_coluna_hora,
     encontrar_coluna_por_nomes,
     excluir_coordenadas_invalidas,
-    filtrar_apenas_registros_posteriores,
     gerar_arquivo_excel,
     normalizar_colunas,
-    obter_ultima_datahora,
-    renomear_colunas_equivalentes,
 )
 
-# Nome fixo solicitado
 NOME_ARQUIVO_FINAL = "Arquivo Convertido.xlsx"
 
 
@@ -122,12 +115,6 @@ def _aplicar_estilo_conversor() -> None:
                 border-color: rgba(245, 158, 11, 0.22);
             }
 
-            .conv-badge.err {
-                background: rgba(239, 68, 68, 0.10);
-                color: #fecaca;
-                border-color: rgba(239, 68, 68, 0.22);
-            }
-
             .conv-upload-label {
                 font-size: 0.95rem;
                 font-weight: 700;
@@ -155,8 +142,7 @@ def _aplicar_estilo_conversor() -> None:
 def _limpar_estado_conversor() -> None:
     """Limpa os estados do módulo Conversor de Coordenadas."""
     chaves = [
-        "conv_base",
-        "conv_novo",
+        "conv_arquivo",
         "conv_resultado",
     ]
     for chave in chaves:
@@ -164,292 +150,64 @@ def _limpar_estado_conversor() -> None:
             del st.session_state[chave]
 
 
-def _normalizar_texto(txt: str) -> str:
-    """Normaliza texto para comparação simplificada."""
-    return str(txt).strip().lower()
-
-
-def _encontrar_col_orig_exata_ou_parcial(
-    cols: list[str],
-    opcoes: list[str],
-) -> str | None:
-    """
-    Procura uma coluna por nomes equivalentes.
-    Primeiro tenta igualdade exata, depois ocorrência parcial.
-    """
-    cols_map = {col: _normalizar_texto(col) for col in cols}
-
-    for nome in opcoes:
-        nome_norm = _normalizar_texto(nome)
-        for col, col_norm in cols_map.items():
-            if col_norm == nome_norm:
-                return col
-
-    for nome in opcoes:
-        nome_norm = _normalizar_texto(nome)
-        for col, col_norm in cols_map.items():
-            if nome_norm in col_norm:
-                return col
-
-    return None
-
-
-def _col_norm_de_orig(
-    cols_orig: list[str],
-    col_orig: str | None,
-    cols_norm: list[str],
-) -> str | None:
-    """Obtém o nome normalizado correspondente a uma coluna original."""
-    if col_orig is None:
-        return None
-    try:
-        idx = cols_orig.index(col_orig)
-        return cols_norm[idx]
-    except (ValueError, IndexError):
-        return None
-
-
-def _processar_conversor(arquivo_base, arquivo_novo) -> dict:
-    """
-    Executa a lógica de conversão de coordenadas.
-
-    Mantém a mesma lógica do fluxo CVP/SPORTAL, mas
-    conceitualmente usado aqui como Conversor de Coordenadas.
-    """
-    df_base = pd.read_excel(arquivo_base)
-    df_novo = pd.read_excel(arquivo_novo)
-
-    cols_orig_base = list(df_base.columns)
-    cols_orig_novo = list(df_novo.columns)
-
-    nome_ocorr_orig_base = _encontrar_col_orig_exata_ou_parcial(
-        cols_orig_base,
-        ["Nome da Ocorrência", "Nome Ocorrência"],
+def _identificar_colunas_coordenadas(df: pd.DataFrame) -> tuple[str | None, str | None]:
+    """Identifica automaticamente as colunas de coordenadas."""
+    col_lat_ou_y = encontrar_coluna_por_nomes(
+        df,
+        ["latitude", "lat", "y", "coord_y", "utm_y", "northing"],
     )
-    subnome_ocorr_orig_base = _encontrar_col_orig_exata_ou_parcial(
-        cols_orig_base,
-        ["Subnome da Ocorrência", "Subnome Ocorrência"],
+    col_lon_ou_x = encontrar_coluna_por_nomes(
+        df,
+        ["longitude", "long", "lon", "x", "coord_x", "utm_x", "easting"],
     )
-    territorio_orig_base = _encontrar_col_orig_exata_ou_parcial(
-        cols_orig_base,
-        ["Território", "Territorio", "Regiões", "Regioes"],
-    )
+    return col_lat_ou_y, col_lon_ou_x
 
-    nome_ocorr_orig_novo = _encontrar_col_orig_exata_ou_parcial(
-        cols_orig_novo,
-        ["Nome da Ocorrência", "Nome Ocorrência"],
-    )
-    subnome_ocorr_orig_novo = _encontrar_col_orig_exata_ou_parcial(
-        cols_orig_novo,
-        ["Subnome da Ocorrência", "Subnome Ocorrência"],
-    )
-    territorio_orig_novo = _encontrar_col_orig_exata_ou_parcial(
-        cols_orig_novo,
-        ["Território", "Territorio", "Regiões", "Regioes"],
-    )
 
-    df_base = normalizar_colunas(df_base)
-    df_novo = normalizar_colunas(df_novo)
+def _processar_conversor(arquivo) -> dict[str, Any]:
+    """Executa a conversão de coordenadas a partir de um único arquivo."""
+    df_original = pd.read_excel(arquivo)
+    df = normalizar_colunas(df_original.copy())
 
-    cols_norm_base = list(df_base.columns)
-    cols_norm_novo = list(df_novo.columns)
+    total_lido = len(df)
 
-    nome_ocorr_norm_base = _col_norm_de_orig(
-        cols_orig_base,
-        nome_ocorr_orig_base,
-        cols_norm_base,
-    )
-    subnome_ocorr_norm_base = _col_norm_de_orig(
-        cols_orig_base,
-        subnome_ocorr_orig_base,
-        cols_norm_base,
-    )
-    territorio_norm_base = _col_norm_de_orig(
-        cols_orig_base,
-        territorio_orig_base,
-        cols_norm_base,
-    )
+    col_lat_ou_y, col_lon_ou_x = _identificar_colunas_coordenadas(df)
 
-    nome_ocorr_norm_novo = _col_norm_de_orig(
-        cols_orig_novo,
-        nome_ocorr_orig_novo,
-        cols_norm_novo,
-    )
-    subnome_ocorr_norm_novo = _col_norm_de_orig(
-        cols_orig_novo,
-        subnome_ocorr_orig_novo,
-        cols_norm_novo,
-    )
-    territorio_norm_novo = _col_norm_de_orig(
-        cols_orig_novo,
-        territorio_orig_novo,
-        cols_norm_novo,
-    )
-
-    rename_map_especifico: dict[str, str] = {}
-
-    if (
-        nome_ocorr_norm_base
-        and nome_ocorr_norm_novo
-        and nome_ocorr_norm_novo != nome_ocorr_norm_base
-        and nome_ocorr_norm_novo in df_novo.columns
-    ):
-        rename_map_especifico[nome_ocorr_norm_novo] = nome_ocorr_norm_base
-
-    if (
-        subnome_ocorr_norm_base
-        and subnome_ocorr_norm_novo
-        and subnome_ocorr_norm_novo != subnome_ocorr_norm_base
-        and subnome_ocorr_norm_novo in df_novo.columns
-    ):
-        rename_map_especifico[subnome_ocorr_norm_novo] = subnome_ocorr_norm_base
-
-    if (
-        territorio_norm_base
-        and territorio_norm_novo
-        and territorio_norm_novo != territorio_norm_base
-        and territorio_norm_novo in df_novo.columns
-    ):
-        rename_map_especifico[territorio_norm_novo] = territorio_norm_base
-
-    if rename_map_especifico:
-        df_novo = df_novo.rename(columns=rename_map_especifico)
-
-    col_data_base = encontrar_coluna_data(df_base)
-    col_data_novo = encontrar_coluna_data(df_novo)
-    col_hora_base = encontrar_coluna_hora(df_base)
-    col_hora_novo = encontrar_coluna_hora(df_novo)
-
-    if col_data_base != col_data_novo:
-        df_novo = df_novo.rename(columns={col_data_novo: col_data_base})
-
-    if col_hora_base != col_hora_novo:
-        df_novo = df_novo.rename(columns={col_hora_novo: col_hora_base})
-
-    col_data = col_data_base
-    col_hora = col_hora_base
-
-    col_lat_base = encontrar_coluna_por_nomes(df_base, ["lat", "latitude"])
-    col_lon_base = encontrar_coluna_por_nomes(df_base, ["long", "longitude", "lon"])
-    col_lat_novo = encontrar_coluna_por_nomes(df_novo, ["latitude", "lat"])
-    col_lon_novo = encontrar_coluna_por_nomes(df_novo, ["longitude", "long", "lon"])
-
-    df_novo = renomear_colunas_equivalentes(df_base, df_novo)
-
-    if nome_ocorr_norm_base and nome_ocorr_norm_base in df_novo.columns:
-        nome_ocorr_norm_novo = nome_ocorr_norm_base
-    if subnome_ocorr_norm_base and subnome_ocorr_norm_base in df_novo.columns:
-        subnome_ocorr_norm_novo = subnome_ocorr_norm_base
-    if territorio_norm_base and territorio_norm_base in df_novo.columns:
-        territorio_norm_novo = territorio_norm_base
-
-    total_lido_arquivo_02 = len(df_novo)
-
-    df_novo = excluir_coordenadas_invalidas(df_novo, col_lat_novo, col_lon_novo)
-    removidos_invalidos = total_lido_arquivo_02 - len(df_novo)
-
-    if df_novo.empty:
+    if not col_lat_ou_y or not col_lon_ou_x:
         raise ValueError(
-            "Após excluir coordenadas inválidas, o Arquivo 02 ficou sem registros válidos."
+            "Não foi possível identificar automaticamente as colunas de coordenadas. "
+            "Verifique se o arquivo possui campos como latitude/longitude, lat/long, x/y, utm_x/utm_y."
         )
 
-    df_base = criar_coluna_datahora(df_base, col_data, col_hora)
-    df_novo = criar_coluna_datahora(df_novo, col_data, col_hora)
+    df_validado = excluir_coordenadas_invalidas(df, col_lat_ou_y, col_lon_ou_x)
+    removidos_invalidos = total_lido - len(df_validado)
 
-    ultima_datahora_base = obter_ultima_datahora(df_base, "datahora")
+    if df_validado.empty:
+        raise ValueError(
+            "Após excluir coordenadas inválidas, o arquivo ficou sem registros válidos."
+        )
 
-    total_antes_filtro_tempo = len(df_novo)
-    df_novo_filtrado = filtrar_apenas_registros_posteriores(
-        df_novo,
-        "datahora",
-        ultima_datahora_base,
+    df_convertido = converter_coordenadas_para_wgs84_auto(
+        df_validado.copy(),
+        col_y_or_lat=col_lat_ou_y,
+        col_x_or_lon=col_lon_ou_x,
+        col_lat_destino="latitude",
+        col_lon_destino="longitude",
     )
-    removidos_por_datahora = total_antes_filtro_tempo - len(df_novo_filtrado)
 
-    base_sem_aux = df_base.drop(columns=["datahora"], errors="ignore")
+    total_final = len(df_convertido)
 
-    if ultima_datahora_base is None:
-        df_novo_util = df_novo.copy()
-        situacao = "Base anterior sem DataHora válida - complemento incluído integralmente."
-    elif df_novo_filtrado.empty:
-        df_novo_util = df_novo_filtrado.copy()
-        situacao = "Nenhum registro novo encontrado após a última DataHora da base."
-    else:
-        df_novo_util = df_novo_filtrado.copy()
-        situacao = "Somente registros posteriores à última DataHora foram adicionados."
-
-    adicionados = len(df_novo_util)
-
-    colunas_criticas = [
-        nome_ocorr_norm_base,
-        subnome_ocorr_norm_base,
-        territorio_norm_base,
-    ]
-
-    for col in colunas_criticas:
-        if col and col not in df_novo_util.columns:
-            df_novo_util[col] = pd.NA
-
-    if not df_novo_util.empty:
-        df_novo_util = converter_coordenadas_para_wgs84_auto(
-            df_novo_util,
-            col_y_or_lat=col_lat_novo,
-            col_x_or_lon=col_lon_novo,
-            col_lat_destino=col_lat_base,
-            col_lon_destino=col_lon_base,
-        )
-
-        rename_map_final: dict[str, str] = {}
-
-        if (
-            nome_ocorr_norm_base
-            and nome_ocorr_norm_novo
-            and nome_ocorr_norm_novo in df_novo_util.columns
-            and nome_ocorr_norm_novo != nome_ocorr_norm_base
-        ):
-            rename_map_final[nome_ocorr_norm_novo] = nome_ocorr_norm_base
-
-        if (
-            subnome_ocorr_norm_base
-            and subnome_ocorr_norm_novo
-            and subnome_ocorr_norm_novo in df_novo_util.columns
-            and subnome_ocorr_norm_novo != subnome_ocorr_norm_base
-        ):
-            rename_map_final[subnome_ocorr_norm_novo] = subnome_ocorr_norm_base
-
-        if (
-            territorio_norm_base
-            and territorio_norm_novo
-            and territorio_norm_novo in df_novo_util.columns
-            and territorio_norm_novo != territorio_norm_base
-        ):
-            rename_map_final[territorio_norm_novo] = territorio_norm_base
-
-        if rename_map_final:
-            df_novo_util = df_novo_util.rename(columns=rename_map_final)
-
-        df_novo_util = alinhar_colunas_com_base(base_sem_aux, df_novo_util)
-        df_final = pd.concat([base_sem_aux, df_novo_util], ignore_index=True)
-    else:
-        df_final = base_sem_aux.copy()
-
-    df_final = criar_coluna_datahora(df_final, col_data, col_hora)
-    df_final = df_final.sort_values(
-        by="datahora",
-        ascending=True,
-        na_position="last",
-    ).reset_index(drop=True)
-    df_final = df_final.drop(columns=["datahora"], errors="ignore")
-
-    total_final = len(df_final)
+    situacao = (
+        "Arquivo processado com sucesso. As coordenadas válidas foram convertidas "
+        "automaticamente para o padrão WGS84."
+    )
 
     return {
-        "df_final": df_final,
-        "adicionados": adicionados,
+        "df_final": df_convertido,
+        "total_lido": total_lido,
         "total_final": total_final,
-        "ultima_datahora_base": ultima_datahora_base,
         "removidos_invalidos": removidos_invalidos,
-        "removidos_por_datahora": removidos_por_datahora,
+        "coluna_origem_y_lat": col_lat_ou_y,
+        "coluna_origem_x_lon": col_lon_ou_x,
         "situacao": situacao,
     }
 
@@ -463,57 +221,41 @@ def interface_conversor_coordenadas() -> None:
         <div class="conv-section-card">
             <div class="conv-section-title">Conversor de Coordenadas</div>
             <div class="conv-section-desc">
-                Envie a base de referência e o complemento com coordenadas para realizar a
-                conversão automática e gerar um arquivo único pronto para uso analítico
-                e espacial.
+                Envie um arquivo Excel com coordenadas geográficas ou projetadas para conversão
+                automática e geração de um novo arquivo final no padrão WGS84.
             </div>
             <ul class="conv-mini-list">
-                <li>Validação automática de coordenadas válidas.</li>
-                <li>Conversão automática para WGS84 quando necessário.</li>
-                <li>Inclusão apenas de registros posteriores à última DataHora da base.</li>
-                <li>Geração do arquivo final consolidado para download.</li>
+                <li>Upload de um único arquivo.</li>
+                <li>Identificação automática das colunas de coordenadas.</li>
+                <li>Validação e remoção de coordenadas inválidas.</li>
+                <li>Conversão automática para latitude/longitude em WGS84.</li>
+                <li>Geração do arquivo final convertido para download.</li>
             </ul>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    col1, col2 = st.columns(2)
+    st.markdown(
+        '<div class="conv-upload-label">📁 Arquivo para conversão</div>',
+        unsafe_allow_html=True,
+    )
+    arquivo = st.file_uploader(
+        "Arquivo para conversão",
+        type=["xlsx", "xls"],
+        key="conv_arquivo",
+        label_visibility="collapsed",
+    )
 
-    with col1:
-        st.markdown(
-            '<div class="conv-upload-label">📁 Arquivo 01 - Base de referência</div>',
-            unsafe_allow_html=True,
-        )
-        arquivo_base = st.file_uploader(
-            "Arquivo base",
-            type=["xlsx", "xls"],
-            key="conv_base",
-            label_visibility="collapsed",
-        )
-
-    with col2:
-        st.markdown(
-            '<div class="conv-upload-label">📁 Arquivo 02 - Complemento a converter</div>',
-            unsafe_allow_html=True,
-        )
-        arquivo_novo = st.file_uploader(
-            "Arquivo complemento",
-            type=["xlsx", "xls"],
-            key="conv_novo",
-            label_visibility="collapsed",
-        )
-
-    pode_processar = bool(arquivo_base and arquivo_novo)
+    pode_processar = arquivo is not None
 
     st.markdown(
         """
         <div class="conv-section-card">
             <div class="conv-section-title">Execução da conversão</div>
             <div class="conv-section-desc">
-                Após validar os arquivos carregados, inicie a conversão. O fluxo aplicará
-                as regras de integridade temporal, consistência estrutural e tratamento
-                de coordenadas para gerar o arquivo final convertido.
+                Após carregar o arquivo, inicie o processamento para validar os registros,
+                converter as coordenadas automaticamente e gerar o arquivo final.
             </div>
         </div>
         """,
@@ -544,8 +286,8 @@ def interface_conversor_coordenadas() -> None:
 
     if processar:
         try:
-            with st.spinner("Processando arquivos e convertendo coordenadas..."):
-                resultado = _processar_conversor(arquivo_base, arquivo_novo)
+            with st.spinner("Processando arquivo e convertendo coordenadas..."):
+                resultado = _processar_conversor(arquivo)
 
             st.session_state.conv_resultado = resultado
 
@@ -566,28 +308,19 @@ def interface_conversor_coordenadas() -> None:
             st.code(resultado["traceback"])
         return
 
-    ultima_ref = (
-        resultado["ultima_datahora_base"].strftime("%d/%m/%Y %H:%M:%S")
-        if resultado["ultima_datahora_base"] is not None
-        else "N/A"
-    )
-
     st.success("✅ Conversão concluída com sucesso.")
 
-    badges = []
+    badges = [
+        f'<span class="conv-badge ok">Coluna origem Y/Lat: {resultado["coluna_origem_y_lat"]}</span>',
+        f'<span class="conv-badge ok">Coluna origem X/Lon: {resultado["coluna_origem_x_lon"]}</span>',
+    ]
+
     if resultado["removidos_invalidos"] > 0:
         badges.append(
             f'<span class="conv-badge warn">Coordenadas inválidas removidas: {resultado["removidos_invalidos"]}</span>'
         )
     else:
         badges.append('<span class="conv-badge ok">Nenhuma coordenada inválida removida</span>')
-
-    if resultado["removidos_por_datahora"] > 0:
-        badges.append(
-            f'<span class="conv-badge warn">Filtrados por DataHora: {resultado["removidos_por_datahora"]}</span>'
-        )
-    else:
-        badges.append('<span class="conv-badge ok">Nenhum registro descartado por DataHora</span>')
 
     st.markdown(
         f"""
@@ -596,20 +329,20 @@ def interface_conversor_coordenadas() -> None:
             <div class="conv-section-desc">{resultado["situacao"]}</div>
             <div class="conv-grid-status">
                 <div class="conv-stat">
-                    <div class="conv-stat-label">Registros adicionados</div>
-                    <div class="conv-stat-value">{resultado["adicionados"]}</div>
+                    <div class="conv-stat-label">Total lido</div>
+                    <div class="conv-stat-value">{resultado["total_lido"]}</div>
                 </div>
                 <div class="conv-stat">
                     <div class="conv-stat-label">Total final</div>
                     <div class="conv-stat-value">{resultado["total_final"]}</div>
                 </div>
                 <div class="conv-stat">
-                    <div class="conv-stat-label">Última DataHora base</div>
-                    <div class="conv-stat-value">{ultima_ref}</div>
-                </div>
-                <div class="conv-stat">
                     <div class="conv-stat-label">Inválidos removidos</div>
                     <div class="conv-stat-value">{resultado["removidos_invalidos"]}</div>
+                </div>
+                <div class="conv-stat">
+                    <div class="conv-stat-label">Padrão de saída</div>
+                    <div class="conv-stat-value">WGS84</div>
                 </div>
             </div>
             <div class="conv-badge-wrap">
