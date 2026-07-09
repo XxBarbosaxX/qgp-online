@@ -72,7 +72,23 @@ def processar_cvp_sportal(arquivo_01, arquivo_02):
     col_lat_novo = encontrar_coluna_por_nomes(df_novo, ["latitude"], obrigatoria=True)
     col_lon_novo = encontrar_coluna_por_nomes(df_novo, ["longitude"], obrigatoria=True)
 
-    df_novo = renomear_colunas_equivalentes(df_base, df_novo)
+    col_territorio_novo = encontrar_coluna_por_nomes(
+        df_novo,
+        ["território", "territorio", "regiões", "regioes"],
+        obrigatoria=False,
+    )
+    if col_territorio_novo and col_territorio_novo != "Território":
+        df_novo = df_novo.rename(columns={col_territorio_novo: "Território"})
+
+    df_novo = renomear_colunas_equivalentes(
+        df_base,
+        df_novo,
+        mapa_extra={
+            "Território": ["Regiões", "Regioes", "Territorio", "Território"],
+            "AISNova": ["AIS", "AISNova", "AIS Nova", "AIS_Nova", "aisnova"],
+            "AIS": ["AISNova", "AIS Nova", "AIS_Nova", "aisnova"],
+        },
+    )
 
     total_lido_arquivo_02 = len(df_novo)
 
@@ -164,6 +180,7 @@ def interface_cvp_sportal() -> None:
 
     O sistema ira:
     - Ler a aba correta do Arquivo 02 conforme o chaveamento oficial
+    - Ajustar colunas equivalentes, como Território/Regiões e AIS/AISNova
     - Verificar coordenadas validas
     - Converter coordenadas UTM (SIRGAS2000) para WGS84
     - Adicionar apenas registros posteriores a ultima DataHora da base
