@@ -1,44 +1,43 @@
+"""<br>Módulo TODOS OS INDICADORES<br>
+Processamento consolidado de múltiplos indicadores.<br>
+Chama os módulos individuais com suas lógicas reais (incluindo geocodificação).<br>
 """
-Módulo TODOS OS INDICADORES
-Processamento consolidado de múltiplos indicadores.
-Chama os módulos individuais com suas lógicas reais (incluindo geocodificação).
-"""
+
 from __future__ import annotations
 
 import re
-import zipfile
 import unicodedata
-from io import BytesIO
-from datetime import datetime
+import zipfile
 from contextlib import contextmanager
+from datetime import datetime
+from io import BytesIO
 
 import pandas as pd
 import streamlit as st
 
+from modulos.acidente_transito import processar_acidente_transito
 from modulos.cvli import ProcessadorCVLI
 from modulos.cvp_sip import processar_cvp_sip
-from modulos.perturbacao_sossego import processar_perturbacao_sossego
 from modulos.deslocamento_forcado import processar_deslocamento_forcado
-from modulos.roubo_veiculo_sportal import processar_roubo_veiculo_sportal
-from modulos.roubo_veiculo_sip import processar_roubo_veiculo_sip
-from modulos.acidente_transito import processar_acidente_transito
-from modulos.furto_veiculo_sportal import processar_furto_veiculo_sportal
 from modulos.furto_veiculo_sip import processar_furto_veiculo_sip
+from modulos.furto_veiculo_sportal import processar_furto_veiculo_sportal
+from modulos.perturbacao_sossego import processar_perturbacao_sossego
+from modulos.roubo_veiculo_sip import processar_roubo_veiculo_sip
+from modulos.roubo_veiculo_sportal import processar_roubo_veiculo_sportal
 from modulos.utils import (
-    nome_arquivo_padrao,
-    normalizar_colunas,
+    alinhar_colunas_com_base,
+    converter_coordenadas_para_wgs84_auto,
+    criar_coluna_datahora,
     encontrar_coluna_data,
     encontrar_coluna_hora,
     encontrar_coluna_por_nomes,
-    renomear_colunas_equivalentes,
-    alinhar_colunas_com_base,
-    criar_coluna_datahora,
     excluir_coordenadas_invalidas,
-    converter_coordenadas_para_wgs84_auto,
-    obter_ultima_datahora,
     filtrar_apenas_registros_posteriores,
+    nome_arquivo_padrao,
+    normalizar_colunas,
+    obter_ultima_datahora,
+    renomear_colunas_equivalentes,
 )
-
 
 INDICADORES_CONFIG = {
     "CVLI": {
@@ -497,7 +496,6 @@ def _silenciar_streamlit_temporariamente():
         "balloons",
         "snow",
     ]
-
     originais = {}
 
     def _noop(*args, **kwargs):
@@ -563,22 +561,18 @@ def _silenciar_streamlit_temporariamente():
 def _normalizar_saida_processamento(resultado, nome_indicador: str) -> tuple[pd.DataFrame, dict]:
     if isinstance(resultado, tuple) and len(resultado) == 2:
         df_final, resumo = resultado
-
     elif isinstance(resultado, dict):
         if not resultado.get("sucesso", True):
             raise ValueError(resultado.get("erro", f"Falha ao processar {nome_indicador}."))
-
         df_final = resultado.get("df_final")
         if df_final is None:
             raise ValueError(f"O processador de {nome_indicador} não retornou 'df_final'.")
-
         resumo = {
             "adicionados": resultado.get("adicionados", 0),
             "total_final": resultado.get("total_final", len(df_final)),
             "geocodificados": resultado.get("geocodificados", 0),
             "situacao": resultado.get("situacao", "Processado com sucesso."),
         }
-
     else:
         raise ValueError(
             f"Retorno inválido do processador de {nome_indicador}: {type(resultado).__name__}"
@@ -594,7 +588,6 @@ def _normalizar_saida_processamento(resultado, nome_indicador: str) -> tuple[pd.
     resumo.setdefault("total_final", len(df_final))
     resumo.setdefault("geocodificados", 0)
     resumo.setdefault("situacao", "Processado com sucesso.")
-
     return df_final, resumo
 
 
@@ -631,9 +624,11 @@ def _processar_cvp_sportal(buf_01: BytesIO, buf_02: BytesIO):
     col_lon_novo = encontrar_coluna_por_nomes(df_novo, ["long", "longitude", "lon"], obrigatoria=False)
 
     total_lido = len(df_novo)
+    removidos_invalidos = 0
+
     if col_lat_novo and col_lon_novo:
         df_novo = excluir_coordenadas_invalidas(df_novo, col_lat_novo, col_lon_novo)
-    removidos_invalidos = total_lido - len(df_novo)
+        removidos_invalidos = total_lido - len(df_novo)
 
     df_base = criar_coluna_datahora(df_base, col_data, col_hora, "datahora")
     df_novo = criar_coluna_datahora(df_novo, col_data, col_hora, "datahora")
@@ -687,12 +682,19 @@ def _processar_cvp_sportal(buf_01: BytesIO, buf_02: BytesIO):
         "ultima_datahora_base": ultima_dh.strftime("%d/%m/%Y %H:%M:%S") if ultima_dh else "N/A",
         "situacao": situacao,
     }
+
     return df_final, resumo
 
 
 def _chamar_processador(nome_indicador: str, buf_01: BytesIO, buf_02: BytesIO):
     buf_01.seek(0)
     buf_02.seek(0)
+
+    config_padrao = {
+        "origem": "todos_indicadores",
+        "modo_silencioso": True,
+        "usar_cache": True,
+    }
 
     with _silenciar_streamlit_temporariamente():
         if nome_indicador == "CVLI":
@@ -701,33 +703,60 @@ def _chamar_processador(nome_indicador: str, buf_01: BytesIO, buf_02: BytesIO):
             return _normalizar_saida_processamento(res, nome_indicador)
 
         if nome_indicador == "CVP (SPORTAL)":
-            return _normalizar_saida_processamento(_processar_cvp_sportal(buf_01, buf_02), nome_indicador)
+            return _normalizar_saida_processamento(
+                _processar_cvp_sportal(buf_01, buf_02),
+                nome_indicador,
+            )
 
         if nome_indicador == "CVP (SIP)":
-            return _normalizar_saida_processamento(processar_cvp_sip(buf_01, buf_02), nome_indicador)
+            return _normalizar_saida_processamento(
+                processar_cvp_sip(buf_01, buf_02),
+                nome_indicador,
+            )
 
         if nome_indicador == "PERTURBAÇÃO AO SOSSEGO ALHEIO":
-            return _normalizar_saida_processamento(processar_perturbacao_sossego(buf_01, buf_02), nome_indicador)
+            return _normalizar_saida_processamento(
+                processar_perturbacao_sossego(buf_01, buf_02),
+                nome_indicador,
+            )
 
         if nome_indicador == "DESLOCAMENTO FORÇADO":
-            return _normalizar_saida_processamento(processar_deslocamento_forcado(buf_01, buf_02), nome_indicador)
+            return _normalizar_saida_processamento(
+                processar_deslocamento_forcado(buf_01, buf_02),
+                nome_indicador,
+            )
 
         if nome_indicador == "ROUBO DE VEÍCULO (SPORTAL)":
-            return _normalizar_saida_processamento(processar_roubo_veiculo_sportal(buf_01, buf_02), nome_indicador)
+            return _normalizar_saida_processamento(
+                processar_roubo_veiculo_sportal(buf_01, buf_02),
+                nome_indicador,
+            )
 
         if nome_indicador == "ROUBO DE VEÍCULO (SIP)":
-            return _normalizar_saida_processamento(processar_roubo_veiculo_sip(buf_01, buf_02), nome_indicador)
+            return _normalizar_saida_processamento(
+                processar_roubo_veiculo_sip(buf_01, buf_02, config=config_padrao),
+                nome_indicador,
+            )
 
         if nome_indicador == "ACIDENTE DE TRÂNSITO":
-            return _normalizar_saida_processamento(processar_acidente_transito(buf_01, buf_02), nome_indicador)
+            return _normalizar_saida_processamento(
+                processar_acidente_transito(buf_01, buf_02),
+                nome_indicador,
+            )
 
         if nome_indicador == "FURTO DE VEÍCULO (SPORTAL)":
-            return _normalizar_saida_processamento(processar_furto_veiculo_sportal(buf_01, buf_02), nome_indicador)
+            return _normalizar_saida_processamento(
+                processar_furto_veiculo_sportal(buf_01, buf_02),
+                nome_indicador,
+            )
 
         if nome_indicador == "FURTO DE VEÍCULO (SIP)":
-            return _normalizar_saida_processamento(processar_furto_veiculo_sip(buf_01, buf_02), nome_indicador)
+            return _normalizar_saida_processamento(
+                processar_furto_veiculo_sip(buf_01, buf_02, config=config_padrao),
+                nome_indicador,
+            )
 
-    raise ValueError(f"Indicador desconhecido: {nome_indicador}")
+        raise ValueError(f"Indicador desconhecido: {nome_indicador}")
 
 
 def _df_para_excel(df: pd.DataFrame, sheet_name: str = "Dados") -> bytes:
@@ -784,7 +813,6 @@ def _render_status_cards(indicadores_prontos: list[str], indicadores_faltantes: 
         1 for nome in indicadores_prontos if INDICADORES_CONFIG[nome]["geocodifica"]
     )
     total_faltantes = len(indicadores_faltantes)
-
     arq02_status = "Sim" if tem_arq02 else "Não"
 
     st.markdown(
@@ -1038,7 +1066,6 @@ def interface_todos_indicadores():
                     "Geocodificados": resumo.get("geocodificados", 0),
                     "Situação": resumo.get("situacao", ""),
                 })
-
             except Exception as exc:
                 st.session_state.todos_erros[nome_ind] = str(exc)
                 resultados_linha.append({
@@ -1082,7 +1109,6 @@ def interface_todos_indicadores():
         )
 
         df_resultados = st.session_state.todos_df_resultados
-
         total_ok = int((df_resultados["Status"] == "Sucesso").sum())
         total_erro = int((df_resultados["Status"] == "Erro").sum())
         total_adicionados = int(df_resultados["Adicionados"].fillna(0).sum())
@@ -1137,7 +1163,6 @@ def interface_todos_indicadores():
                 )
 
         zip_buf = BytesIO()
-
         with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
             for nome_ind in INDICADORES_ORDEM:
                 if nome_ind not in st.session_state.todos_resultados_excel:
