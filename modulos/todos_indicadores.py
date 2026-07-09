@@ -11,6 +11,7 @@ import zipfile
 from contextlib import contextmanager
 from datetime import datetime
 from io import BytesIO
+from types import SimpleNamespace
 
 import pandas as pd
 import streamlit as st
@@ -686,15 +687,27 @@ def _processar_cvp_sportal(buf_01: BytesIO, buf_02: BytesIO):
     return df_final, resumo
 
 
+def _criar_config_padrao_sip(nome_indicador: str) -> SimpleNamespace:
+    nome_normalizado = _normalizar_texto(nome_indicador)
+
+    valor_filtro_natureza = ""
+    if "ROUBO-DE-VEICULO" in nome_normalizado:
+        valor_filtro_natureza = "ROUBO"
+    elif "FURTO-DE-VEICULO" in nome_normalizado:
+        valor_filtro_natureza = "FURTO"
+
+    return SimpleNamespace(
+        origem="todos_indicadores",
+        modo_silencioso=True,
+        usar_cache=True,
+        valor_filtro_natureza=valor_filtro_natureza,
+        caminho_base_enxuta="",
+    )
+
+
 def _chamar_processador(nome_indicador: str, buf_01: BytesIO, buf_02: BytesIO):
     buf_01.seek(0)
     buf_02.seek(0)
-
-    config_padrao = {
-        "origem": "todos_indicadores",
-        "modo_silencioso": True,
-        "usar_cache": True,
-    }
 
     with _silenciar_streamlit_temporariamente():
         if nome_indicador == "CVLI":
@@ -733,6 +746,7 @@ def _chamar_processador(nome_indicador: str, buf_01: BytesIO, buf_02: BytesIO):
             )
 
         if nome_indicador == "ROUBO DE VEÍCULO (SIP)":
+            config_padrao = _criar_config_padrao_sip(nome_indicador)
             return _normalizar_saida_processamento(
                 processar_roubo_veiculo_sip(buf_01, buf_02, config=config_padrao),
                 nome_indicador,
@@ -751,6 +765,7 @@ def _chamar_processador(nome_indicador: str, buf_01: BytesIO, buf_02: BytesIO):
             )
 
         if nome_indicador == "FURTO DE VEÍCULO (SIP)":
+            config_padrao = _criar_config_padrao_sip(nome_indicador)
             return _normalizar_saida_processamento(
                 processar_furto_veiculo_sip(buf_01, buf_02, config=config_padrao),
                 nome_indicador,
