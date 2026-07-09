@@ -1,4 +1,3 @@
-"""<br>utils.py - Módulo utilitário compartilhado para QGP Online.<br>Funções comuns usadas por todos os indicadores.<br>"""
 from __future__ import annotations
 
 import io
@@ -36,6 +35,16 @@ def normalizar_nome_coluna(valor: Any) -> str:
     return texto
 
 
+def normalizar_nome_aba(valor: Any) -> str:
+    """Normaliza nome de aba para comparação exata e tolerante a acentos/espaços."""
+    texto = normalizar_texto(valor)
+    texto = texto.replace("_", "")
+    texto = texto.replace("-", "")
+    texto = texto.replace("/", "")
+    texto = re.sub(r"\s+", "", texto)
+    return texto
+
+
 def normalizar_colunas(df: pd.DataFrame) -> pd.DataFrame:
     """
     Normaliza os nomes das colunas:
@@ -68,6 +77,49 @@ def normalizar_colunas(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df.columns = novas_colunas
     return df
+
+
+# ===========================================================
+# CHAVEAMENTO DE ABAS DE ATUALIZAÇÃO
+# ===========================================================
+
+ABAS_ATUALIZACAO: dict[str, str] = {
+    "cvli": "CVLI",
+    "cvp_sportal": "CVPCIOPS",
+    "cvp_sip": "CVPSIP",
+    "perturbacao_sossego": "Perturbação ao Sossego Alheio",
+    "deslocamento_forcado": "Grupo Criminoso",
+    "roubo_veiculo_sportal": "CVPCIOPS",
+    "roubo_veiculo_sip": "CVPSIP",
+    "acidente_transito": "Acidente de Trânsito",
+    "furto_veiculo_sportal": "Furto CIOPS",
+    "furto_veiculo_sip": "Furto SIP",
+}
+
+
+def selecionar_aba_exata(sheet_names: list[str], nome_esperado: str) -> str:
+    """Seleciona uma aba pelo nome exato, com tolerância a acentos, espaços e separadores."""
+    alvo = normalizar_nome_aba(nome_esperado)
+
+    for aba in sheet_names:
+        if normalizar_nome_aba(aba) == alvo:
+            return aba
+
+    raise ValueError(
+        f"A aba obrigatória '{nome_esperado}' não foi encontrada no arquivo. "
+        f"Abas disponíveis: {sheet_names}"
+    )
+
+
+def selecionar_aba_atualizacao(sheet_names: list[str], chave_modulo: str) -> str:
+    """Seleciona a aba correta do Arquivo 02 com base no chaveamento oficial do módulo."""
+    if chave_modulo not in ABAS_ATUALIZACAO:
+        raise KeyError(
+            f"Chave de módulo inválida: '{chave_modulo}'. "
+            f"Chaves disponíveis: {sorted(ABAS_ATUALIZACAO)}"
+        )
+
+    return selecionar_aba_exata(sheet_names, ABAS_ATUALIZACAO[chave_modulo])
 
 
 # ===========================================================
