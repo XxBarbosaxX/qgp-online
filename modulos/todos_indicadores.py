@@ -1,8 +1,9 @@
 """
 Módulo agregador para processamento de todos os indicadores do QGP Online.
-Fluxo:
-- Arquivo 01: base consolidada contendo os 10 indicadores.
-- Arquivo 02: arquivo complementar com múltiplas abas, uma para cada indicador.
+
+Fluxo esperado:
+- Arquivo 01: múltiplos arquivos-base, um para cada indicador, enviados em uma única seleção.
+- Arquivo 02: um único arquivo complementar com múltiplas abas, uma para cada indicador.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ MODULOS_CONFIG = [
         "label": "CVLI",
         "modulo": "modulos.cvli",
         "funcao": "processar_cvli",
+        "arquivo_01_match": ["cvli"],
         "aba_arquivo_02": "CVLI",
     },
     {
@@ -30,6 +32,7 @@ MODULOS_CONFIG = [
         "label": "CVP SIP",
         "modulo": "modulos.cvp_sip",
         "funcao": "processar_cvp_sip",
+        "arquivo_01_match": ["cvp", "sip"],
         "aba_arquivo_02": "CVP SIP",
     },
     {
@@ -37,6 +40,7 @@ MODULOS_CONFIG = [
         "label": "CVP SPORTAL",
         "modulo": "modulos.cvp_sportal",
         "funcao": "processar_cvp_sportal",
+        "arquivo_01_match": ["cvp", "sportal"],
         "aba_arquivo_02": "CVP SPORTAL",
     },
     {
@@ -44,6 +48,7 @@ MODULOS_CONFIG = [
         "label": "Acidente de Trânsito",
         "modulo": "modulos.acidente_transito",
         "funcao": "processar_acidente_transito",
+        "arquivo_01_match": ["acidente", "transito"],
         "aba_arquivo_02": "ACIDENTE TRANSITO",
     },
     {
@@ -51,6 +56,7 @@ MODULOS_CONFIG = [
         "label": "Perturbação do Sossego",
         "modulo": "modulos.perturbacao_sossego",
         "funcao": "processar_perturbacao_sossego",
+        "arquivo_01_match": ["perturbacao", "sossego"],
         "aba_arquivo_02": "PERTURBACAO SOSSEGO",
     },
     {
@@ -58,6 +64,7 @@ MODULOS_CONFIG = [
         "label": "Deslocamento Forçado",
         "modulo": "modulos.deslocamento_forcado",
         "funcao": "processar_deslocamento_forcado",
+        "arquivo_01_match": ["deslocamento", "forcado"],
         "aba_arquivo_02": "DESLOCAMENTO FORCADO",
     },
     {
@@ -65,6 +72,7 @@ MODULOS_CONFIG = [
         "label": "Furto de Veículo SIP",
         "modulo": "modulos.furto_veiculo_sip",
         "funcao": "processar_furto_veiculo_sip",
+        "arquivo_01_match": ["furto", "veiculo", "sip"],
         "aba_arquivo_02": "FURTO VEICULO SIP",
     },
     {
@@ -72,6 +80,7 @@ MODULOS_CONFIG = [
         "label": "Furto de Veículo SPORTAL",
         "modulo": "modulos.furto_veiculo_sportal",
         "funcao": "processar_furto_veiculo_sportal",
+        "arquivo_01_match": ["furto", "veiculo", "sportal"],
         "aba_arquivo_02": "FURTO VEICULO SPORTAL",
     },
     {
@@ -79,6 +88,7 @@ MODULOS_CONFIG = [
         "label": "Roubo de Veículo SIP",
         "modulo": "modulos.roubo_veiculo_sip",
         "funcao": "processar_roubo_veiculo_sip",
+        "arquivo_01_match": ["roubo", "veiculo", "sip"],
         "aba_arquivo_02": "ROUBO VEICULO SIP",
     },
     {
@@ -86,6 +96,7 @@ MODULOS_CONFIG = [
         "label": "Roubo de Veículo SPORTAL",
         "modulo": "modulos.roubo_veiculo_sportal",
         "funcao": "processar_roubo_veiculo_sportal",
+        "arquivo_01_match": ["roubo", "veiculo", "sportal"],
         "aba_arquivo_02": "ROUBO VEICULO SPORTAL",
     },
 ]
@@ -217,26 +228,26 @@ def _aplicar_estilo_todos_indicadores() -> None:
     )
 
 
-def _normalizar_nome_aba(nome: str) -> str:
-    """Normaliza o nome de aba para comparação flexível."""
+def _normalizar_texto(valor: str) -> str:
+    """Normaliza texto para comparação."""
     return (
-        str(nome)
+        str(valor)
         .strip()
-        .upper()
+        .lower()
         .replace("_", " ")
         .replace("-", " ")
-        .replace("Á", "A")
-        .replace("À", "A")
-        .replace("Ã", "A")
-        .replace("Â", "A")
-        .replace("É", "E")
-        .replace("Ê", "E")
-        .replace("Í", "I")
-        .replace("Ó", "O")
-        .replace("Ô", "O")
-        .replace("Õ", "O")
-        .replace("Ú", "U")
-        .replace("Ç", "C")
+        .replace("á", "a")
+        .replace("à", "a")
+        .replace("ã", "a")
+        .replace("â", "a")
+        .replace("é", "e")
+        .replace("ê", "e")
+        .replace("í", "i")
+        .replace("ó", "o")
+        .replace("ô", "o")
+        .replace("õ", "o")
+        .replace("ú", "u")
+        .replace("ç", "c")
     )
 
 
@@ -247,8 +258,7 @@ def _obter_funcao_processamento(nome_modulo: str, nome_funcao: str) -> Callable:
     if hasattr(modulo, nome_funcao):
         return getattr(modulo, nome_funcao)
 
-    candidatos = ["processar", "executar"]
-    for candidato in candidatos:
+    for candidato in ["processar", "executar"]:
         if hasattr(modulo, candidato):
             return getattr(modulo, candidato)
 
@@ -258,59 +268,57 @@ def _obter_funcao_processamento(nome_modulo: str, nome_funcao: str) -> Callable:
     )
 
 
+def _mapear_arquivos_base(uploaded_files: list[Any]) -> dict[str, bytes]:
+    """
+    Relaciona os arquivos-base enviados no Arquivo 01 aos indicadores esperados.
+    O vínculo é feito pelo nome do arquivo.
+    """
+    arquivos_por_indicador: dict[str, bytes] = {}
+
+    for config in MODULOS_CONFIG:
+        termos = [_normalizar_texto(item) for item in config["arquivo_01_match"]]
+
+        for arquivo in uploaded_files:
+            nome = _normalizar_texto(arquivo.name)
+            if all(termo in nome for termo in termos):
+                arquivos_por_indicador[config["id"]] = arquivo.getvalue()
+                break
+
+    return arquivos_por_indicador
+
+
 def _carregar_abas_arquivo_02(arquivo_02_bytes: bytes) -> dict[str, pd.DataFrame]:
-    """Lê todas as abas do Arquivo 02 e retorna um dicionário normalizado."""
+    """Lê todas as abas do Arquivo 02."""
     workbook = pd.read_excel(BytesIO(arquivo_02_bytes), sheet_name=None)
-    return {_normalizar_nome_aba(nome): df for nome, df in workbook.items()}
+    return {_normalizar_texto(nome): df for nome, df in workbook.items()}
 
 
-def _extrair_base_indicador_arquivo_01(
-    arquivo_01_bytes: bytes,
-    nome_indicador: str,
+def _obter_arquivo_base_indicador(
+    arquivos_base: dict[str, bytes],
+    indicador_id: str,
 ) -> BytesIO:
-    """
-    Extrai a base do indicador a partir do Arquivo 01.
+    """Obtém o arquivo-base do indicador."""
+    if indicador_id not in arquivos_base:
+        raise FileNotFoundError(
+            f"Arquivo 01 do indicador '{indicador_id}' não foi encontrado entre os arquivos enviados."
+        )
 
-    Estratégia:
-    - tenta encontrar uma aba com o nome do indicador;
-    - se não encontrar, assume a primeira aba como fallback.
-    """
-    workbook = pd.read_excel(BytesIO(arquivo_01_bytes), sheet_name=None)
-
-    if not workbook:
-        raise ValueError("O Arquivo 01 não possui abas válidas.")
-
-    abas_normalizadas = {
-        _normalizar_nome_aba(nome): (nome, df)
-        for nome, df in workbook.items()
-    }
-
-    chave = _normalizar_nome_aba(nome_indicador)
-    if chave in abas_normalizadas:
-        _, df_base = abas_normalizadas[chave]
-    else:
-        _, df_base = next(iter(workbook.items()))
-
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        df_base.to_excel(writer, index=False, sheet_name="Base")
-    output.seek(0)
-    return output
+    return BytesIO(arquivos_base[indicador_id])
 
 
-def _extrair_complemento_indicador_arquivo_02(
+def _obter_arquivo_complemento_indicador(
     abas_arquivo_02: dict[str, pd.DataFrame],
     nome_aba_esperada: str,
 ) -> BytesIO:
-    """Extrai do Arquivo 02 a aba correspondente ao indicador."""
-    chave_esperada = _normalizar_nome_aba(nome_aba_esperada)
+    """Obtém a aba correspondente do Arquivo 02 e converte em arquivo Excel temporário."""
+    chave = _normalizar_texto(nome_aba_esperada)
 
-    if chave_esperada not in abas_arquivo_02:
-        raise ValueError(
+    if chave not in abas_arquivo_02:
+        raise FileNotFoundError(
             f"A aba '{nome_aba_esperada}' não foi encontrada no Arquivo 02."
         )
 
-    df = abas_arquivo_02[chave_esperada]
+    df = abas_arquivo_02[chave]
 
     output = BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
@@ -321,26 +329,19 @@ def _extrair_complemento_indicador_arquivo_02(
 
 def _executar_modulo(
     config: dict[str, Any],
-    arquivo_01_bytes: bytes,
+    arquivos_base: dict[str, bytes],
     abas_arquivo_02: dict[str, pd.DataFrame],
 ) -> dict[str, Any]:
-    """Executa um módulo individual usando a base do Arquivo 01 e a aba correspondente do Arquivo 02."""
+    """Executa um indicador individual."""
     try:
-        func_processamento = _obter_funcao_processamento(
-            config["modulo"],
-            config["funcao"],
-        )
-
-        arquivo_01 = _extrair_base_indicador_arquivo_01(
-            arquivo_01_bytes,
-            config["label"],
-        )
-        arquivo_02 = _extrair_complemento_indicador_arquivo_02(
+        func = _obter_funcao_processamento(config["modulo"], config["funcao"])
+        arquivo_01 = _obter_arquivo_base_indicador(arquivos_base, config["id"])
+        arquivo_02 = _obter_arquivo_complemento_indicador(
             abas_arquivo_02,
             config["aba_arquivo_02"],
         )
 
-        resultado = func_processamento(arquivo_01, arquivo_02)
+        resultado = func(arquivo_01, arquivo_02)
 
         if not isinstance(resultado, tuple) or len(resultado) != 2:
             raise ValueError(
@@ -365,17 +366,17 @@ def _executar_modulo(
 
 
 def _executar_todos_indicadores(
-    arquivo_01_bytes: bytes,
+    arquivos_base: dict[str, bytes],
     arquivo_02_bytes: bytes,
 ) -> dict[str, dict[str, Any]]:
-    """Executa todos os módulos configurados."""
+    """Executa todos os indicadores."""
     abas_arquivo_02 = _carregar_abas_arquivo_02(arquivo_02_bytes)
     resultados: dict[str, dict[str, Any]] = {}
 
     for config in MODULOS_CONFIG:
         resultados[config["id"]] = _executar_modulo(
             config=config,
-            arquivo_01_bytes=arquivo_01_bytes,
+            arquivos_base=arquivos_base,
             abas_arquivo_02=abas_arquivo_02,
         )
 
@@ -383,13 +384,13 @@ def _executar_todos_indicadores(
 
 
 def _render_resultados(resultados: dict[str, dict[str, Any]]) -> None:
-    """Renderiza os resultados do processamento consolidado."""
+    """Renderiza os resultados consolidados."""
     st.markdown(
         """
         <div class="todos-card">
-            <div class="todos-card-title">Status dos indicadores processados</div>
+            <div class="todos-card-title">Status do processamento</div>
             <div class="todos-card-desc">
-                Resultado consolidado do processamento a partir do Arquivo 01 e das abas do Arquivo 02.
+                Resultado consolidado dos 10 indicadores processados.
             </div>
         </div>
         """,
@@ -461,9 +462,9 @@ def interface_todos_indicadores() -> None:
                 <div class="todos-kicker">Módulo ativo</div>
                 <div class="todos-title">TODOS OS INDICADORES</div>
                 <p class="todos-description">
-                    Envie o Arquivo 01 com a base dos indicadores e o Arquivo 02 com múltiplas abas.
-                    O sistema irá identificar cada aba correspondente e executar o processamento
-                    consolidado dos 10 indicadores.
+                    Envie os 10 arquivos do Arquivo 01 em uma única seleção e, em seguida, o
+                    Arquivo 02 com múltiplas abas. O sistema irá identificar cada arquivo-base
+                    pelo nome e distribuir as abas do complemento para os respectivos indicadores.
                 </p>
             </div>
         </div>
@@ -476,8 +477,8 @@ def interface_todos_indicadores() -> None:
         <div class="todos-card">
             <div class="todos-card-title">Arquivos de entrada</div>
             <div class="todos-card-desc">
-                Arquivo 01: base consolidada dos indicadores.<br>
-                Arquivo 02: planilha complementar com várias abas, uma para cada indicador.
+                Arquivo 01: selecione múltiplos arquivos-base de uma só vez.<br>
+                Arquivo 02: envie um único arquivo Excel com várias abas.
             </div>
         </div>
         """,
@@ -487,10 +488,11 @@ def interface_todos_indicadores() -> None:
     col1, col2 = st.columns(2)
 
     with col1:
-        arquivo_01 = st.file_uploader(
-            "📁 Arquivo 01 - Base consolidada",
+        arquivos_01 = st.file_uploader(
+            "📁 Arquivo 01 - Bases dos 10 indicadores",
             type=["xlsx", "xls"],
-            key="todos_indicadores_arquivo_01",
+            accept_multiple_files=True,
+            key="todos_indicadores_arquivo_01_multiplos",
         )
 
     with col2:
@@ -500,7 +502,11 @@ def interface_todos_indicadores() -> None:
             key="todos_indicadores_arquivo_02",
         )
 
-    pode_processar = arquivo_01 is not None and arquivo_02 is not None
+    total_arquivo_01 = len(arquivos_01) if arquivos_01 else 0
+    pode_processar = total_arquivo_01 > 0 and arquivo_02 is not None
+
+    if arquivos_01:
+        st.info(f"Foram selecionados {total_arquivo_01} arquivo(s) no Arquivo 01.")
 
     if arquivo_02 is not None:
         try:
@@ -515,8 +521,8 @@ def interface_todos_indicadores() -> None:
         <div class="todos-card">
             <div class="todos-card-title">Execução consolidada</div>
             <div class="todos-card-desc">
-                O processamento distribui automaticamente os dados do Arquivo 02 para os respectivos
-                módulos, conforme a aba correspondente a cada indicador.
+                O sistema tentará relacionar automaticamente os arquivos-base pelo nome do arquivo
+                e as informações complementares pelo nome das abas do Arquivo 02.
             </div>
         </div>
         """,
@@ -533,10 +539,13 @@ def interface_todos_indicadores() -> None:
 
     if executar:
         with st.spinner("Processando todos os indicadores..."):
+            arquivos_base = _mapear_arquivos_base(arquivos_01)
+
             resultados = _executar_todos_indicadores(
-                arquivo_01_bytes=arquivo_01.getvalue(),
+                arquivos_base=arquivos_base,
                 arquivo_02_bytes=arquivo_02.getvalue(),
             )
+
             st.session_state["todos_indicadores_resultados"] = resultados
 
     resultados = st.session_state.get("todos_indicadores_resultados")
