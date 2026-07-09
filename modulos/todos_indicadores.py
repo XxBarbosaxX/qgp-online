@@ -7,7 +7,7 @@ Fluxo:
 - valida qual arquivo pertence a cada indicador pelo nome;
 - mantém uma fila de execução na ordem oficial;
 - executa um indicador por vez ao clicar no botão;
-- usa o arquivo mestre como Arquivo 01 e o consolidado como Arquivo 02;
+- respeita a ordem de arquivos específica de cada módulo;
 - acumula resultados, exibe status e gera ZIP final.
 """
 
@@ -45,6 +45,7 @@ class IndicadorDef:
     tokens_obrigatorios: list[str]
     processar: Callable
     nome_saida: str
+    ordem_arquivos: str = "mestre_primeiro"
 
 
 INDICADORES: list[IndicadorDef] = [
@@ -55,6 +56,7 @@ INDICADORES: list[IndicadorDef] = [
         tokens_obrigatorios=["CVLI", "QGP"],
         processar=processar_cvli,
         nome_saida=nome_arquivo_padrao(1, "CVLI"),
+        ordem_arquivos="mestre_primeiro",
     ),
     IndicadorDef(
         chave="cvp_sportal",
@@ -63,6 +65,7 @@ INDICADORES: list[IndicadorDef] = [
         tokens_obrigatorios=["CVP", "SPORTAL", "QGP"],
         processar=processar_cvp_sportal,
         nome_saida=nome_arquivo_padrao(2, "CVP-SPORTAL"),
+        ordem_arquivos="consolidado_primeiro",
     ),
     IndicadorDef(
         chave="cvp_sip",
@@ -71,6 +74,7 @@ INDICADORES: list[IndicadorDef] = [
         tokens_obrigatorios=["CVP", "SIP", "ENDERECO", "QGP"],
         processar=processar_cvp_sip,
         nome_saida=nome_arquivo_padrao(3, "CVP-SIP-ENDERECO"),
+        ordem_arquivos="mestre_primeiro",
     ),
     IndicadorDef(
         chave="perturbacao_sossego",
@@ -79,6 +83,7 @@ INDICADORES: list[IndicadorDef] = [
         tokens_obrigatorios=["PERTURBACAO", "SOSSEGO", "ALHEIO", "QGP"],
         processar=processar_perturbacao_sossego,
         nome_saida=nome_arquivo_padrao(4, "PERTURBACAO-AO-SOSSEGO-ALHEIO"),
+        ordem_arquivos="mestre_primeiro",
     ),
     IndicadorDef(
         chave="deslocamento_forcado",
@@ -87,6 +92,7 @@ INDICADORES: list[IndicadorDef] = [
         tokens_obrigatorios=["DESLOCAMENTO", "FORCADO", "QGP"],
         processar=processar_deslocamento_forcado,
         nome_saida=nome_arquivo_padrao(5, "DESLOCAMENTO-FORCADO"),
+        ordem_arquivos="mestre_primeiro",
     ),
     IndicadorDef(
         chave="roubo_veiculo_sportal",
@@ -95,6 +101,7 @@ INDICADORES: list[IndicadorDef] = [
         tokens_obrigatorios=["ROUBO", "VEICULO", "SPORTAL", "LAT", "LONG", "QGP"],
         processar=processar_roubo_veiculo_sportal,
         nome_saida=nome_arquivo_padrao(6, "ROUBO-DE-VEICULO-SPORTAL-LAT-LONG"),
+        ordem_arquivos="mestre_primeiro",
     ),
     IndicadorDef(
         chave="roubo_veiculo_sip",
@@ -103,6 +110,7 @@ INDICADORES: list[IndicadorDef] = [
         tokens_obrigatorios=["ROUBO", "VEICULO", "SIP", "ENDERECO", "QGP"],
         processar=processar_roubo_veiculo_sip,
         nome_saida=nome_arquivo_padrao(7, "ROUBO-DE-VEICULO-SIP-ENDERECO"),
+        ordem_arquivos="mestre_primeiro",
     ),
     IndicadorDef(
         chave="acidente_transito",
@@ -111,6 +119,7 @@ INDICADORES: list[IndicadorDef] = [
         tokens_obrigatorios=["ACIDENTE", "TRANSITO", "SPORTAL", "QGP"],
         processar=processar_acidente_transito,
         nome_saida=nome_arquivo_padrao(8, "ACIDENTE-DE-TRANSITO-SPORTAL"),
+        ordem_arquivos="mestre_primeiro",
     ),
     IndicadorDef(
         chave="furto_veiculo_sportal",
@@ -119,6 +128,7 @@ INDICADORES: list[IndicadorDef] = [
         tokens_obrigatorios=["FURTO", "VEICULO", "SPORTAL", "QGP"],
         processar=processar_furto_veiculo_sportal,
         nome_saida=nome_arquivo_padrao(9, "FURTO-DE-VEICULO-SPORTAL"),
+        ordem_arquivos="mestre_primeiro",
     ),
     IndicadorDef(
         chave="furto_veiculo_sip",
@@ -127,6 +137,7 @@ INDICADORES: list[IndicadorDef] = [
         tokens_obrigatorios=["FURTO", "VEICULO", "SIP", "QGP"],
         processar=processar_furto_veiculo_sip,
         nome_saida=nome_arquivo_padrao(10, "FURTO-DE-VEICULO-SIP"),
+        ordem_arquivos="mestre_primeiro",
     ),
 ]
 
@@ -205,14 +216,32 @@ def limpar_estado() -> None:
             del st.session_state[chave]
 
 
+def montar_arquivos_para_modulo(
+    indicador: IndicadorDef,
+    arquivo_mestre_bytes: bytes,
+    arquivo_consolidado_bytes: bytes,
+) -> tuple[io.BytesIO, io.BytesIO]:
+    if indicador.ordem_arquivos == "consolidado_primeiro":
+        arquivo_01 = io.BytesIO(arquivo_consolidado_bytes)
+        arquivo_02 = io.BytesIO(arquivo_mestre_bytes)
+    else:
+        arquivo_01 = io.BytesIO(arquivo_mestre_bytes)
+        arquivo_02 = io.BytesIO(arquivo_consolidado_bytes)
+
+    return arquivo_01, arquivo_02
+
+
 def executar_modulo(
     indicador: IndicadorDef,
     arquivo_mestre_bytes: bytes,
     arquivo_consolidado_bytes: bytes,
     nome_entrada: str,
 ) -> dict:
-    arquivo_01 = io.BytesIO(arquivo_mestre_bytes)
-    arquivo_02 = io.BytesIO(arquivo_consolidado_bytes)
+    arquivo_01, arquivo_02 = montar_arquivos_para_modulo(
+        indicador=indicador,
+        arquivo_mestre_bytes=arquivo_mestre_bytes,
+        arquivo_consolidado_bytes=arquivo_consolidado_bytes,
+    )
 
     retorno = indicador.processar(arquivo_01, arquivo_02)
 
@@ -378,10 +407,6 @@ def render() -> None:
         f"Arquivos consolidados reconhecidos: {total_ok}/10"
     )
 
-    # =========================
-    # CONTROLE DA FILA
-    # =========================
-
     total_indicadores = len(INDICADORES)
     indice_atual = st.session_state.todos_indicadores_fila_indice_atual
 
@@ -392,7 +417,7 @@ def render() -> None:
         proximo_indicador_titulo = INDICADORES[indice_atual].titulo
 
     st.write(
-        f"Indicador atual na fila: {indice_atual + 1}/{total_indicadores} - "
+        f"Indicador atual na fila: {min(indice_atual + 1, total_indicadores)}/{total_indicadores} - "
         f"{proximo_indicador_titulo}"
     )
 
@@ -430,10 +455,6 @@ def render() -> None:
     progresso_modulo = st.progress(0)
     status_global = st.empty()
     status_modulo = st.empty()
-
-    # =========================
-    # EXECUÇÃO DE UM INDICADOR
-    # =========================
 
     if executar_proximo:
         indicador = INDICADORES[indice_atual]
@@ -483,13 +504,11 @@ def render() -> None:
 
             progresso_modulo.progress(1.0)
 
-            # avança a fila
             st.session_state.todos_indicadores_fila_indice_atual += 1
             progresso_global.progress(
                 st.session_state.todos_indicadores_fila_indice_atual / total_indicadores
             )
 
-            # atualiza ZIP com o que já foi gerado
             st.session_state.todos_indicadores_zip = empacotar_resultados_zip(
                 st.session_state.todos_indicadores_resultados
             )
@@ -502,10 +521,7 @@ def render() -> None:
 
     tabela_resumo = []
     for item in sorted(resultados, key=lambda x: x["ordem"]):
-        if item["status"] == "sucesso":
-            estado_fila = "Concluído"
-        else:
-            estado_fila = "Erro"
+        estado_fila = "Concluído" if item["status"] == "sucesso" else "Erro"
 
         tabela_resumo.append(
             {
