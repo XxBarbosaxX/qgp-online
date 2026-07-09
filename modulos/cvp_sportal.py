@@ -454,6 +454,33 @@ def _processar_cvp_sportal(arquivo_base, arquivo_novo) -> dict:
     }
 
 
+def processar_cvp_sportal(arquivo_01, arquivo_02):
+    """
+    Função pública padrão do módulo CVP SPORTAL.
+
+    Returns
+    -------
+    tuple[pd.DataFrame, dict]
+        DataFrame final consolidado e resumo do processamento.
+    """
+    resultado = _processar_cvp_sportal(arquivo_01, arquivo_02)
+
+    resumo = {
+        "adicionados": resultado["adicionados"],
+        "total_final": resultado["total_final"],
+        "ultima_datahora_base": (
+            resultado["ultima_datahora_base"].strftime("%d/%m/%Y %H:%M:%S")
+            if resultado["ultima_datahora_base"] is not None
+            else "N/A"
+        ),
+        "removidos_invalidos": resultado["removidos_invalidos"],
+        "removidos_por_datahora": resultado["removidos_por_datahora"],
+        "situacao": resultado["situacao"],
+    }
+
+    return resultado["df_final"], resumo
+
+
 def interface_cvp_sportal() -> None:
     """Interface Streamlit para CVP SPORTAL."""
     _aplicar_estilo_cvp_sportal()
