@@ -232,7 +232,6 @@ def render_home() -> None:
 
     with col2:
         render_panel_geocodificacao()
-        st.markdown('<div class="field-gap"></div>', unsafe_allow_html=True)
         render_panel_conversao()
 
     with col3:
