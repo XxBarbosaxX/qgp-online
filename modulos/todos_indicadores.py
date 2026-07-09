@@ -1,5 +1,8 @@
 """
 Módulo agregador para processamento de todos os indicadores do QGP Online.
+Fluxo:
+- Arquivo 01: base consolidada contendo os 10 indicadores.
+- Arquivo 02: arquivo complementar com múltiplas abas, uma para cada indicador.
 """
 
 from __future__ import annotations
@@ -20,80 +23,70 @@ MODULOS_CONFIG = [
         "label": "CVLI",
         "modulo": "modulos.cvli",
         "funcao": "processar_cvli",
-        "arquivo_01_key": "cvli_arquivo_01_bytes",
-        "arquivo_02_key": "cvli_arquivo_02_bytes",
+        "aba_arquivo_02": "CVLI",
     },
     {
         "id": "cvp_sip",
         "label": "CVP SIP",
         "modulo": "modulos.cvp_sip",
         "funcao": "processar_cvp_sip",
-        "arquivo_01_key": "cvp_sip_arquivo_01_bytes",
-        "arquivo_02_key": "cvp_sip_arquivo_02_bytes",
+        "aba_arquivo_02": "CVP SIP",
     },
     {
         "id": "cvp_sportal",
         "label": "CVP SPORTAL",
         "modulo": "modulos.cvp_sportal",
         "funcao": "processar_cvp_sportal",
-        "arquivo_01_key": "cvp_sportal_arquivo_01_bytes",
-        "arquivo_02_key": "cvp_sportal_arquivo_02_bytes",
+        "aba_arquivo_02": "CVP SPORTAL",
     },
     {
         "id": "acidente_transito",
         "label": "Acidente de Trânsito",
         "modulo": "modulos.acidente_transito",
         "funcao": "processar_acidente_transito",
-        "arquivo_01_key": "acidente_transito_arquivo_01_bytes",
-        "arquivo_02_key": "acidente_transito_arquivo_02_bytes",
+        "aba_arquivo_02": "ACIDENTE TRANSITO",
     },
     {
         "id": "perturbacao_sossego",
         "label": "Perturbação do Sossego",
         "modulo": "modulos.perturbacao_sossego",
         "funcao": "processar_perturbacao_sossego",
-        "arquivo_01_key": "perturbacao_sossego_arquivo_01_bytes",
-        "arquivo_02_key": "perturbacao_sossego_arquivo_02_bytes",
+        "aba_arquivo_02": "PERTURBACAO SOSSEGO",
     },
     {
         "id": "deslocamento_forcado",
         "label": "Deslocamento Forçado",
         "modulo": "modulos.deslocamento_forcado",
         "funcao": "processar_deslocamento_forcado",
-        "arquivo_01_key": "deslocamento_forcado_arquivo_01_bytes",
-        "arquivo_02_key": "deslocamento_forcado_arquivo_02_bytes",
+        "aba_arquivo_02": "DESLOCAMENTO FORCADO",
     },
     {
         "id": "furto_veiculo_sip",
         "label": "Furto de Veículo SIP",
         "modulo": "modulos.furto_veiculo_sip",
         "funcao": "processar_furto_veiculo_sip",
-        "arquivo_01_key": "furto_veiculo_sip_arquivo_01_bytes",
-        "arquivo_02_key": "furto_veiculo_sip_arquivo_02_bytes",
+        "aba_arquivo_02": "FURTO VEICULO SIP",
     },
     {
         "id": "furto_veiculo_sportal",
         "label": "Furto de Veículo SPORTAL",
         "modulo": "modulos.furto_veiculo_sportal",
         "funcao": "processar_furto_veiculo_sportal",
-        "arquivo_01_key": "furto_veiculo_sportal_arquivo_01_bytes",
-        "arquivo_02_key": "furto_veiculo_sportal_arquivo_02_bytes",
+        "aba_arquivo_02": "FURTO VEICULO SPORTAL",
     },
     {
         "id": "roubo_veiculo_sip",
         "label": "Roubo de Veículo SIP",
         "modulo": "modulos.roubo_veiculo_sip",
         "funcao": "processar_roubo_veiculo_sip",
-        "arquivo_01_key": "roubo_veiculo_sip_arquivo_01_bytes",
-        "arquivo_02_key": "roubo_veiculo_sip_arquivo_02_bytes",
+        "aba_arquivo_02": "ROUBO VEICULO SIP",
     },
     {
         "id": "roubo_veiculo_sportal",
         "label": "Roubo de Veículo SPORTAL",
         "modulo": "modulos.roubo_veiculo_sportal",
         "funcao": "processar_roubo_veiculo_sportal",
-        "arquivo_01_key": "roubo_veiculo_sportal_arquivo_01_bytes",
-        "arquivo_02_key": "roubo_veiculo_sportal_arquivo_02_bytes",
+        "aba_arquivo_02": "ROUBO VEICULO SPORTAL",
     },
 ]
 
@@ -111,7 +104,7 @@ def _aplicar_estilo_todos_indicadores() -> None:
             }
 
             .todos-hero {
-                background: linear-gradient(135deg, rgba(17, 24, 39, 0.95) 0%, rgba(31, 41, 55, 0.95) 100%);
+                background: linear-gradient(135deg, rgba(17, 24, 39, 0.96) 0%, rgba(31, 41, 55, 0.96) 100%);
                 border: 1px solid rgba(255, 255, 255, 0.08);
                 border-radius: 20px;
                 padding: 1.5rem;
@@ -213,13 +206,6 @@ def _aplicar_estilo_todos_indicadores() -> None:
                 border: 1px solid rgba(239, 68, 68, 0.22);
             }
 
-            .todos-upload-label {
-                font-size: 0.86rem;
-                font-weight: 700;
-                color: rgba(249, 250, 251, 0.92);
-                margin-bottom: 0.15rem;
-            }
-
             @media (max-width: 900px) {
                 .todos-grid {
                     grid-template-columns: 1fr;
@@ -231,10 +217,31 @@ def _aplicar_estilo_todos_indicadores() -> None:
     )
 
 
+def _normalizar_nome_aba(nome: str) -> str:
+    """Normaliza o nome de aba para comparação flexível."""
+    return (
+        str(nome)
+        .strip()
+        .upper()
+        .replace("_", " ")
+        .replace("-", " ")
+        .replace("Á", "A")
+        .replace("À", "A")
+        .replace("Ã", "A")
+        .replace("Â", "A")
+        .replace("É", "E")
+        .replace("Ê", "E")
+        .replace("Í", "I")
+        .replace("Ó", "O")
+        .replace("Ô", "O")
+        .replace("Õ", "O")
+        .replace("Ú", "U")
+        .replace("Ç", "C")
+    )
+
+
 def _obter_funcao_processamento(nome_modulo: str, nome_funcao: str) -> Callable:
-    """
-    Importa dinamicamente uma função pública de processamento.
-    """
+    """Importa dinamicamente a função pública de processamento do módulo."""
     modulo = importlib.import_module(nome_modulo)
 
     if hasattr(modulo, nome_funcao):
@@ -251,31 +258,87 @@ def _obter_funcao_processamento(nome_modulo: str, nome_funcao: str) -> Callable:
     )
 
 
-def _carregar_arquivos_da_sessao(config: dict[str, Any]) -> tuple[BytesIO, BytesIO]:
-    """
-    Recupera arquivos em memória a partir do session_state.
-    """
-    arquivo_01_bytes = st.session_state.get(config["arquivo_01_key"])
-    arquivo_02_bytes = st.session_state.get(config["arquivo_02_key"])
+def _carregar_abas_arquivo_02(arquivo_02_bytes: bytes) -> dict[str, pd.DataFrame]:
+    """Lê todas as abas do Arquivo 02 e retorna um dicionário normalizado."""
+    workbook = pd.read_excel(BytesIO(arquivo_02_bytes), sheet_name=None)
+    return {_normalizar_nome_aba(nome): df for nome, df in workbook.items()}
 
-    if not arquivo_01_bytes or not arquivo_02_bytes:
-        raise FileNotFoundError(
-            f"Arquivos do módulo {config['label']} não encontrados na sessão."
+
+def _extrair_base_indicador_arquivo_01(
+    arquivo_01_bytes: bytes,
+    nome_indicador: str,
+) -> BytesIO:
+    """
+    Extrai a base do indicador a partir do Arquivo 01.
+
+    Estratégia:
+    - tenta encontrar uma aba com o nome do indicador;
+    - se não encontrar, assume a primeira aba como fallback.
+    """
+    workbook = pd.read_excel(BytesIO(arquivo_01_bytes), sheet_name=None)
+
+    if not workbook:
+        raise ValueError("O Arquivo 01 não possui abas válidas.")
+
+    abas_normalizadas = {
+        _normalizar_nome_aba(nome): (nome, df)
+        for nome, df in workbook.items()
+    }
+
+    chave = _normalizar_nome_aba(nome_indicador)
+    if chave in abas_normalizadas:
+        _, df_base = abas_normalizadas[chave]
+    else:
+        _, df_base = next(iter(workbook.items()))
+
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df_base.to_excel(writer, index=False, sheet_name="Base")
+    output.seek(0)
+    return output
+
+
+def _extrair_complemento_indicador_arquivo_02(
+    abas_arquivo_02: dict[str, pd.DataFrame],
+    nome_aba_esperada: str,
+) -> BytesIO:
+    """Extrai do Arquivo 02 a aba correspondente ao indicador."""
+    chave_esperada = _normalizar_nome_aba(nome_aba_esperada)
+
+    if chave_esperada not in abas_arquivo_02:
+        raise ValueError(
+            f"A aba '{nome_aba_esperada}' não foi encontrada no Arquivo 02."
         )
 
-    return BytesIO(arquivo_01_bytes), BytesIO(arquivo_02_bytes)
+    df = abas_arquivo_02[chave_esperada]
+
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="Complemento")
+    output.seek(0)
+    return output
 
 
-def _executar_modulo(config: dict[str, Any]) -> dict[str, Any]:
-    """
-    Executa um módulo individual e retorna o resultado padronizado.
-    """
+def _executar_modulo(
+    config: dict[str, Any],
+    arquivo_01_bytes: bytes,
+    abas_arquivo_02: dict[str, pd.DataFrame],
+) -> dict[str, Any]:
+    """Executa um módulo individual usando a base do Arquivo 01 e a aba correspondente do Arquivo 02."""
     try:
         func_processamento = _obter_funcao_processamento(
             config["modulo"],
             config["funcao"],
         )
-        arquivo_01, arquivo_02 = _carregar_arquivos_da_sessao(config)
+
+        arquivo_01 = _extrair_base_indicador_arquivo_01(
+            arquivo_01_bytes,
+            config["label"],
+        )
+        arquivo_02 = _extrair_complemento_indicador_arquivo_02(
+            abas_arquivo_02,
+            config["aba_arquivo_02"],
+        )
 
         resultado = func_processamento(arquivo_01, arquivo_02)
 
@@ -285,7 +348,6 @@ def _executar_modulo(config: dict[str, Any]) -> dict[str, Any]:
             )
 
         df_final, resumo = resultado
-
         excel_bytes = gerar_arquivo_excel(df_final, sheet_name=config["label"][:31])
 
         return {
@@ -302,14 +364,20 @@ def _executar_modulo(config: dict[str, Any]) -> dict[str, Any]:
         }
 
 
-def _executar_todos_indicadores() -> dict[str, dict[str, Any]]:
-    """
-    Executa todos os módulos configurados.
-    """
+def _executar_todos_indicadores(
+    arquivo_01_bytes: bytes,
+    arquivo_02_bytes: bytes,
+) -> dict[str, dict[str, Any]]:
+    """Executa todos os módulos configurados."""
+    abas_arquivo_02 = _carregar_abas_arquivo_02(arquivo_02_bytes)
     resultados: dict[str, dict[str, Any]] = {}
 
     for config in MODULOS_CONFIG:
-        resultados[config["id"]] = _executar_modulo(config)
+        resultados[config["id"]] = _executar_modulo(
+            config=config,
+            arquivo_01_bytes=arquivo_01_bytes,
+            abas_arquivo_02=abas_arquivo_02,
+        )
 
     return resultados
 
@@ -319,9 +387,9 @@ def _render_resultados(resultados: dict[str, dict[str, Any]]) -> None:
     st.markdown(
         """
         <div class="todos-card">
-            <div class="todos-card-title">Status dos módulos processados</div>
+            <div class="todos-card-title">Status dos indicadores processados</div>
             <div class="todos-card-desc">
-                Abaixo está o resultado consolidado da execução dos indicadores disponíveis.
+                Resultado consolidado do processamento a partir do Arquivo 01 e das abas do Arquivo 02.
             </div>
         </div>
         """,
@@ -332,18 +400,16 @@ def _render_resultados(resultados: dict[str, dict[str, Any]]) -> None:
 
     for config in MODULOS_CONFIG:
         resultado = resultados.get(config["id"], {})
+
         if resultado.get("sucesso"):
-            badge = '<div class="todos-badge ok">Processado com sucesso</div>'
-            detalhe = ""
             resumo = resultado.get("resumo", {})
-            if resumo:
-                adicionados = resumo.get("adicionados", "N/A")
-                total_final = resumo.get("total_final", "N/A")
-                detalhe = (
-                    f"<div style='color: rgba(255,255,255,0.72); font-size: 0.88rem;'>"
-                    f"Adicionados: {adicionados}<br>Total final: {total_final}"
-                    f"</div>"
-                )
+            badge = '<div class="todos-badge ok">Processado com sucesso</div>'
+            detalhe = (
+                f"<div style='color: rgba(255,255,255,0.72); font-size: 0.88rem;'>"
+                f"Adicionados: {resumo.get('adicionados', 'N/A')}<br>"
+                f"Total final: {resumo.get('total_final', 'N/A')}"
+                f"</div>"
+            )
         else:
             badge = '<div class="todos-badge err">Falha no processamento</div>'
             detalhe = (
@@ -374,87 +440,30 @@ def _render_resultados(resultados: dict[str, dict[str, Any]]) -> None:
                     use_container_width=True,
                     hide_index=True,
                 )
-
                 st.download_button(
                     label=f"💾 Baixar resultado - {config['label']}",
                     data=resultado["excel_bytes"],
                     file_name=f"{config['id']}_processado.xlsx",
-                    mime=(
-                        "application/vnd.openxmlformats-officedocument."
-                        "spreadsheetml.sheet"
-                    ),
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     key=f"download_{config['id']}",
                     use_container_width=True,
                 )
 
 
-def _render_uploads_por_modulo() -> None:
-    """Renderiza área de upload de Arquivo 01 e 02 para cada módulo."""
-    st.markdown(
-        """
-        <div class="todos-card">
-            <div class="todos-card-title">Arquivos por módulo</div>
-            <div class="todos-card-desc">
-                Carregue os arquivos 01 (base) e 02 (complemento) diretamente por módulo. 
-                Esses arquivos serão usados tanto nas interfaces individuais quanto no 
-                processamento consolidado.
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    for config in MODULOS_CONFIG:
-        with st.expander(f"Arquivos - {config['label']}", expanded=False):
-            col1, col2 = st.columns(2)
-
-            with col1:
-                st.markdown(
-                    '<div class="todos-upload-label">📁 Arquivo 01 - Base</div>',
-                    unsafe_allow_html=True,
-                )
-                arq1 = st.file_uploader(
-                    f"Arquivo 01 - {config['label']}",
-                    type=["xlsx", "xls"],
-                    key=f"{config['id']}_arquivo_01_upload",
-                    label_visibility="collapsed",
-                )
-                if arq1 is not None:
-                    st.session_state[config["arquivo_01_key"]] = arq1.getvalue()
-                    st.caption("✅ Arquivo 01 carregado na sessão.")
-
-            with col2:
-                st.markdown(
-                    '<div class="todos-upload-label">📁 Arquivo 02 - Complemento</div>',
-                    unsafe_allow_html=True,
-                )
-                arq2 = st.file_uploader(
-                    f"Arquivo 02 - {config['label']}",
-                    type=["xlsx", "xls"],
-                    key=f"{config['id']}_arquivo_02_upload",
-                    label_visibility="collapsed",
-                )
-                if arq2 is not None:
-                    st.session_state[config["arquivo_02_key"]] = arq2.getvalue()
-                    st.caption("✅ Arquivo 02 carregado na sessão.")
-
-
 def interface_todos_indicadores() -> None:
-    """
-    Interface principal do módulo agregador de todos os indicadores.
-    """
+    """Interface principal do módulo agregador."""
     _aplicar_estilo_todos_indicadores()
 
     st.markdown(
         """
         <div class="todos-shell">
             <div class="todos-hero">
-                <div class="todos-kicker">Processamento consolidado</div>
-                <div class="todos-title">Todos os Indicadores</div>
+                <div class="todos-kicker">Módulo ativo</div>
+                <div class="todos-title">TODOS OS INDICADORES</div>
                 <p class="todos-description">
-                    Execute em lote os módulos disponíveis do QGP Online. Você pode carregar os
-                    arquivos de cada módulo diretamente aqui ou nas interfaces individuais. O
-                    sistema utiliza sempre os arquivos persistidos em memória na sessão atual.
+                    Envie o Arquivo 01 com a base dos indicadores e o Arquivo 02 com múltiplas abas.
+                    O sistema irá identificar cada aba correspondente e executar o processamento
+                    consolidado dos 10 indicadores.
                 </p>
             </div>
         </div>
@@ -462,16 +471,52 @@ def interface_todos_indicadores() -> None:
         unsafe_allow_html=True,
     )
 
-    _render_uploads_por_modulo()
+    st.markdown(
+        """
+        <div class="todos-card">
+            <div class="todos-card-title">Arquivos de entrada</div>
+            <div class="todos-card-desc">
+                Arquivo 01: base consolidada dos indicadores.<br>
+                Arquivo 02: planilha complementar com várias abas, uma para cada indicador.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        arquivo_01 = st.file_uploader(
+            "📁 Arquivo 01 - Base consolidada",
+            type=["xlsx", "xls"],
+            key="todos_indicadores_arquivo_01",
+        )
+
+    with col2:
+        arquivo_02 = st.file_uploader(
+            "📁 Arquivo 02 - Arquivo com múltiplas abas",
+            type=["xlsx", "xls"],
+            key="todos_indicadores_arquivo_02",
+        )
+
+    pode_processar = arquivo_01 is not None and arquivo_02 is not None
+
+    if arquivo_02 is not None:
+        try:
+            abas = pd.ExcelFile(arquivo_02).sheet_names
+            arquivo_02.seek(0)
+            st.info(f"Abas identificadas no Arquivo 02: {', '.join(abas)}")
+        except Exception:
+            arquivo_02.seek(0)
 
     st.markdown(
         """
         <div class="todos-card">
             <div class="todos-card-title">Execução consolidada</div>
             <div class="todos-card-desc">
-                Ao iniciar o processamento, cada módulo será executado de forma independente 
-                com base nos arquivos atualmente disponíveis em memória. Módulos sem arquivos 
-                carregados serão marcados como falha na execução.
+                O processamento distribui automaticamente os dados do Arquivo 02 para os respectivos
+                módulos, conforme a aba correspondente a cada indicador.
             </div>
         </div>
         """,
@@ -483,11 +528,15 @@ def interface_todos_indicadores() -> None:
         type="primary",
         use_container_width=True,
         key="btn_processar_todos_indicadores",
+        disabled=not pode_processar,
     )
 
     if executar:
         with st.spinner("Processando todos os indicadores..."):
-            resultados = _executar_todos_indicadores()
+            resultados = _executar_todos_indicadores(
+                arquivo_01_bytes=arquivo_01.getvalue(),
+                arquivo_02_bytes=arquivo_02.getvalue(),
+            )
             st.session_state["todos_indicadores_resultados"] = resultados
 
     resultados = st.session_state.get("todos_indicadores_resultados")
