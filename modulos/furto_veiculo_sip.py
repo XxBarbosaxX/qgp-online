@@ -1,7 +1,4 @@
-"""
-Módulo Furto de Veículo (SIP) - Geocodificação por endereço
-Versão Streamlit adaptada para o QGP Online.
-"""
+"""<br>Módulo Furto de Veículo (SIP) - Geocodificação por endereço<br>Versão Streamlit adaptada para o QGP Online.<br>"""
 
 from __future__ import annotations
 
@@ -79,16 +76,93 @@ SUBST = {
     "MAE": "Maestro",
 }
 
-CORR = {"RAIMUINDO": "RAIMUNDO", "OSWALDO": "OSVALDO"}
-RUIDO = ["LADO PAR", "LADO ÍMPAR", "- P", "FORTALEZA, CE", ", CE"]
+CORR = {
+    "RAIMUINDO": "RAIMUNDO",
+    "OSWALDO": "OSVALDO",
+}
+
+RUIDO = [
+    "LADO PAR",
+    "LADO ÍMPAR",
+    "- P",
+    "FORTALEZA, CE",
+    ", CE",
+]
 
 RE_BNI = re.compile(
     r"\(?\s*bairro\s+n[aã]o\s+identificad[oa]\s*\)?",
     flags=re.IGNORECASE,
 )
 
-TIPOS = ("Rua", "Avenida", "Travessa", "Praca", "Rodovia", "Alameda", "Passeio")
-ROOFTOP = ("pointaddress", "streetaddress", "subaddress", "pointaddressvd")
+TIPOS = (
+    "Rua",
+    "Avenida",
+    "Travessa",
+    "Praca",
+    "Rodovia",
+    "Alameda",
+    "Passeio",
+)
+
+ROOFTOP = (
+    "pointaddress",
+    "streetaddress",
+    "subaddress",
+    "pointaddressvd",
+)
+
+
+def _resolver_caminho_base_enxuta(caminho_informado: str) -> str:
+    """
+    Resolve o caminho do parquet de apoio de forma robusta para execução
+    standalone e também via módulo agregador.
+    """
+    candidatos = [
+        Path(caminho_informado),
+        Path(f"./{caminho_informado}"),
+        Path("services") / caminho_informado,
+        Path("./services") / caminho_informado,
+        Path("services/CVP_SIP_GEOCODIFICAR.parquet"),
+        Path("./services/CVP_SIP_GEOCODIFICAR.parquet"),
+        Path("CVP_SIP_GEOCODIFICAR.parquet"),
+        Path("./CVP_SIP_GEOCODIFICAR.parquet"),
+    ]
+
+    vistos = set()
+    for candidato in candidatos:
+        candidato_str = str(candidato)
+        if candidato_str in vistos:
+            continue
+        vistos.add(candidato_str)
+        if candidato.exists():
+            return candidato_str
+
+    return str(Path(caminho_informado))
+
+
+def _normalizar_config(config: Optional[FurtoVeiculoSipConfig]) -> FurtoVeiculoSipConfig:
+    """
+    Garante uma configuração válida mesmo quando o módulo for chamado
+    externamente sem config explícito.
+    """
+    if config is None:
+        config = FurtoVeiculoSipConfig()
+
+    caminho_resolvido = _resolver_caminho_base_enxuta(config.caminho_base_enxuta)
+
+    return FurtoVeiculoSipConfig(
+        usar_externo=config.usar_externo,
+        caminho_base_enxuta=caminho_resolvido,
+        limiar_nome=int(config.limiar_nome),
+        raio_confirma_m=float(config.raio_confirma_m),
+        raio_municipio_km=float(config.raio_municipio_km),
+        limiar_suspeito=int(config.limiar_suspeito),
+        uf_codigo=str(config.uf_codigo),
+        arq_cache_mun=str(config.arq_cache_mun),
+        arcgis_timeout=int(config.arcgis_timeout),
+        arcgis_delay_s=float(config.arcgis_delay_s),
+        arcgis_retries=int(config.arcgis_retries),
+    )
 
 
 def _aplicar_estilo_furto_veiculo_sip() -> None:
@@ -103,42 +177,36 @@ def _aplicar_estilo_furto_veiculo_sip() -> None:
                 padding: 1.1rem 1.1rem 0.85rem 1.1rem;
                 margin: 1rem 0;
             }
-
             .fvsip-title {
                 font-size: 1.15rem;
                 font-weight: 800;
                 color: #f8fafc;
                 margin-bottom: 0.25rem;
             }
-
             .fvsip-desc {
                 font-size: 0.93rem;
                 color: rgba(255, 255, 255, 0.72);
                 margin-bottom: 0.8rem;
                 line-height: 1.55;
             }
-
             .fvsip-list {
                 margin: 0.55rem 0 0 0;
                 padding-left: 1rem;
                 color: rgba(255, 255, 255, 0.78);
                 font-size: 0.92rem;
             }
-
             .fvsip-grid {
                 display: grid;
                 grid-template-columns: repeat(4, minmax(0, 1fr));
                 gap: 0.85rem;
                 margin-top: 1rem;
             }
-
             .fvsip-stat {
                 background: rgba(255, 255, 255, 0.025);
                 border: 1px solid rgba(255, 255, 255, 0.08);
                 border-radius: 16px;
                 padding: 0.95rem 1rem;
             }
-
             .fvsip-stat-label {
                 font-size: 0.78rem;
                 text-transform: uppercase;
@@ -147,7 +215,6 @@ def _aplicar_estilo_furto_veiculo_sip() -> None:
                 margin-bottom: 0.35rem;
                 font-weight: 700;
             }
-
             .fvsip-stat-value {
                 font-size: 1.18rem;
                 font-weight: 900;
@@ -155,14 +222,12 @@ def _aplicar_estilo_furto_veiculo_sip() -> None:
                 line-height: 1.15;
                 word-break: break-word;
             }
-
             .fvsip-badges {
                 display: flex;
                 flex-wrap: wrap;
                 gap: 0.5rem;
                 margin-top: 0.65rem;
             }
-
             .fvsip-badge {
                 display: inline-flex;
                 align-items: center;
@@ -175,45 +240,38 @@ def _aplicar_estilo_furto_veiculo_sip() -> None:
                 background: rgba(255, 255, 255, 0.03);
                 color: #e5f3ee;
             }
-
             .fvsip-badge.ok {
                 background: rgba(34, 197, 94, 0.10);
                 color: #b7f7c9;
                 border-color: rgba(34, 197, 94, 0.22);
             }
-
             .fvsip-badge.warn {
                 background: rgba(245, 158, 11, 0.10);
                 color: #fde4b0;
                 border-color: rgba(245, 158, 11, 0.22);
             }
-
             .fvsip-badge.info {
                 background: rgba(59, 130, 246, 0.10);
                 color: #bfdbfe;
                 border-color: rgba(59, 130, 246, 0.22);
             }
-
             .fvsip-badge.neutral {
                 background: rgba(255, 255, 255, 0.04);
                 color: #e5e7eb;
                 border-color: rgba(255, 255, 255, 0.10);
             }
-
             .fvsip-level-grid {
                 display: grid;
                 grid-template-columns: repeat(5, minmax(0, 1fr));
                 gap: 0.75rem;
                 margin-top: 0.9rem;
             }
-
             .fvsip-level {
                 background: rgba(255,255,255,0.025);
                 border: 1px solid rgba(255,255,255,0.08);
                 border-radius: 14px;
                 padding: 0.85rem 0.9rem;
             }
-
             .fvsip-level-name {
                 font-size: 0.78rem;
                 color: rgba(255,255,255,0.64);
@@ -221,13 +279,11 @@ def _aplicar_estilo_furto_veiculo_sip() -> None:
                 margin-bottom: 0.35rem;
                 min-height: 2rem;
             }
-
             .fvsip-level-value {
                 font-size: 1.12rem;
                 font-weight: 900;
                 color: #fff;
             }
-
             .fvsip-field-label {
                 display: flex;
                 align-items: center;
@@ -235,14 +291,12 @@ def _aplicar_estilo_furto_veiculo_sip() -> None:
                 margin-bottom: 0.45rem;
                 margin-top: 0.2rem;
             }
-
             .fvsip-field-label-text {
                 font-size: 0.92rem;
                 font-weight: 700;
                 color: rgba(255, 255, 255, 0.90);
                 line-height: 1.2;
             }
-
             .fvsip-tooltip {
                 position: relative;
                 display: inline-flex;
@@ -259,7 +313,6 @@ def _aplicar_estilo_furto_veiculo_sip() -> None:
                 cursor: help;
                 flex-shrink: 0;
             }
-
             .fvsip-tooltip-box {
                 position: absolute;
                 left: calc(100% + 10px);
@@ -280,7 +333,6 @@ def _aplicar_estilo_furto_veiculo_sip() -> None:
                 transition: opacity 0.18s ease, transform 0.18s ease;
                 z-index: 9999;
             }
-
             .fvsip-tooltip-box::before {
                 content: "";
                 position: absolute;
@@ -293,36 +345,30 @@ def _aplicar_estilo_furto_veiculo_sip() -> None:
                 border-bottom: 1px solid rgba(148, 163, 184, 0.28);
                 transform: translateY(-50%) rotate(45deg);
             }
-
             .fvsip-tooltip:hover .fvsip-tooltip-box {
                 opacity: 1;
                 visibility: visible;
                 transform: translateY(-50%) translateX(2px);
             }
-
             @media (max-width: 1200px) {
                 .fvsip-grid {
                     grid-template-columns: repeat(2, minmax(0, 1fr));
                 }
-
                 .fvsip-level-grid {
                     grid-template-columns: repeat(2, minmax(0, 1fr));
                 }
             }
-
             @media (max-width: 640px) {
                 .fvsip-grid,
                 .fvsip-level-grid {
                     grid-template-columns: 1fr;
                 }
-
                 .fvsip-tooltip-box {
                     left: 50%;
                     top: calc(100% + 10px);
                     transform: translateX(-50%);
                     width: min(280px, 80vw);
                 }
-
                 .fvsip-tooltip-box::before {
                     left: 50%;
                     top: -6px;
@@ -331,7 +377,6 @@ def _aplicar_estilo_furto_veiculo_sip() -> None:
                     border-top: 1px solid rgba(148, 163, 184, 0.28);
                     border-bottom: none;
                 }
-
                 .fvsip-tooltip:hover .fvsip-tooltip-box {
                     transform: translateX(-50%);
                 }
@@ -368,7 +413,6 @@ def _normalizar_nome_aba(nome: str) -> str:
 
 def _selecionar_aba_arquivo_02(sheet_names: list[str]) -> str:
     alvo = "FURTOSIP"
-
     for aba in sheet_names:
         if _normalizar_nome_aba(aba) == alvo:
             return aba
@@ -421,7 +465,6 @@ def _obter_coluna_natureza(df: pd.DataFrame) -> str | None:
 
 def _eh_furto_veiculo(valor: str) -> bool:
     txt = sem_acento(valor)
-
     if not txt:
         return False
 
@@ -453,7 +496,6 @@ def gerar_excel_em_memoria(df: pd.DataFrame) -> bytes:
 @st.cache_data(show_spinner=False)
 def carregar_municipios(uf_codigo: str, arq_cache_mun: str) -> dict:
     caminho = Path(arq_cache_mun)
-
     if caminho.exists():
         try:
             with open(caminho, encoding="utf-8") as arquivo:
@@ -462,7 +504,6 @@ def carregar_municipios(uf_codigo: str, arq_cache_mun: str) -> dict:
             pass
 
     url = f"https://servicodados.ibge.gov.br/api/v1/localidades/estados/{uf_codigo}/municipios"
-
     try:
         import gzip
         import urllib.request
@@ -472,14 +513,11 @@ def carregar_municipios(uf_codigo: str, arq_cache_mun: str) -> dict:
             dados = resposta.read()
             if resposta.info().get("Content-Encoding") == "gzip":
                 dados = gzip.decompress(dados)
-
-        lista = json.loads(dados.decode("utf-8"))
-        mapa = {sem_acento(m["nome"]): str(m["id"])[:7] for m in lista}
-
-        with open(caminho, "w", encoding="utf-8") as arquivo:
-            json.dump(mapa, arquivo, ensure_ascii=False)
-
-        return mapa
+            lista = json.loads(dados.decode("utf-8"))
+            mapa = {sem_acento(m["nome"]): str(m["id"])[:7] for m in lista}
+            with open(caminho, "w", encoding="utf-8") as arquivo:
+                json.dump(mapa, arquivo, ensure_ascii=False)
+            return mapa
     except Exception:
         return {}
 
@@ -488,12 +526,10 @@ def _montar_nome_logradouro(tipo: str, nome: str) -> str:
     partes = []
     tipo = str(tipo or "").strip()
     nome = str(nome or "").strip()
-
     if tipo and tipo.lower() != "none":
         partes.append(tipo)
     if nome and nome.lower() != "none":
         partes.append(nome)
-
     return " ".join(partes).strip()
 
 
@@ -504,6 +540,7 @@ def carregar_base_geografica(caminho_base_enxuta: str) -> Optional[pd.DataFrame]
         return None
 
     base = pd.read_parquet(caminho_parquet).reset_index(drop=True)
+
     colunas_esperadas = {
         "CD_SETOR",
         "CD_QUADRA",
@@ -517,7 +554,6 @@ def carregar_base_geografica(caminho_base_enxuta: str) -> Optional[pd.DataFrame]
         "SIGLA_UF",
     }
     faltantes = colunas_esperadas - set(base.columns)
-
     if faltantes:
         raise ValueError(
             f"O arquivo {caminho_base_enxuta} não possui as colunas esperadas: {sorted(faltantes)}"
@@ -543,11 +579,9 @@ def carregar_base_geografica(caminho_base_enxuta: str) -> Optional[pd.DataFrame]
     base["lat"] = pd.to_numeric(base["Latitude"], errors="coerce")
     base["lon"] = pd.to_numeric(base["Longitude"], errors="coerce")
     base["tot_geral"] = 1
-
     base = base.dropna(subset=["lat", "lon"]).copy()
     base = base[base["nome_orig"].astype(str).str.strip() != ""].copy()
     base = base[base["cod_mun"].astype(str).str.strip() != ""].copy()
-
     base = base.drop_duplicates(
         subset=["cod_mun", "nome_norm", "lat", "lon"]
     ).reset_index(drop=True)
@@ -576,7 +610,6 @@ def obter_geocoder_arcgis(
 
 def limpar_logradouro(texto: str) -> str:
     valor = str(texto or "").upper().strip()
-
     if valor in ("NAN", "NONE", ""):
         return ""
 
@@ -600,7 +633,6 @@ def limpar_logradouro(texto: str) -> str:
 
 def limpar_bairro(bairro: str, municipio: str) -> str:
     valor = str(bairro or "").strip()
-
     if valor.lower() in ("nan", "none", ""):
         return ""
 
@@ -616,7 +648,6 @@ def limpar_bairro(bairro: str, municipio: str) -> str:
 
 def limpar_numero(numero: str) -> str:
     valor = str(numero or "").strip()
-
     if valor.lower() in ("nan", "none", "", "0", "0.0", "s/n", "sn"):
         return ""
 
@@ -640,9 +671,12 @@ def _hav(lat1, lon1, lat2, lon2):
 
 class MotorGeocodificacaoSoberana:
     def __init__(self, config: FurtoVeiculoSipConfig):
-        self.config = config
-        self.base = carregar_base_geografica(config.caminho_base_enxuta)
-        self.municipios = carregar_municipios(config.uf_codigo, config.arq_cache_mun)
+        self.config = _normalizar_config(config)
+        self.base = carregar_base_geografica(self.config.caminho_base_enxuta)
+        self.municipios = carregar_municipios(
+            self.config.uf_codigo,
+            self.config.arq_cache_mun,
+        )
         self.tree = None
         self.centroides_municipio = {}
 
@@ -660,10 +694,10 @@ class MotorGeocodificacaoSoberana:
             }
 
         self.geocode_ext = obter_geocoder_arcgis(
-            config.usar_externo,
-            config.arcgis_timeout,
-            config.arcgis_delay_s,
-            config.arcgis_retries,
+            self.config.usar_externo,
+            self.config.arcgis_timeout,
+            self.config.arcgis_delay_s,
+            self.config.arcgis_retries,
         )
 
     def cod_municipio(self, municipio: str) -> str:
@@ -719,7 +753,6 @@ class MotorGeocodificacaoSoberana:
                 for nome in nomes
             ]
         )
-
         if not mascara.any():
             return False, None
 
@@ -731,7 +764,6 @@ class MotorGeocodificacaoSoberana:
             self.glon[indices_filtrados],
         )
         melhor = float(distancias.min())
-
         return melhor <= self.config.raio_confirma_m, melhor
 
     def geocodificar(self, rua: str, numero: str, bairro: str, municipio: str):
@@ -783,7 +815,6 @@ class MotorGeocodificacaoSoberana:
                         True,
                         distancia,
                     )
-
                 if externo[2] in ROOFTOP:
                     return (
                         externo[0],
@@ -821,6 +852,7 @@ class MotorGeocodificacaoSoberana:
                 partes.append(bairro_limpo)
             if tem_municipio:
                 partes.extend([municipio_limpo, "Ceara", "Brasil"])
+
             consulta = ", ".join([p for p in partes if p])
 
             externo = None
@@ -925,6 +957,7 @@ def geocodificar_linhas_novas(
 
     total = len(df)
     geocodificados = 0
+
     progresso = st.progress(0)
     status = st.empty()
 
@@ -977,8 +1010,10 @@ def geocodificar_linhas_novas(
 def processar_furto_veiculo_sip(
     arquivo_01,
     arquivo_02,
-    config: FurtoVeiculoSipConfig,
+    config: Optional[FurtoVeiculoSipConfig] = None,
 ):
+    config = _normalizar_config(config)
+
     arquivo_01.seek(0)
     arquivo_02.seek(0)
 
@@ -1019,7 +1054,6 @@ def processar_furto_veiculo_sip(
 
     col_data_base = encontrar_coluna_data(df_base)
     col_hora_base = encontrar_coluna_hora(df_base)
-
     col_data_novo = encontrar_coluna_data(df_novo)
     col_datahora_novo = encontrar_coluna_por_nomes(
         df_novo,
@@ -1109,7 +1143,6 @@ def processar_furto_veiculo_sip(
         ],
         obrigatoria=False,
     )
-
     col_complemento_novo = encontrar_coluna_por_nomes(
         df_novo,
         [
@@ -1121,7 +1154,6 @@ def processar_furto_veiculo_sip(
         ],
         obrigatoria=False,
     )
-
     if (
         col_complemento_base
         and col_complemento_novo
@@ -1132,7 +1164,6 @@ def processar_furto_veiculo_sip(
     df_novo = renomear_colunas_equivalentes(df_base, df_novo)
 
     df_base = criar_coluna_datahora(df_base, col_data_base, col_hora_base, "__datahora__")
-
     if col_hora_base in df_novo.columns:
         df_novo = criar_coluna_datahora(df_novo, col_data_base, col_hora_base, "__datahora__")
     else:
@@ -1254,7 +1285,6 @@ def processar_furto_veiculo_sip(
     )
 
     total_final = len(df_final)
-
     ultima_ref = (
         ultima_datahora_base.strftime("%d/%m/%Y %H:%M:%S")
         if ultima_datahora_base is not None
@@ -1427,14 +1457,16 @@ def _obter_configuracao_ui() -> FurtoVeiculoSipConfig:
                 key="fvsip_cfg_limiar_suspeito",
             )
 
-    return FurtoVeiculoSipConfig(
-        usar_externo=usar_externo,
-        caminho_base_enxuta=caminho_base_enxuta.strip() or "CVP_SIP_GEOCODIFICAR.parquet",
-        limiar_nome=int(limiar_nome),
-        raio_confirma_m=float(raio_confirma_m),
-        raio_municipio_km=float(raio_municipio_km),
-        limiar_suspeito=int(limiar_suspeito),
-        arq_cache_mun=arq_cache_mun.strip() or "municipios_ce.json",
+    return _normalizar_config(
+        FurtoVeiculoSipConfig(
+            usar_externo=usar_externo,
+            caminho_base_enxuta=caminho_base_enxuta.strip() or "CVP_SIP_GEOCODIFICAR.parquet",
+            limiar_nome=int(limiar_nome),
+            raio_confirma_m=float(raio_confirma_m),
+            raio_municipio_km=float(raio_municipio_km),
+            limiar_suspeito=int(limiar_suspeito),
+            arq_cache_mun=arq_cache_mun.strip() or "municipios_ce.json",
+        )
     )
 
 
@@ -1623,112 +1655,49 @@ def render() -> None:
                     arquivo_02_buffer,
                     config,
                 )
-                arquivo_excel_bytes = gerar_excel_em_memoria(df_final)
 
             st.session_state.furto_veiculo_sip_resultado_df = df_final
             st.session_state.furto_veiculo_sip_resumo = resumo
-            st.session_state.furto_veiculo_sip_resultado_excel = arquivo_excel_bytes
+            st.session_state.furto_veiculo_sip_resultado_excel = gerar_excel_em_memoria(df_final)
 
-            st.success("✅ Processamento concluído com sucesso.")
-
+            st.success("Processamento concluído com sucesso.")
         except Exception as exc:
-            st.exception(exc)
+            st.error(f"Erro no processamento: {exc}")
 
-    if (
-        st.session_state.furto_veiculo_sip_resultado_df is None
-        or st.session_state.furto_veiculo_sip_resumo is None
-    ):
-        return
-
-    df_final = st.session_state.furto_veiculo_sip_resultado_df
-    resumo = st.session_state.furto_veiculo_sip_resumo
-
-    st.markdown(
-        f"""
-        <div class="fvsip-card">
-            <div class="fvsip-title">Resumo do processamento</div>
-            <div class="fvsip-desc">{resumo.get("situacao", "Processamento concluído.")}</div>
-            <div class="fvsip-grid">
-                <div class="fvsip-stat">
-                    <div class="fvsip-stat-label">Registros adicionados</div>
-                    <div class="fvsip-stat-value">{resumo.get("adicionados", 0)}</div>
-                </div>
-                <div class="fvsip-stat">
-                    <div class="fvsip-stat-label">Total final</div>
-                    <div class="fvsip-stat-value">{resumo.get("total_final", 0)}</div>
-                </div>
-                <div class="fvsip-stat">
-                    <div class="fvsip-stat-label">Geocodificados</div>
-                    <div class="fvsip-stat-value">{resumo.get("geocodificados", 0)}</div>
-                </div>
-                <div class="fvsip-stat">
-                    <div class="fvsip-stat-label">Lidos no arquivo 02</div>
-                    <div class="fvsip-stat-value">{resumo.get("total_lido_arquivo_02", 0)}</div>
-                </div>
-            </div>
-            <div class="fvsip-badges">
-                <span class="fvsip-badge info">Aba base: {resumo.get("aba_arquivo_01", "-")}</span>
-                <span class="fvsip-badge info">Aba complemento: {resumo.get("aba_arquivo_02", "-")}</span>
-                <span class="fvsip-badge info">Coluna Natureza: {resumo.get("coluna_natureza", "-")}</span>
-                <span class="fvsip-badge info">Coluna endereço final: {resumo.get("coluna_endereco_base", "-")}</span>
-                <span class="fvsip-badge neutral">Última Data/Hora base: {resumo.get("ultima_datahora_base", "-")}</span>
-                <span class="fvsip-badge warn">Removidos por Natureza: {resumo.get("removidos_por_tipo", 0)}</span>
-                <span class="fvsip-badge warn">Removidos por Data/Hora: {resumo.get("removidos_por_datahora", 0)}</span>
-                <span class="fvsip-badge warn">Sem geocodificação: {resumo.get("removidos_sem_geocodificacao", 0)}</span>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    contagens_nivel = resumo.get("contagens_nivel", {})
-    if contagens_nivel:
-        exato_numero = contagens_nivel.get("Exato (Numero)", 0)
-        centroide_rua = contagens_nivel.get("Centroide de Rua", 0)
-        centroide_bairro = contagens_nivel.get("Centroide de Bairro", 0)
-        centroide_cidade = contagens_nivel.get("Centroide de Cidade", 0)
-        nao_encontrado = contagens_nivel.get("Nao Encontrado", 0)
+    if st.session_state.furto_veiculo_sip_resumo:
+        resumo = st.session_state.furto_veiculo_sip_resumo
 
         st.markdown(
-            f"""
+            """
             <div class="fvsip-card">
-                <div class="fvsip-title">Níveis de geocodificação</div>
+                <div class="fvsip-title">Resumo do processamento</div>
                 <div class="fvsip-desc">
-                    Distribuição final dos registros conforme o nível de precisão alcançado no processo de geocodificação.
-                </div>
-                <div class="fvsip-level-grid">
-                    <div class="fvsip-level">
-                        <div class="fvsip-level-name">Exato (Número)</div>
-                        <div class="fvsip-level-value">{exato_numero}</div>
-                    </div>
-                    <div class="fvsip-level">
-                        <div class="fvsip-level-name">Centroide de Rua</div>
-                        <div class="fvsip-level-value">{centroide_rua}</div>
-                    </div>
-                    <div class="fvsip-level">
-                        <div class="fvsip-level-name">Centroide de Bairro</div>
-                        <div class="fvsip-level-value">{centroide_bairro}</div>
-                    </div>
-                    <div class="fvsip-level">
-                        <div class="fvsip-level-name">Centroide de Cidade</div>
-                        <div class="fvsip-level-value">{centroide_cidade}</div>
-                    </div>
-                    <div class="fvsip-level">
-                        <div class="fvsip-level-name">Não Encontrado</div>
-                        <div class="fvsip-level-value">{nao_encontrado}</div>
-                    </div>
+                    Resultado consolidado da atualização, com foco em filtragem,
+                    geocodificação e consistência temporal.
                 </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-    with st.expander("Prévia dos dados processados", expanded=False):
-        st.dataframe(df_final.head(200), use_container_width=True, hide_index=True)
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Adicionados", resumo.get("adicionados", 0))
+        col2.metric("Total final", resumo.get("total_final", 0))
+        col3.metric("Geocodificados", resumo.get("geocodificados", 0))
+        col4.metric("Removidos por tipo", resumo.get("removidos_por_tipo", 0))
+
+        st.info(resumo.get("situacao", ""))
+
+    if st.session_state.furto_veiculo_sip_resultado_df is not None:
+        st.dataframe(
+            st.session_state.furto_veiculo_sip_resultado_df,
+            use_container_width=True,
+            hide_index=True,
+        )
 
     if st.session_state.furto_veiculo_sip_resultado_excel is not None:
         st.download_button(
-            label="💾 Baixar arquivo final",
+            label="Baixar arquivo final",
             data=st.session_state.furto_veiculo_sip_resultado_excel,
             file_name=NOME_ARQUIVO_FINAL,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
