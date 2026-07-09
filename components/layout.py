@@ -133,7 +133,7 @@ def render_panel_geocodificacao() -> None:
         render_panel_text(
             "🌐 Geoprocessamento",
             "Geocodificação",
-            "Módulo dedicado à geocodificação de ocorrências e endereços para análise espacial.",
+            "Módulo dedicado à geocodificação de ocorrências e endereços.",
         )
 
         st.markdown('<div class="panel-divider"></div>', unsafe_allow_html=True)
@@ -145,8 +145,7 @@ def render_panel_geocodificacao() -> None:
         st.markdown(
             """
             <div class="panel-footer">
-                Recomendado para rotinas de qualificação territorial
-                e estudos de distribuição espacial.
+                Recomendado para Geocodificar ocorrências por endereços.
             </div>
             """,
             unsafe_allow_html=True,
@@ -157,8 +156,8 @@ def render_panel_conversao() -> None:
     with st.container(key="panel-conversao"):
         render_panel_text(
             "📍 Conversão",
-            "Converter UTM para SIRGAS 2000 24S",
-            "Converta camadas em UTM para o sistema de referência SIRGAS 2000 / UTM zona 24S com padronização para uso geoespacial.",
+            "Conversor de Coordenadas",
+            "Converta camadas em UTM para SIRGAS 2000 / UTM zona 24S.",
         )
 
         st.markdown('<div class="panel-divider"></div>', unsafe_allow_html=True)
@@ -170,7 +169,7 @@ def render_panel_conversao() -> None:
         st.markdown(
             """
             <div class="panel-footer">
-                Indicado para padronização cartográfica e preparação de camadas para análises territoriais no Ceará.
+                Indicado para padronização cartográfica para análises territoriais no Ceará.
             </div>
             """,
             unsafe_allow_html=True,
@@ -182,7 +181,7 @@ def render_panel_consolidacao() -> None:
         render_panel_text(
             "✅ Consolidação",
             "Consolidar indicadores",
-            "Organize e unifique os indicadores de fechamento em uma base consolidada para consumo analítico.",
+            "Organize e unifique os indicadores de fechamento em uma base consolidada.",
         )
 
         st.markdown('<div class="panel-divider"></div>', unsafe_allow_html=True)
