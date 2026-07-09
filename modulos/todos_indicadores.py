@@ -1,56 +1,172 @@
 """
 Módulo de orquestração de todos os indicadores do QGP Online.
 
-Responsável por:
-- Expor a interface unificada de processamento dos principais módulos.
-- Coordenar a leitura de Arquivo 01 (base histórica) e Arquivo 02 (complemento SIP/Portal).
-- Disparar os processamentos específicos (CVP SIP, CVP Portal, Furto/Roubo de Veículo SIP/Portal, etc.).
-- Manter uma camada de resumo consolidado dos resultados.
-
-Este módulo NÃO contém regras de negócio específicas de cada indicador.
-Cada família de indicador fica encapsulada em seu próprio módulo especializado.
+Objetivo:
+- Centralizar a execução dos módulos de processamento.
+- Permitir execução individual e execução em lote.
+- Manter compatibilidade com módulos que usem nomes diferentes
+  para suas funções principais de processamento.
 """
 
 from __future__ import annotations
 
+from importlib import import_module
 from io import BytesIO
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional
 
+import pandas as pd
 import streamlit as st
 
-from modulos.acidente_transito import processar_acidente_transito
-from modulos.cvp_sip import processar_cvp_sip
-from modulos.cvp_sportal import processar_cvp_sportal
-from modulos.cvli import processar_cvli
-from modulos.deslocamento_forcado import processar_deslocamento_forcado
-from modulos.furto_veiculo_sip import (
-    FurtoVeiculoSipConfig,
-    processar_furto_veiculo_sip,
-)
-from modulos.furto_veiculo_sportal import processar_furto_veiculo_sportal
-from modulos.perturbacao_sossego import processar_perturbacao_sossego
-from modulos.roubo_veiculo_sip import (
-    RouboVeiculoSipConfig,
-    processar_roubo_veiculo_sip,
-)
-from modulos.roubo_veiculo_sportal import processar_roubo_veiculo_sportal
 from modulos.utils import nome_arquivo_padrao
 
 
-def _bytesio_from_session(key: str) -> Optional[BytesIO]:
+def _importar_funcao(modulo_path: str, candidatos: list[str]) -> Callable:
     """
-    Constrói um BytesIO a partir de um conteúdo armazenado na sessão.
+    Importa dinamicamente a primeira função existente entre os nomes candidatos.
 
     Parameters
     ----------
-    key : str
-        Chave em st.session_state com bytes de arquivo.
+    modulo_path : str
+        Caminho do módulo Python.
+    candidatos : list[str]
+        Lista ordenada de nomes possíveis da função.
 
     Returns
     -------
-    Optional[BytesIO]
-        Buffer pronto para uso em módulos de processamento.
+    Callable
+        Função encontrada no módulo.
+
+    Raises
+    ------
+    ImportError
+        Caso nenhuma função compatível seja localizada.
     """
+    modulo = import_module(modulo_path)
+
+    for nome in candidatos:
+        func = getattr(modulo, nome, None)
+        if callable(func):
+            return func
+
+    raise ImportError(
+        f"Nenhuma função compatível encontrada em '{modulo_path}'. "
+        f"Candidatos testados: {', '.join(candidatos)}"
+    )
+
+
+def _importar_classe_opcional(modulo_path: str, nome_classe: str):
+    """
+    Importa uma classe opcional. Se não existir, retorna None.
+    """
+    modulo = import_module(modulo_path)
+    return getattr(modulo, nome_classe, None)
+
+
+FurtoVeiculoSipConfig = _importar_classe_opcional(
+    "modulos.furto_veiculo_sip",
+    "FurtoVeiculoSipConfig",
+)
+RouboVeiculoSipConfig = _importar_classe_opcional(
+    "modulos.roubo_veiculo_sip",
+    "RouboVeiculoSipConfig",
+)
+
+processar_cvp_sip = _importar_funcao(
+    "modulos.cvp_sip",
+    [
+        "processar_cvp_sip",
+        "processar",
+        "executar",
+    ],
+)
+
+processar_cvp_sportal = _importar_funcao(
+    "modulos.cvp_sportal",
+    [
+        "processar_cvp_sportal",
+        "processar_cvp_portal",
+        "processar_sportal",
+        "processar",
+        "executar",
+    ],
+)
+
+processar_cvli = _importar_funcao(
+    "modulos.cvli",
+    [
+        "processar_cvli",
+        "processar",
+        "executar",
+    ],
+)
+
+processar_deslocamento_forcado = _importar_funcao(
+    "modulos.deslocamento_forcado",
+    [
+        "processar_deslocamento_forcado",
+        "processar",
+        "executar",
+    ],
+)
+
+processar_acidente_transito = _importar_funcao(
+    "modulos.acidente_transito",
+    [
+        "processar_acidente_transito",
+        "processar",
+        "executar",
+    ],
+)
+
+processar_perturbacao_sossego = _importar_funcao(
+    "modulos.perturbacao_sossego",
+    [
+        "processar_perturbacao_sossego",
+        "processar",
+        "executar",
+    ],
+)
+
+processar_furto_veiculo_sip = _importar_funcao(
+    "modulos.furto_veiculo_sip",
+    [
+        "processar_furto_veiculo_sip",
+        "processar",
+        "executar",
+    ],
+)
+
+processar_roubo_veiculo_sip = _importar_funcao(
+    "modulos.roubo_veiculo_sip",
+    [
+        "processar_roubo_veiculo_sip",
+        "processar",
+        "executar",
+    ],
+)
+
+processar_furto_veiculo_sportal = _importar_funcao(
+    "modulos.furto_veiculo_sportal",
+    [
+        "processar_furto_veiculo_sportal",
+        "processar_furto_veiculo_portal",
+        "processar",
+        "executar",
+    ],
+)
+
+processar_roubo_veiculo_sportal = _importar_funcao(
+    "modulos.roubo_veiculo_sportal",
+    [
+        "processar_roubo_veiculo_sportal",
+        "processar_roubo_veiculo_portal",
+        "processar",
+        "executar",
+    ],
+)
+
+
+def _bytesio_from_session(key: str) -> Optional[BytesIO]:
     conteudo = st.session_state.get(key)
     if conteudo is None:
         return None
@@ -60,293 +176,186 @@ def _bytesio_from_session(key: str) -> Optional[BytesIO]:
 
 
 def _registrar_resumo_global(chave: str, resumo: Dict[str, Any]) -> None:
-    """
-    Armazena, em uma estrutura consolidada de sessão, o resumo de um indicador.
-
-    Parameters
-    ----------
-    chave : str
-        Identificador do módulo de indicador (ex.: 'cvp_sip', 'roubo_veiculo_sip').
-    resumo : Dict[str, Any]
-        Dicionário de resumo retornado pelo módulo específico.
-    """
     if "resumos_indicadores" not in st.session_state:
         st.session_state["resumos_indicadores"] = {}
-
     st.session_state["resumos_indicadores"][chave] = resumo
 
 
-def executar_cvp_sip() -> None:
-    """
-    Executa o processamento do módulo CVP SIP
-    usando os arquivos já carregados na sessão.
-    """
-    arq_01 = _bytesio_from_session("cvp_sip_arquivo_01_bytes")
-    arq_02 = _bytesio_from_session("cvp_sip_arquivo_02_bytes")
-
-    if not arq_01 or not arq_02:
-        st.warning("Arquivos do módulo CVP SIP não encontrados na sessão.")
-        return
-
-    with st.spinner("Processando CVP (SIP)..."):
-        df_final, resumo = processar_cvp_sip(arq_01, arq_02)
-
-    st.session_state.cvp_sip_resultado_df = df_final
-    st.session_state.cvp_sip_resultado_excel = _gerar_excel_bytes(
-        df_final,
-        nome_arquivo_padrao(1, "CVP-SIP"),
-    )
-    _registrar_resumo_global("cvp_sip", resumo)
-
-
-def executar_cvp_sportal() -> None:
-    """
-    Executa o processamento do módulo CVP Portal
-    usando os arquivos já carregados na sessão.
-    """
-    arq_01 = _bytesio_from_session("cvp_sportal_arquivo_01_bytes")
-    arq_02 = _bytesio_from_session("cvp_sportal_arquivo_02_bytes")
-
-    if not arq_01 or not arq_02:
-        st.warning("Arquivos do módulo CVP Portal não encontrados na sessão.")
-        return
-
-    with st.spinner("Processando CVP (Portal)..."):
-        df_final, resumo = processar_cvp_sportal(arq_01, arq_02)
-
-    st.session_state.cvp_sportal_resultado_df = df_final
-    st.session_state.cvp_sportal_resultado_excel = _gerar_excel_bytes(
-        df_final,
-        nome_arquivo_padrao(2, "CVP-PORTAL"),
-    )
-    _registrar_resumo_global("cvp_sportal", resumo)
-
-
-def executar_cvli() -> None:
-    """
-    Executa o processamento do módulo CVLI.
-    """
-    arq_01 = _bytesio_from_session("cvli_arquivo_01_bytes")
-    arq_02 = _bytesio_from_session("cvli_arquivo_02_bytes")
-
-    if not arq_01 or not arq_02:
-        st.warning("Arquivos do módulo CVLI não encontrados na sessão.")
-        return
-
-    with st.spinner("Processando CVLI..."):
-        df_final, resumo = processar_cvli(arq_01, arq_02)
-
-    st.session_state.cvli_resultado_df = df_final
-    st.session_state.cvli_resultado_excel = _gerar_excel_bytes(
-        df_final,
-        nome_arquivo_padrao(3, "CVLI"),
-    )
-    _registrar_resumo_global("cvli", resumo)
-
-
-def executar_furto_veiculo_sip(
-    config: Optional[FurtoVeiculoSipConfig] = None,
-) -> None:
-    """
-    Executa o processamento de Furto de Veículo (SIP)
-    usando os módulos especializados e suas configurações.
-
-    A função de processamento já:
-    - Normaliza config quando None.
-    - Descobre abas automaticamente.
-    - Aplica filtro interno robusto por natureza.
-    - Faz geocodificação por endereço com base enxuta + ArcGIS.
-    """
-    arq_01 = _bytesio_from_session("furto_veiculo_sip_arquivo_01_bytes")
-    arq_02 = _bytesio_from_session("furto_veiculo_sip_arquivo_02_bytes")
-
-    if not arq_01 or not arq_02:
-        st.warning("Arquivos de Furto de Veículo (SIP) não encontrados na sessão.")
-        return
-
-    with st.spinner("Processando Furto de Veículo (SIP)..."):
-        df_final, resumo = processar_furto_veiculo_sip(arq_01, arq_02, config)
-
-    st.session_state.furto_veiculo_sip_resultado_df = df_final
-    st.session_state.furto_veiculo_sip_resultado_excel = _gerar_excel_bytes(
-        df_final,
-        nome_arquivo_padrao(6, "FURTO-DE-VEICULO-SIP-ENDERECO"),
-    )
-    _registrar_resumo_global("furto_veiculo_sip", resumo)
-
-
-def executar_roubo_veiculo_sip(
-    config: Optional[RouboVeiculoSipConfig] = None,
-) -> None:
-    """
-    Executa o processamento de Roubo de Veículo (SIP)
-    com a nova assinatura do módulo especializado.
-
-    Não cria mais SimpleNamespace nem exige valor_filtro_natureza externo.
-    Toda a lógica de filtro por natureza está encapsulada
-    em processar_roubo_veiculo_sip.
-    """
-    arq_01 = _bytesio_from_session("roubo_veiculo_sip_arquivo_01_bytes")
-    arq_02 = _bytesio_from_session("roubo_veiculo_sip_arquivo_02_bytes")
-
-    if not arq_01 or not arq_02:
-        st.warning("Arquivos de Roubo de Veículo (SIP) não encontrados na sessão.")
-        return
-
-    with st.spinner("Processando Roubo de Veículo (SIP)..."):
-        df_final, resumo = processar_roubo_veiculo_sip(arq_01, arq_02, config)
-
-    st.session_state.roubo_veiculo_sip_resultado_df = df_final
-    st.session_state.roubo_veiculo_sip_resultado_excel = _gerar_excel_bytes(
-        df_final,
-        nome_arquivo_padrao(7, "ROUBO-DE-VEICULO-SIP-ENDERECO"),
-    )
-    _registrar_resumo_global("roubo_veiculo_sip", resumo)
-
-
-def executar_furto_veiculo_sportal() -> None:
-    """
-    Executa o processamento de Furto de Veículo (Portal).
-    """
-    arq_01 = _bytesio_from_session("furto_veiculo_sportal_arquivo_01_bytes")
-    arq_02 = _bytesio_from_session("furto_veiculo_sportal_arquivo_02_bytes")
-
-    if not arq_01 or not arq_02:
-        st.warning("Arquivos de Furto de Veículo (Portal) não encontrados na sessão.")
-        return
-
-    with st.spinner("Processando Furto de Veículo (Portal)..."):
-        df_final, resumo = processar_furto_veiculo_sportal(arq_01, arq_02)
-
-    st.session_state.furto_veiculo_sportal_resultado_df = df_final
-    st.session_state.furto_veiculo_sportal_resultado_excel = _gerar_excel_bytes(
-        df_final,
-        nome_arquivo_padrao(8, "FURTO-DE-VEICULO-PORTAL"),
-    )
-    _registrar_resumo_global("furto_veiculo_sportal", resumo)
-
-
-def executar_roubo_veiculo_sportal() -> None:
-    """
-    Executa o processamento de Roubo de Veículo (Portal).
-    """
-    arq_01 = _bytesio_from_session("roubo_veiculo_sportal_arquivo_01_bytes")
-    arq_02 = _bytesio_from_session("roubo_veiculo_sportal_arquivo_02_bytes")
-
-    if not arq_01 or not arq_02:
-        st.warning("Arquivos de Roubo de Veículo (Portal) não encontrados na sessão.")
-        return
-
-    with st.spinner("Processando Roubo de Veículo (Portal)..."):
-        df_final, resumo = processar_roubo_veiculo_sportal(arq_01, arq_02)
-
-    st.session_state.roubo_veiculo_sportal_resultado_df = df_final
-    st.session_state.roubo_veiculo_sportal_resultado_excel = _gerar_excel_bytes(
-        df_final,
-        nome_arquivo_padrao(9, "ROUBO-DE-VEICULO-PORTAL"),
-    )
-    _registrar_resumo_global("roubo_veiculo_sportal", resumo)
-
-
-def executar_acidente_transito() -> None:
-    """
-    Executa o processamento de Acidente de Trânsito.
-    """
-    arq_01 = _bytesio_from_session("acidente_transito_arquivo_01_bytes")
-    arq_02 = _bytesio_from_session("acidente_transito_arquivo_02_bytes")
-
-    if not arq_01 or not arq_02:
-        st.warning("Arquivos de Acidente de Trânsito não encontrados na sessão.")
-        return
-
-    with st.spinner("Processando Acidente de Trânsito..."):
-        df_final, resumo = processar_acidente_transito(arq_01, arq_02)
-
-    st.session_state.acidente_transito_resultado_df = df_final
-    st.session_state.acidente_transito_resultado_excel = _gerar_excel_bytes(
-        df_final,
-        nome_arquivo_padrao(10, "ACIDENTE-TRANSITO"),
-    )
-    _registrar_resumo_global("acidente_transito", resumo)
-
-
-def executar_deslocamento_forcado() -> None:
-    """
-    Executa o processamento de Deslocamento Forçado.
-    """
-    arq_01 = _bytesio_from_session("deslocamento_forcado_arquivo_01_bytes")
-    arq_02 = _bytesio_from_session("deslocamento_forcado_arquivo_02_bytes")
-
-    if not arq_01 or not arq_02:
-        st.warning("Arquivos de Deslocamento Forçado não encontrados na sessão.")
-        return
-
-    with st.spinner("Processando Deslocamento Forçado..."):
-        df_final, resumo = processar_deslocamento_forcado(arq_01, arq_02)
-
-    st.session_state.deslocamento_forcado_resultado_df = df_final
-    st.session_state.deslocamento_forcado_resultado_excel = _gerar_excel_bytes(
-        df_final,
-        nome_arquivo_padrao(11, "DESLOCAMENTO-FORCADO"),
-    )
-    _registrar_resumo_global("deslocamento_forcado", resumo)
-
-
-def executar_perturbacao_sossego() -> None:
-    """
-    Executa o processamento de Perturbação do Sossego.
-    """
-    arq_01 = _bytesio_from_session("perturbacao_sossego_arquivo_01_bytes")
-    arq_02 = _bytesio_from_session("perturbacao_sossego_arquivo_02_bytes")
-
-    if not arq_01 or not arq_02:
-        st.warning("Arquivos de Perturbação do Sossego não encontrados na sessão.")
-        return
-
-    with st.spinner("Processando Perturbação do Sossego..."):
-        df_final, resumo = processar_perturbacao_sossego(arq_01, arq_02)
-
-    st.session_state.perturbacao_sossego_resultado_df = df_final
-    st.session_state.perturbacao_sossego_resultado_excel = _gerar_excel_bytes(
-        df_final,
-        nome_arquivo_padrao(12, "PERTURBACAO-SOSSEGO"),
-    )
-    _registrar_resumo_global("perturbacao_sossego", resumo)
-
-
-def _gerar_excel_bytes(df, nome_arquivo: str) -> bytes:
-    """
-    Gera um Excel em memória para ser usado em botões de download.
-
-    Parameters
-    ----------
-    df : pandas.DataFrame
-        DataFrame de saída do módulo de indicador.
-    nome_arquivo : str
-        Nome sugerido para o arquivo final (usado apenas como referência externa).
-
-    Returns
-    -------
-    bytes
-        Conteúdo binário do Excel.
-    """
-    from io import BytesIO
-
+def _gerar_excel_bytes(df: pd.DataFrame) -> bytes:
     buffer = BytesIO()
-    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:  # type: ignore[name-defined]
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name="BASE_ATUALIZADA")
     buffer.seek(0)
     return buffer.getvalue()
 
 
-def executar_todos_indicadores() -> None:
-    """
-    Função de conveniência para executar, em sequência,
-    todos os módulos de indicadores que possuam arquivos
-    carregados na sessão.
+def _executar_modulo_padrao(
+    *,
+    chave_modulo: str,
+    chave_arquivo_01: str,
+    chave_arquivo_02: str,
+    func_processamento: Callable,
+    chave_resultado_df: str,
+    chave_resultado_excel: str,
+    mensagem_spinner: str,
+    mensagem_warning: str,
+    config: Any = None,
+) -> None:
+    arq_01 = _bytesio_from_session(chave_arquivo_01)
+    arq_02 = _bytesio_from_session(chave_arquivo_02)
 
-    Cada módulo é independente; falha em um não interrompe os demais.
-    """
+    if not arq_01 or not arq_02:
+        st.warning(mensagem_warning)
+        return
+
+    with st.spinner(mensagem_spinner):
+        if config is None:
+            df_final, resumo = func_processamento(arq_01, arq_02)
+        else:
+            df_final, resumo = func_processamento(arq_01, arq_02, config)
+
+    st.session_state[chave_resultado_df] = df_final
+    st.session_state[chave_resultado_excel] = _gerar_excel_bytes(df_final)
+    _registrar_resumo_global(chave_modulo, resumo)
+
+
+def executar_cvp_sip() -> None:
+    _executar_modulo_padrao(
+        chave_modulo="cvp_sip",
+        chave_arquivo_01="cvp_sip_arquivo_01_bytes",
+        chave_arquivo_02="cvp_sip_arquivo_02_bytes",
+        func_processamento=processar_cvp_sip,
+        chave_resultado_df="cvp_sip_resultado_df",
+        chave_resultado_excel="cvp_sip_resultado_excel",
+        mensagem_spinner="Processando CVP (SIP)...",
+        mensagem_warning="Arquivos do módulo CVP SIP não encontrados na sessão.",
+    )
+
+
+def executar_cvp_sportal() -> None:
+    _executar_modulo_padrao(
+        chave_modulo="cvp_sportal",
+        chave_arquivo_01="cvp_sportal_arquivo_01_bytes",
+        chave_arquivo_02="cvp_sportal_arquivo_02_bytes",
+        func_processamento=processar_cvp_sportal,
+        chave_resultado_df="cvp_sportal_resultado_df",
+        chave_resultado_excel="cvp_sportal_resultado_excel",
+        mensagem_spinner="Processando CVP (Portal)...",
+        mensagem_warning="Arquivos do módulo CVP Portal não encontrados na sessão.",
+    )
+
+
+def executar_cvli() -> None:
+    _executar_modulo_padrao(
+        chave_modulo="cvli",
+        chave_arquivo_01="cvli_arquivo_01_bytes",
+        chave_arquivo_02="cvli_arquivo_02_bytes",
+        func_processamento=processar_cvli,
+        chave_resultado_df="cvli_resultado_df",
+        chave_resultado_excel="cvli_resultado_excel",
+        mensagem_spinner="Processando CVLI...",
+        mensagem_warning="Arquivos do módulo CVLI não encontrados na sessão.",
+    )
+
+
+def executar_furto_veiculo_sip(
+    config: Optional[Any] = None,
+) -> None:
+    _executar_modulo_padrao(
+        chave_modulo="furto_veiculo_sip",
+        chave_arquivo_01="furto_veiculo_sip_arquivo_01_bytes",
+        chave_arquivo_02="furto_veiculo_sip_arquivo_02_bytes",
+        func_processamento=processar_furto_veiculo_sip,
+        chave_resultado_df="furto_veiculo_sip_resultado_df",
+        chave_resultado_excel="furto_veiculo_sip_resultado_excel",
+        mensagem_spinner="Processando Furto de Veículo (SIP)...",
+        mensagem_warning="Arquivos de Furto de Veículo (SIP) não encontrados na sessão.",
+        config=config,
+    )
+
+
+def executar_roubo_veiculo_sip(
+    config: Optional[Any] = None,
+) -> None:
+    _executar_modulo_padrao(
+        chave_modulo="roubo_veiculo_sip",
+        chave_arquivo_01="roubo_veiculo_sip_arquivo_01_bytes",
+        chave_arquivo_02="roubo_veiculo_sip_arquivo_02_bytes",
+        func_processamento=processar_roubo_veiculo_sip,
+        chave_resultado_df="roubo_veiculo_sip_resultado_df",
+        chave_resultado_excel="roubo_veiculo_sip_resultado_excel",
+        mensagem_spinner="Processando Roubo de Veículo (SIP)...",
+        mensagem_warning="Arquivos de Roubo de Veículo (SIP) não encontrados na sessão.",
+        config=config,
+    )
+
+
+def executar_furto_veiculo_sportal() -> None:
+    _executar_modulo_padrao(
+        chave_modulo="furto_veiculo_sportal",
+        chave_arquivo_01="furto_veiculo_sportal_arquivo_01_bytes",
+        chave_arquivo_02="furto_veiculo_sportal_arquivo_02_bytes",
+        func_processamento=processar_furto_veiculo_sportal,
+        chave_resultado_df="furto_veiculo_sportal_resultado_df",
+        chave_resultado_excel="furto_veiculo_sportal_resultado_excel",
+        mensagem_spinner="Processando Furto de Veículo (Portal)...",
+        mensagem_warning="Arquivos de Furto de Veículo (Portal) não encontrados na sessão.",
+    )
+
+
+def executar_roubo_veiculo_sportal() -> None:
+    _executar_modulo_padrao(
+        chave_modulo="roubo_veiculo_sportal",
+        chave_arquivo_01="roubo_veiculo_sportal_arquivo_01_bytes",
+        chave_arquivo_02="roubo_veiculo_sportal_arquivo_02_bytes",
+        func_processamento=processar_roubo_veiculo_sportal,
+        chave_resultado_df="roubo_veiculo_sportal_resultado_df",
+        chave_resultado_excel="roubo_veiculo_sportal_resultado_excel",
+        mensagem_spinner="Processando Roubo de Veículo (Portal)...",
+        mensagem_warning="Arquivos de Roubo de Veículo (Portal) não encontrados na sessão.",
+    )
+
+
+def executar_acidente_transito() -> None:
+    _executar_modulo_padrao(
+        chave_modulo="acidente_transito",
+        chave_arquivo_01="acidente_transito_arquivo_01_bytes",
+        chave_arquivo_02="acidente_transito_arquivo_02_bytes",
+        func_processamento=processar_acidente_transito,
+        chave_resultado_df="acidente_transito_resultado_df",
+        chave_resultado_excel="acidente_transito_resultado_excel",
+        mensagem_spinner="Processando Acidente de Trânsito...",
+        mensagem_warning="Arquivos de Acidente de Trânsito não encontrados na sessão.",
+    )
+
+
+def executar_deslocamento_forcado() -> None:
+    _executar_modulo_padrao(
+        chave_modulo="deslocamento_forcado",
+        chave_arquivo_01="deslocamento_forcado_arquivo_01_bytes",
+        chave_arquivo_02="deslocamento_forcado_arquivo_02_bytes",
+        func_processamento=processar_deslocamento_forcado,
+        chave_resultado_df="deslocamento_forcado_resultado_df",
+        chave_resultado_excel="deslocamento_forcado_resultado_excel",
+        mensagem_spinner="Processando Deslocamento Forçado...",
+        mensagem_warning="Arquivos de Deslocamento Forçado não encontrados na sessão.",
+    )
+
+
+def executar_perturbacao_sossego() -> None:
+    _executar_modulo_padrao(
+        chave_modulo="perturbacao_sossego",
+        chave_arquivo_01="perturbacao_sossego_arquivo_01_bytes",
+        chave_arquivo_02="perturbacao_sossego_arquivo_02_bytes",
+        func_processamento=processar_perturbacao_sossego,
+        chave_resultado_df="perturbacao_sossego_resultado_df",
+        chave_resultado_excel="perturbacao_sossego_resultado_excel",
+        mensagem_spinner="Processando Perturbação do Sossego...",
+        mensagem_warning="Arquivos de Perturbação do Sossego não encontrados na sessão.",
+    )
+
+
+def executar_todos_indicadores() -> None:
     funcoes = [
         ("cvp_sip", executar_cvp_sip),
         ("cvp_sportal", executar_cvp_sportal),
