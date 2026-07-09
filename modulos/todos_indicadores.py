@@ -1,391 +1,433 @@
 """
-Módulo de orquestração de todos os indicadores do QGP Online.
-
-Objetivo:
-- Centralizar a execução dos módulos de processamento.
-- Permitir execução individual e execução em lote.
-- Manter compatibilidade com módulos que usem nomes diferentes
-  para suas funções principais de processamento.
+Módulo agregador para processamento de todos os indicadores do QGP Online.
 """
 
 from __future__ import annotations
 
-from importlib import import_module
+import importlib
 from io import BytesIO
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable
 
 import pandas as pd
 import streamlit as st
 
-from modulos.utils import nome_arquivo_padrao
+from modulos.utils import gerar_arquivo_excel
 
 
-def _importar_funcao(modulo_path: str, candidatos: list[str]) -> Callable:
-    """
-    Importa dinamicamente a primeira função existente entre os nomes candidatos.
-
-    Parameters
-    ----------
-    modulo_path : str
-        Caminho do módulo Python.
-    candidatos : list[str]
-        Lista ordenada de nomes possíveis da função.
-
-    Returns
-    -------
-    Callable
-        Função encontrada no módulo.
-
-    Raises
-    ------
-    ImportError
-        Caso nenhuma função compatível seja localizada.
-    """
-    modulo = import_module(modulo_path)
-
-    for nome in candidatos:
-        func = getattr(modulo, nome, None)
-        if callable(func):
-            return func
-
-    raise ImportError(
-        f"Nenhuma função compatível encontrada em '{modulo_path}'. "
-        f"Candidatos testados: {', '.join(candidatos)}"
-    )
-
-
-def _importar_classe_opcional(modulo_path: str, nome_classe: str):
-    """
-    Importa uma classe opcional. Se não existir, retorna None.
-    """
-    modulo = import_module(modulo_path)
-    return getattr(modulo, nome_classe, None)
-
-
-FurtoVeiculoSipConfig = _importar_classe_opcional(
-    "modulos.furto_veiculo_sip",
-    "FurtoVeiculoSipConfig",
-)
-RouboVeiculoSipConfig = _importar_classe_opcional(
-    "modulos.roubo_veiculo_sip",
-    "RouboVeiculoSipConfig",
-)
-
-processar_cvp_sip = _importar_funcao(
-    "modulos.cvp_sip",
-    [
-        "processar_cvp_sip",
-        "processar",
-        "executar",
-    ],
-)
-
-processar_cvp_sportal = _importar_funcao(
-    "modulos.cvp_sportal",
-    [
-        "processar_cvp_sportal",
-        "processar_cvp_portal",
-        "processar_sportal",
-        "processar",
-        "executar",
-    ],
-)
-
-processar_cvli = _importar_funcao(
-    "modulos.cvli",
-    [
-        "processar_cvli",
-        "processar",
-        "executar",
-    ],
-)
-
-processar_deslocamento_forcado = _importar_funcao(
-    "modulos.deslocamento_forcado",
-    [
-        "processar_deslocamento_forcado",
-        "processar",
-        "executar",
-    ],
-)
-
-processar_acidente_transito = _importar_funcao(
-    "modulos.acidente_transito",
-    [
-        "processar_acidente_transito",
-        "processar",
-        "executar",
-    ],
-)
-
-processar_perturbacao_sossego = _importar_funcao(
-    "modulos.perturbacao_sossego",
-    [
-        "processar_perturbacao_sossego",
-        "processar",
-        "executar",
-    ],
-)
-
-processar_furto_veiculo_sip = _importar_funcao(
-    "modulos.furto_veiculo_sip",
-    [
-        "processar_furto_veiculo_sip",
-        "processar",
-        "executar",
-    ],
-)
-
-processar_roubo_veiculo_sip = _importar_funcao(
-    "modulos.roubo_veiculo_sip",
-    [
-        "processar_roubo_veiculo_sip",
-        "processar",
-        "executar",
-    ],
-)
-
-processar_furto_veiculo_sportal = _importar_funcao(
-    "modulos.furto_veiculo_sportal",
-    [
-        "processar_furto_veiculo_sportal",
-        "processar_furto_veiculo_portal",
-        "processar",
-        "executar",
-    ],
-)
-
-processar_roubo_veiculo_sportal = _importar_funcao(
-    "modulos.roubo_veiculo_sportal",
-    [
-        "processar_roubo_veiculo_sportal",
-        "processar_roubo_veiculo_portal",
-        "processar",
-        "executar",
-    ],
-)
-
-
-def _bytesio_from_session(key: str) -> Optional[BytesIO]:
-    conteudo = st.session_state.get(key)
-    if conteudo is None:
-        return None
-    buffer = BytesIO(conteudo)
-    buffer.seek(0)
-    return buffer
-
-
-def _registrar_resumo_global(chave: str, resumo: Dict[str, Any]) -> None:
-    if "resumos_indicadores" not in st.session_state:
-        st.session_state["resumos_indicadores"] = {}
-    st.session_state["resumos_indicadores"][chave] = resumo
-
-
-def _gerar_excel_bytes(df: pd.DataFrame) -> bytes:
-    buffer = BytesIO()
-    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, sheet_name="BASE_ATUALIZADA")
-    buffer.seek(0)
-    return buffer.getvalue()
-
-
-def _executar_modulo_padrao(
-    *,
-    chave_modulo: str,
-    chave_arquivo_01: str,
-    chave_arquivo_02: str,
-    func_processamento: Callable,
-    chave_resultado_df: str,
-    chave_resultado_excel: str,
-    mensagem_spinner: str,
-    mensagem_warning: str,
-    config: Any = None,
-) -> None:
-    arq_01 = _bytesio_from_session(chave_arquivo_01)
-    arq_02 = _bytesio_from_session(chave_arquivo_02)
-
-    if not arq_01 or not arq_02:
-        st.warning(mensagem_warning)
-        return
-
-    with st.spinner(mensagem_spinner):
-        if config is None:
-            df_final, resumo = func_processamento(arq_01, arq_02)
-        else:
-            df_final, resumo = func_processamento(arq_01, arq_02, config)
-
-    st.session_state[chave_resultado_df] = df_final
-    st.session_state[chave_resultado_excel] = _gerar_excel_bytes(df_final)
-    _registrar_resumo_global(chave_modulo, resumo)
-
-
-def executar_cvp_sip() -> None:
-    _executar_modulo_padrao(
-        chave_modulo="cvp_sip",
-        chave_arquivo_01="cvp_sip_arquivo_01_bytes",
-        chave_arquivo_02="cvp_sip_arquivo_02_bytes",
-        func_processamento=processar_cvp_sip,
-        chave_resultado_df="cvp_sip_resultado_df",
-        chave_resultado_excel="cvp_sip_resultado_excel",
-        mensagem_spinner="Processando CVP (SIP)...",
-        mensagem_warning="Arquivos do módulo CVP SIP não encontrados na sessão.",
-    )
-
-
-def executar_cvp_sportal() -> None:
-    _executar_modulo_padrao(
-        chave_modulo="cvp_sportal",
-        chave_arquivo_01="cvp_sportal_arquivo_01_bytes",
-        chave_arquivo_02="cvp_sportal_arquivo_02_bytes",
-        func_processamento=processar_cvp_sportal,
-        chave_resultado_df="cvp_sportal_resultado_df",
-        chave_resultado_excel="cvp_sportal_resultado_excel",
-        mensagem_spinner="Processando CVP (Portal)...",
-        mensagem_warning="Arquivos do módulo CVP Portal não encontrados na sessão.",
-    )
-
-
-def executar_cvli() -> None:
-    _executar_modulo_padrao(
-        chave_modulo="cvli",
-        chave_arquivo_01="cvli_arquivo_01_bytes",
-        chave_arquivo_02="cvli_arquivo_02_bytes",
-        func_processamento=processar_cvli,
-        chave_resultado_df="cvli_resultado_df",
-        chave_resultado_excel="cvli_resultado_excel",
-        mensagem_spinner="Processando CVLI...",
-        mensagem_warning="Arquivos do módulo CVLI não encontrados na sessão.",
-    )
-
-
-def executar_furto_veiculo_sip(
-    config: Optional[Any] = None,
-) -> None:
-    _executar_modulo_padrao(
-        chave_modulo="furto_veiculo_sip",
-        chave_arquivo_01="furto_veiculo_sip_arquivo_01_bytes",
-        chave_arquivo_02="furto_veiculo_sip_arquivo_02_bytes",
-        func_processamento=processar_furto_veiculo_sip,
-        chave_resultado_df="furto_veiculo_sip_resultado_df",
-        chave_resultado_excel="furto_veiculo_sip_resultado_excel",
-        mensagem_spinner="Processando Furto de Veículo (SIP)...",
-        mensagem_warning="Arquivos de Furto de Veículo (SIP) não encontrados na sessão.",
-        config=config,
-    )
-
-
-def executar_roubo_veiculo_sip(
-    config: Optional[Any] = None,
-) -> None:
-    _executar_modulo_padrao(
-        chave_modulo="roubo_veiculo_sip",
-        chave_arquivo_01="roubo_veiculo_sip_arquivo_01_bytes",
-        chave_arquivo_02="roubo_veiculo_sip_arquivo_02_bytes",
-        func_processamento=processar_roubo_veiculo_sip,
-        chave_resultado_df="roubo_veiculo_sip_resultado_df",
-        chave_resultado_excel="roubo_veiculo_sip_resultado_excel",
-        mensagem_spinner="Processando Roubo de Veículo (SIP)...",
-        mensagem_warning="Arquivos de Roubo de Veículo (SIP) não encontrados na sessão.",
-        config=config,
-    )
-
-
-def executar_furto_veiculo_sportal() -> None:
-    _executar_modulo_padrao(
-        chave_modulo="furto_veiculo_sportal",
-        chave_arquivo_01="furto_veiculo_sportal_arquivo_01_bytes",
-        chave_arquivo_02="furto_veiculo_sportal_arquivo_02_bytes",
-        func_processamento=processar_furto_veiculo_sportal,
-        chave_resultado_df="furto_veiculo_sportal_resultado_df",
-        chave_resultado_excel="furto_veiculo_sportal_resultado_excel",
-        mensagem_spinner="Processando Furto de Veículo (Portal)...",
-        mensagem_warning="Arquivos de Furto de Veículo (Portal) não encontrados na sessão.",
-    )
-
-
-def executar_roubo_veiculo_sportal() -> None:
-    _executar_modulo_padrao(
-        chave_modulo="roubo_veiculo_sportal",
-        chave_arquivo_01="roubo_veiculo_sportal_arquivo_01_bytes",
-        chave_arquivo_02="roubo_veiculo_sportal_arquivo_02_bytes",
-        func_processamento=processar_roubo_veiculo_sportal,
-        chave_resultado_df="roubo_veiculo_sportal_resultado_df",
-        chave_resultado_excel="roubo_veiculo_sportal_resultado_excel",
-        mensagem_spinner="Processando Roubo de Veículo (Portal)...",
-        mensagem_warning="Arquivos de Roubo de Veículo (Portal) não encontrados na sessão.",
-    )
-
-
-def executar_acidente_transito() -> None:
-    _executar_modulo_padrao(
-        chave_modulo="acidente_transito",
-        chave_arquivo_01="acidente_transito_arquivo_01_bytes",
-        chave_arquivo_02="acidente_transito_arquivo_02_bytes",
-        func_processamento=processar_acidente_transito,
-        chave_resultado_df="acidente_transito_resultado_df",
-        chave_resultado_excel="acidente_transito_resultado_excel",
-        mensagem_spinner="Processando Acidente de Trânsito...",
-        mensagem_warning="Arquivos de Acidente de Trânsito não encontrados na sessão.",
-    )
-
-
-def executar_deslocamento_forcado() -> None:
-    _executar_modulo_padrao(
-        chave_modulo="deslocamento_forcado",
-        chave_arquivo_01="deslocamento_forcado_arquivo_01_bytes",
-        chave_arquivo_02="deslocamento_forcado_arquivo_02_bytes",
-        func_processamento=processar_deslocamento_forcado,
-        chave_resultado_df="deslocamento_forcado_resultado_df",
-        chave_resultado_excel="deslocamento_forcado_resultado_excel",
-        mensagem_spinner="Processando Deslocamento Forçado...",
-        mensagem_warning="Arquivos de Deslocamento Forçado não encontrados na sessão.",
-    )
-
-
-def executar_perturbacao_sossego() -> None:
-    _executar_modulo_padrao(
-        chave_modulo="perturbacao_sossego",
-        chave_arquivo_01="perturbacao_sossego_arquivo_01_bytes",
-        chave_arquivo_02="perturbacao_sossego_arquivo_02_bytes",
-        func_processamento=processar_perturbacao_sossego,
-        chave_resultado_df="perturbacao_sossego_resultado_df",
-        chave_resultado_excel="perturbacao_sossego_resultado_excel",
-        mensagem_spinner="Processando Perturbação do Sossego...",
-        mensagem_warning="Arquivos de Perturbação do Sossego não encontrados na sessão.",
-    )
-
-
-def executar_todos_indicadores() -> None:
-    funcoes = [
-        ("cvp_sip", executar_cvp_sip),
-        ("cvp_sportal", executar_cvp_sportal),
-        ("cvli", executar_cvli),
-        ("furto_veiculo_sip", executar_furto_veiculo_sip),
-        ("roubo_veiculo_sip", executar_roubo_veiculo_sip),
-        ("furto_veiculo_sportal", executar_furto_veiculo_sportal),
-        ("roubo_veiculo_sportal", executar_roubo_veiculo_sportal),
-        ("acidente_transito", executar_acidente_transito),
-        ("deslocamento_forcado", executar_deslocamento_forcado),
-        ("perturbacao_sossego", executar_perturbacao_sossego),
-    ]
-
-    for nome, func in funcoes:
-        try:
-            func()
-        except Exception as exc:  # noqa: BLE001
-            st.error(f"Falha ao processar módulo '{nome}': {exc}")
-
-
-__all__ = [
-    "executar_cvp_sip",
-    "executar_cvp_sportal",
-    "executar_cvli",
-    "executar_furto_veiculo_sip",
-    "executar_roubo_veiculo_sip",
-    "executar_furto_veiculo_sportal",
-    "executar_roubo_veiculo_sportal",
-    "executar_acidente_transito",
-    "executar_deslocamento_forcado",
-    "executar_perturbacao_sossego",
-    "executar_todos_indicadores",
+MODULOS_CONFIG = [
+    {
+        "id": "cvli",
+        "label": "CVLI",
+        "modulo": "modulos.cvli",
+        "funcao": "processar_cvli",
+        "arquivo_01_key": "cvli_arquivo_01_bytes",
+        "arquivo_02_key": "cvli_arquivo_02_bytes",
+    },
+    {
+        "id": "cvp_sip",
+        "label": "CVP SIP",
+        "modulo": "modulos.cvp_sip",
+        "funcao": "processar_cvp_sip",
+        "arquivo_01_key": "cvp_sip_arquivo_01_bytes",
+        "arquivo_02_key": "cvp_sip_arquivo_02_bytes",
+    },
+    {
+        "id": "cvp_sportal",
+        "label": "CVP SPORTAL",
+        "modulo": "modulos.cvp_sportal",
+        "funcao": "processar_cvp_sportal",
+        "arquivo_01_key": "cvp_sportal_arquivo_01_bytes",
+        "arquivo_02_key": "cvp_sportal_arquivo_02_bytes",
+    },
+    {
+        "id": "acidente_transito",
+        "label": "Acidente de Trânsito",
+        "modulo": "modulos.acidente_transito",
+        "funcao": "processar_acidente_transito",
+        "arquivo_01_key": "acidente_transito_arquivo_01_bytes",
+        "arquivo_02_key": "acidente_transito_arquivo_02_bytes",
+    },
+    {
+        "id": "perturbacao_sossego",
+        "label": "Perturbação do Sossego",
+        "modulo": "modulos.perturbacao_sossego",
+        "funcao": "processar_perturbacao_sossego",
+        "arquivo_01_key": "perturbacao_sossego_arquivo_01_bytes",
+        "arquivo_02_key": "perturbacao_sossego_arquivo_02_bytes",
+    },
+    {
+        "id": "deslocamento_forcado",
+        "label": "Deslocamento Forçado",
+        "modulo": "modulos.deslocamento_forcado",
+        "funcao": "processar_deslocamento_forcado",
+        "arquivo_01_key": "deslocamento_forcado_arquivo_01_bytes",
+        "arquivo_02_key": "deslocamento_forcado_arquivo_02_bytes",
+    },
+    {
+        "id": "furto_veiculo_sip",
+        "label": "Furto de Veículo SIP",
+        "modulo": "modulos.furto_veiculo_sip",
+        "funcao": "processar_furto_veiculo_sip",
+        "arquivo_01_key": "furto_veiculo_sip_arquivo_01_bytes",
+        "arquivo_02_key": "furto_veiculo_sip_arquivo_02_bytes",
+    },
+    {
+        "id": "furto_veiculo_sportal",
+        "label": "Furto de Veículo SPORTAL",
+        "modulo": "modulos.furto_veiculo_sportal",
+        "funcao": "processar_furto_veiculo_sportal",
+        "arquivo_01_key": "furto_veiculo_sportal_arquivo_01_bytes",
+        "arquivo_02_key": "furto_veiculo_sportal_arquivo_02_bytes",
+    },
+    {
+        "id": "roubo_veiculo_sip",
+        "label": "Roubo de Veículo SIP",
+        "modulo": "modulos.roubo_veiculo_sip",
+        "funcao": "processar_roubo_veiculo_sip",
+        "arquivo_01_key": "roubo_veiculo_sip_arquivo_01_bytes",
+        "arquivo_02_key": "roubo_veiculo_sip_arquivo_02_bytes",
+    },
+    {
+        "id": "roubo_veiculo_sportal",
+        "label": "Roubo de Veículo SPORTAL",
+        "modulo": "modulos.roubo_veiculo_sportal",
+        "funcao": "processar_roubo_veiculo_sportal",
+        "arquivo_01_key": "roubo_veiculo_sportal_arquivo_01_bytes",
+        "arquivo_02_key": "roubo_veiculo_sportal_arquivo_02_bytes",
+    },
 ]
+
+
+def _aplicar_estilo_todos_indicadores() -> None:
+    """Aplica estilo visual da interface agregadora."""
+    st.markdown(
+        """
+        <style>
+            .todos-shell {
+                display: flex;
+                flex-direction: column;
+                gap: 1rem;
+                margin-bottom: 1rem;
+            }
+
+            .todos-hero {
+                background: linear-gradient(135deg, rgba(17, 24, 39, 0.95) 0%, rgba(31, 41, 55, 0.95) 100%);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 20px;
+                padding: 1.5rem;
+                margin-bottom: 1rem;
+            }
+
+            .todos-kicker {
+                font-size: 0.78rem;
+                text-transform: uppercase;
+                letter-spacing: 0.14em;
+                font-weight: 800;
+                color: #60a5fa;
+                margin-bottom: 0.55rem;
+            }
+
+            .todos-title {
+                font-size: 2rem;
+                line-height: 1.1;
+                font-weight: 900;
+                color: #f9fafb;
+                margin-bottom: 0.55rem;
+            }
+
+            .todos-description {
+                color: rgba(255, 255, 255, 0.78);
+                font-size: 0.98rem;
+                line-height: 1.6;
+                margin: 0;
+            }
+
+            .todos-card {
+                background: rgba(255, 255, 255, 0.02);
+                border: 1px solid rgba(255, 255, 255, 0.07);
+                border-radius: 18px;
+                padding: 1rem;
+                margin: 0.8rem 0;
+            }
+
+            .todos-card-title {
+                font-size: 1.05rem;
+                font-weight: 800;
+                color: #f8fafc;
+                margin-bottom: 0.3rem;
+            }
+
+            .todos-card-desc {
+                font-size: 0.92rem;
+                color: rgba(255, 255, 255, 0.70);
+                line-height: 1.5;
+            }
+
+            .todos-grid {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 0.9rem;
+                margin-top: 1rem;
+            }
+
+            .todos-item {
+                background: rgba(255, 255, 255, 0.025);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 16px;
+                padding: 0.95rem 1rem;
+            }
+
+            .todos-item-title {
+                font-size: 0.95rem;
+                font-weight: 800;
+                color: #ffffff;
+                margin-bottom: 0.35rem;
+            }
+
+            .todos-badge {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.35rem;
+                padding: 0.4rem 0.68rem;
+                border-radius: 999px;
+                font-size: 0.8rem;
+                font-weight: 700;
+                margin-top: 0.35rem;
+            }
+
+            .todos-badge.ok {
+                background: rgba(34, 197, 94, 0.12);
+                color: #bbf7d0;
+                border: 1px solid rgba(34, 197, 94, 0.22);
+            }
+
+            .todos-badge.warn {
+                background: rgba(245, 158, 11, 0.12);
+                color: #fde68a;
+                border: 1px solid rgba(245, 158, 11, 0.22);
+            }
+
+            .todos-badge.err {
+                background: rgba(239, 68, 68, 0.12);
+                color: #fecaca;
+                border: 1px solid rgba(239, 68, 68, 0.22);
+            }
+
+            @media (max-width: 900px) {
+                .todos-grid {
+                    grid-template-columns: 1fr;
+                }
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _obter_funcao_processamento(nome_modulo: str, nome_funcao: str) -> Callable:
+    """
+    Importa dinamicamente uma função pública de processamento.
+    """
+    modulo = importlib.import_module(nome_modulo)
+
+    if hasattr(modulo, nome_funcao):
+        return getattr(modulo, nome_funcao)
+
+    candidatos = ["processar", "executar"]
+    for candidato in candidatos:
+        if hasattr(modulo, candidato):
+            return getattr(modulo, candidato)
+
+    raise AttributeError(
+        f"Nenhuma função compatível encontrada em '{nome_modulo}'. "
+        f"Candidatos testados: {nome_funcao}, processar, executar"
+    )
+
+
+def _carregar_arquivos_da_sessao(config: dict[str, Any]) -> tuple[BytesIO, BytesIO]:
+    """
+    Recupera arquivos em memória a partir do session_state.
+    """
+    arquivo_01_bytes = st.session_state.get(config["arquivo_01_key"])
+    arquivo_02_bytes = st.session_state.get(config["arquivo_02_key"])
+
+    if not arquivo_01_bytes or not arquivo_02_bytes:
+        raise FileNotFoundError(
+            f"Arquivos do módulo {config['label']} não encontrados na sessão."
+        )
+
+    return BytesIO(arquivo_01_bytes), BytesIO(arquivo_02_bytes)
+
+
+def _executar_modulo(config: dict[str, Any]) -> dict[str, Any]:
+    """
+    Executa um módulo individual e retorna o resultado padronizado.
+    """
+    try:
+        func_processamento = _obter_funcao_processamento(
+            config["modulo"],
+            config["funcao"],
+        )
+        arquivo_01, arquivo_02 = _carregar_arquivos_da_sessao(config)
+
+        resultado = func_processamento(arquivo_01, arquivo_02)
+
+        if not isinstance(resultado, tuple) or len(resultado) != 2:
+            raise ValueError(
+                f"O módulo {config['label']} deve retornar (df_final, resumo)."
+            )
+
+        df_final, resumo = resultado
+
+        excel_bytes = gerar_arquivo_excel(df_final, sheet_name=config["label"][:31])
+
+        return {
+            "sucesso": True,
+            "df_final": df_final,
+            "resumo": resumo,
+            "excel_bytes": excel_bytes,
+        }
+
+    except Exception as exc:
+        return {
+            "sucesso": False,
+            "erro": str(exc),
+        }
+
+
+def _executar_todos_indicadores() -> dict[str, dict[str, Any]]:
+    """
+    Executa todos os módulos configurados.
+    """
+    resultados: dict[str, dict[str, Any]] = {}
+
+    for config in MODULOS_CONFIG:
+        resultados[config["id"]] = _executar_modulo(config)
+
+    return resultados
+
+
+def _render_resultados(resultados: dict[str, dict[str, Any]]) -> None:
+    """Renderiza os resultados do processamento consolidado."""
+    st.markdown(
+        """
+        <div class="todos-card">
+            <div class="todos-card-title">Status dos módulos processados</div>
+            <div class="todos-card-desc">
+                Abaixo está o resultado consolidado da execução dos indicadores disponíveis.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    cards_html = ['<div class="todos-grid">']
+
+    for config in MODULOS_CONFIG:
+        resultado = resultados.get(config["id"], {})
+        if resultado.get("sucesso"):
+            badge = '<div class="todos-badge ok">Processado com sucesso</div>'
+            detalhe = ""
+            resumo = resultado.get("resumo", {})
+            if resumo:
+                adicionados = resumo.get("adicionados", "N/A")
+                total_final = resumo.get("total_final", "N/A")
+                detalhe = (
+                    f"<div style='color: rgba(255,255,255,0.72); font-size: 0.88rem;'>"
+                    f"Adicionados: {adicionados}<br>Total final: {total_final}"
+                    f"</div>"
+                )
+        else:
+            badge = '<div class="todos-badge err">Falha no processamento</div>'
+            detalhe = (
+                f"<div style='color: #fecaca; font-size: 0.88rem;'>"
+                f"{resultado.get('erro', 'Erro não informado')}"
+                f"</div>"
+            )
+
+        cards_html.append(
+            f"""
+            <div class="todos-item">
+                <div class="todos-item-title">{config["label"]}</div>
+                {badge}
+                {detalhe}
+            </div>
+            """
+        )
+
+    cards_html.append("</div>")
+    st.markdown("".join(cards_html), unsafe_allow_html=True)
+
+    for config in MODULOS_CONFIG:
+        resultado = resultados.get(config["id"], {})
+        if resultado.get("sucesso"):
+            with st.expander(f"Prévia - {config['label']}", expanded=False):
+                st.dataframe(
+                    resultado["df_final"].head(200),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+                st.download_button(
+                    label=f"💾 Baixar resultado - {config['label']}",
+                    data=resultado["excel_bytes"],
+                    file_name=f"{config['id']}_processado.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key=f"download_{config['id']}",
+                    use_container_width=True,
+                )
+
+
+def interface_todos_indicadores() -> None:
+    """
+    Interface principal do módulo agregador de todos os indicadores.
+    """
+    _aplicar_estilo_todos_indicadores()
+
+    st.markdown(
+        """
+        <div class="todos-shell">
+            <div class="todos-hero">
+                <div class="todos-kicker">Processamento consolidado</div>
+                <div class="todos-title">Todos os Indicadores</div>
+                <p class="todos-description">
+                    Execute em lote os módulos disponíveis do QGP Online com base nos arquivos já
+                    carregados nas interfaces individuais. O sistema tentará processar cada indicador
+                    de forma independente e exibirá o status consolidado ao final.
+                </p>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        """
+        <div class="todos-card">
+            <div class="todos-card-title">Requisitos para execução</div>
+            <div class="todos-card-desc">
+                Antes de executar o processamento consolidado, carregue os arquivos de cada módulo
+                nas respectivas interfaces individuais. O agregador utiliza os arquivos persistidos
+                em memória na sessão atual.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    executar = st.button(
+        "Processar todos os indicadores",
+        type="primary",
+        use_container_width=True,
+        key="btn_processar_todos_indicadores",
+    )
+
+    if executar:
+        with st.spinner("Processando todos os indicadores..."):
+            resultados = _executar_todos_indicadores()
+            st.session_state["todos_indicadores_resultados"] = resultados
+
+    resultados = st.session_state.get("todos_indicadores_resultados")
+
+    if resultados:
+        _render_resultados(resultados)
