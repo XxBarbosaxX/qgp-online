@@ -74,7 +74,7 @@ INDICADORES: list[IndicadorDef] = [
         tokens_obrigatorios=["CVP", "SIP", "ENDERECO", "QGP"],
         processar=processar_cvp_sip,
         nome_saida=nome_arquivo_padrao(3, "CVP-SIP-ENDERECO"),
-        ordem_arquivos="mestre_primeiro",
+        ordem_arquivos="consolidado_primeiro",
     ),
     IndicadorDef(
         chave="perturbacao_sossego",
@@ -83,7 +83,7 @@ INDICADORES: list[IndicadorDef] = [
         tokens_obrigatorios=["PERTURBACAO", "SOSSEGO", "ALHEIO", "QGP"],
         processar=processar_perturbacao_sossego,
         nome_saida=nome_arquivo_padrao(4, "PERTURBACAO-AO-SOSSEGO-ALHEIO"),
-        ordem_arquivos="mestre_primeiro",
+        ordem_arquivos="consolidado_primeiro",
     ),
     IndicadorDef(
         chave="deslocamento_forcado",
@@ -101,7 +101,7 @@ INDICADORES: list[IndicadorDef] = [
         tokens_obrigatorios=["ROUBO", "VEICULO", "SPORTAL", "LAT", "LONG", "QGP"],
         processar=processar_roubo_veiculo_sportal,
         nome_saida=nome_arquivo_padrao(6, "ROUBO-DE-VEICULO-SPORTAL-LAT-LONG"),
-        ordem_arquivos="mestre_primeiro",
+        ordem_arquivos="consolidado_primeiro",
     ),
     IndicadorDef(
         chave="roubo_veiculo_sip",
@@ -110,7 +110,7 @@ INDICADORES: list[IndicadorDef] = [
         tokens_obrigatorios=["ROUBO", "VEICULO", "SIP", "ENDERECO", "QGP"],
         processar=processar_roubo_veiculo_sip,
         nome_saida=nome_arquivo_padrao(7, "ROUBO-DE-VEICULO-SIP-ENDERECO"),
-        ordem_arquivos="mestre_primeiro",
+        ordem_arquivos="consolidado_primeiro",
     ),
     IndicadorDef(
         chave="acidente_transito",
@@ -128,7 +128,7 @@ INDICADORES: list[IndicadorDef] = [
         tokens_obrigatorios=["FURTO", "VEICULO", "SPORTAL", "QGP"],
         processar=processar_furto_veiculo_sportal,
         nome_saida=nome_arquivo_padrao(9, "FURTO-DE-VEICULO-SPORTAL"),
-        ordem_arquivos="mestre_primeiro",
+        ordem_arquivos="consolidado_primeiro",
     ),
     IndicadorDef(
         chave="furto_veiculo_sip",
