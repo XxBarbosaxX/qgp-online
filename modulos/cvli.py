@@ -350,10 +350,46 @@ def _limpar_estado_cvli() -> None:
         "cvli_arquivo01",
         "cvli_arquivo02",
         "cvli_resultado",
+        "cvli_arquivo_01_bytes",
+        "cvli_arquivo_02_bytes",
     ]
     for chave in chaves:
         if chave in st.session_state:
             del st.session_state[chave]
+
+
+def processar_cvli(arquivo_01, arquivo_02):
+    """
+    Função pública padrão do módulo CVLI para uso no orquestrador.
+
+    Parameters
+    ----------
+    arquivo_01 : file-like
+        Arquivo base do indicador.
+    arquivo_02 : file-like
+        Arquivo complementar do indicador.
+
+    Returns
+    -------
+    tuple[pd.DataFrame, dict]
+        DataFrame final consolidado e resumo do processamento.
+    """
+    processador = ProcessadorCVLI()
+    resultado = processador.processar(arquivo_01, arquivo_02)
+
+    if not resultado["sucesso"]:
+        raise ValueError(resultado["erro"])
+
+    resumo = {
+        "adicionados": resultado["adicionados"],
+        "total_final": resultado["total_final"],
+        "total_inicial": resultado["total_inicial"],
+        "houve_substituicao": resultado["houve_substituicao"],
+        "situacao": resultado["situacao"],
+        "nome_arquivo": resultado["nome_arquivo"],
+    }
+
+    return resultado["df_final"], resumo
 
 
 def interface_cvli() -> None:
@@ -390,6 +426,12 @@ def interface_cvli() -> None:
             type=["xlsx", "xls"],
             key="cvli_arquivo02",
         )
+
+    if arquivo01 is not None:
+        st.session_state["cvli_arquivo_01_bytes"] = arquivo01.getvalue()
+
+    if arquivo02 is not None:
+        st.session_state["cvli_arquivo_02_bytes"] = arquivo02.getvalue()
 
     pode_processar = arquivo01 is not None and arquivo02 is not None
 
