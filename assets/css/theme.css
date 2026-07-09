@@ -128,9 +128,6 @@ section[data-testid="stSidebar"] {
     font-size: 1.55rem;
     font-weight: 780;
     color: #ffffff;
-    text-align: left;
-    text-wrap: balance;
-    max-width: 22ch;
 }
 
 .hero-text {
@@ -138,11 +135,6 @@ section[data-testid="stSidebar"] {
     color: var(--text-soft);
     font-size: 1rem;
     line-height: 1.65;
-    text-align: left;
-    text-wrap: pretty;
-    overflow-wrap: break-word;
-    hyphens: auto;
-    max-width: 90ch;
 }
 
 /* Título da seção */
@@ -153,8 +145,6 @@ section[data-testid="stSidebar"] {
     font-weight: 800;
     line-height: 1.05;
     letter-spacing: -0.025em;
-    text-align: left;
-    text-wrap: balance;
 }
 
 /* Colunas principais homogêneas */
@@ -165,8 +155,6 @@ div[data-testid="column"] {
 
 div[data-testid="column"] > div {
     width: 100% !important;
-    display: flex !important;
-    flex-direction: column !important;
 }
 
 /* Cards dos módulos – usando key */
@@ -178,14 +166,12 @@ div[data-testid="column"] > div {
         linear-gradient(180deg, rgba(9, 33, 30, 0.95) 0%, rgba(5, 25, 22, 0.98) 100%);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: var(--radius-xl);
-    padding: 1.1rem 1.1rem 1rem 1.1rem;
+    padding: 1.1rem 1.1rem 1.0rem 1.1rem;
     box-shadow: var(--shadow-card);
     min-height: 100%;
-    height: 100%;
     transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
     display: flex;
     flex-direction: column;
-    align-items: stretch;
 }
 
 .st-key-panel-atualizacao:hover,
@@ -204,10 +190,6 @@ div[data-testid="column"] > div {
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
-    display: flex;
-    flex-direction: column;
-    flex: 1 1 auto;
-    height: 100%;
 }
 
 /* Tipografia interna dos cards */
@@ -219,20 +201,14 @@ div[data-testid="column"] > div {
     letter-spacing: 0.14em;
     text-transform: uppercase;
     line-height: 1.2;
-    text-align: left;
-    text-wrap: balance;
 }
 
 .panel-title {
-    margin: 0 0 0.55rem 0;
+    margin: 0 0 0.45rem 0;
     color: #ffffff;
     font-size: 1.2rem;
     font-weight: 760;
-    line-height: 1.22;
-    text-align: left;
-    text-wrap: balance;
-    max-width: 18ch;
-    min-height: 2.6em;
+    line-height: 1.2;
 }
 
 .panel-description {
@@ -240,29 +216,14 @@ div[data-testid="column"] > div {
     color: var(--text-soft);
     font-size: 0.98rem;
     line-height: 1.62;
-    max-width: none;
-    text-align: left;
-    text-wrap: pretty;
-    overflow-wrap: break-word;
-    hyphens: auto;
-    flex: 1 1 auto;
-    min-height: 5.8em;
-}
-
-.panel-kicker,
-.panel-title,
-.panel-description,
-.panel-footer,
-.hero-title,
-.hero-text {
-    text-align: left;
+    max-width: 34ch;
 }
 
 /* Linha visual separando texto de ações */
 .panel-divider {
     height: 1px;
     width: 100%;
-    margin: 0.9rem 0 0.9rem 0;
+    margin: 0.8rem 0 0.85rem 0;
     background: rgba(255, 255, 255, 0.07);
 }
 
@@ -277,22 +238,17 @@ div[data-testid="column"] > div {
 
 /* Rodapé dos cards */
 .panel-footer {
-    margin-top: auto;
+    margin-top: 0.9rem;
     padding-top: 0.7rem;
     border-top: 1px solid rgba(255, 255, 255, 0.05);
     color: var(--text-muted);
     font-size: 0.84rem;
     line-height: 1.52;
-    text-align: left;
-    text-wrap: pretty;
-    overflow-wrap: break-word;
-    hyphens: auto;
-    min-height: 4.5em;
 }
 
 .panel-footer-tight {
+    margin-top: 0.7rem;
     padding-top: 0.6rem;
-    min-height: 4.5em;
 }
 
 /* Chips de versão/data/hora */
@@ -439,21 +395,6 @@ hr {
 
     .hero-title {
         font-size: 1.35rem;
-        max-width: 20ch;
-    }
-
-    .panel-title {
-        min-height: auto;
-        max-width: none;
-    }
-
-    .panel-description {
-        min-height: auto;
-    }
-
-    .panel-footer,
-    .panel-footer-tight {
-        min-height: auto;
     }
 }
 
@@ -512,13 +453,5 @@ hr {
     .hero-text,
     .panel-description {
         font-size: 0.94rem;
-    }
-
-    .panel-title,
-    .panel-description,
-    .panel-footer,
-    .panel-footer-tight {
-        min-height: auto;
-        max-width: none;
     }
 }
