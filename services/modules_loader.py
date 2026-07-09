@@ -20,6 +20,7 @@ MAPEAMENTO: dict[str, tuple[str, str]] = {
     "FURTO DE VEÍCULO (SPORTAL)": ("furto_veiculo_sportal", "interface_furto_veiculo_sportal"),
     "FURTO DE VEÍCULO (SIP)": ("furto_veiculo_sip", "interface_furto_veiculo_sip"),
     "GEOCODIFICAÇÃO": ("geocodificar", "interface_geocodificar"),
+    "CONVERSÃO": ("conversor_coordenadas", "interface_conversor_coordenadas"),
     "CONSOLIDAR INDICADORES": ("consolidar_indicadores", "interface_consolidar_indicadores"),
 }
 
@@ -37,7 +38,11 @@ INDICADORES_ATUALIZACAO: list[str] = [
     "FURTO DE VEÍCULO (SIP)",
 ]
 
-MODULOS_GEO: list[str] = ["GEOCODIFICAÇÃO"]
+MODULOS_GEO: list[str] = [
+    "GEOCODIFICAÇÃO",
+    "CONVERSÃO",
+]
+
 MODULOS_CONSOLIDACAO: list[str] = ["CONSOLIDAR INDICADORES"]
 
 
