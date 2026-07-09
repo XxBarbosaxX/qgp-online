@@ -17,32 +17,22 @@ import unicodedata
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Callable, Optional
+from typing import Callable
 
 import pandas as pd
 import streamlit as st
 
-# ==========================================================
-# IMPORTS DOS MÓDULOS INDIVIDUAIS
-# Ajuste apenas se algum nome estiver diferente no projeto.
-# ==========================================================
-
-from modulos.cvli import processar_cvli
-from modulos.cvp_sportal import processar_cvp_sportal
-from modulos.cvp_sip import processar_cvp_sip
-from modulos.perturbacao_sossego import processar_perturbacao_sossego
-from modulos.deslocamento_forcado import processar_deslocamento_forcado
-from modulos.roubo_veiculo_sportal import processar_roubo_veiculo_sportal
-from modulos.roubo_veiculo_sip import processar_roubo_veiculo_sip
 from modulos.acidente_transito import processar_acidente_transito
-from modulos.furto_veiculo_sportal import processar_furto_veiculo_sportal
+from modulos.cvli import processar_cvli
+from modulos.cvp_sip import processar_cvp_sip
+from modulos.cvp_sportal import processar_cvp_sportal
+from modulos.deslocamento_forcado import processar_deslocamento_forcado
 from modulos.furto_veiculo_sip import processar_furto_veiculo_sip
-
+from modulos.furto_veiculo_sportal import processar_furto_veiculo_sportal
+from modulos.perturbacao_sossego import processar_perturbacao_sossego
+from modulos.roubo_veiculo_sip import processar_roubo_veiculo_sip
+from modulos.roubo_veiculo_sportal import processar_roubo_veiculo_sportal
 from modulos.utils import nome_arquivo_padrao
-
-# ==========================================================
-# CONFIGURAÇÃO
-# ==========================================================
 
 
 @dataclass(frozen=True)
@@ -168,10 +158,6 @@ INDICADORES: list[IndicadorDef] = [
     ),
 ]
 
-# ==========================================================
-# UTILITÁRIOS
-# ==========================================================
-
 
 def normalizar_nome_arquivo(nome: str) -> str:
     texto = str(nome or "").strip()
@@ -242,11 +228,6 @@ def limpar_estado() -> None:
             del st.session_state[chave]
 
 
-# ==========================================================
-# EXECUÇÃO
-# ==========================================================
-
-
 def executar_modulo(indicador: IndicadorDef, arquivo_bytes: bytes) -> dict:
     arquivo_base = io.BytesIO(arquivo_bytes)
     arquivo_novo = io.BytesIO(arquivo_bytes)
@@ -280,11 +261,6 @@ def executar_modulo(indicador: IndicadorDef, arquivo_bytes: bytes) -> dict:
         "linhas_saida": len(df_final),
         "erro": None,
     }
-
-
-# ==========================================================
-# INTERFACE
-# ==========================================================
 
 
 def render() -> None:
@@ -326,6 +302,7 @@ def render() -> None:
     if arquivos:
         for arquivo in arquivos:
             indicador = identificar_indicador_por_nome(arquivo.name)
+
             if indicador is None:
                 desconhecidos.append(arquivo.name)
                 continue
@@ -349,7 +326,11 @@ def render() -> None:
 
     linhas_validacao = []
     for indicador in INDICADORES:
-        info = uploads_identificados.get(indicador.chave) or st.session_state.todos_indicadores_uploads.get(indicador.chave)
+        info = (
+            uploads_identificados.get(indicador.chave)
+            or st.session_state.todos_indicadores_uploads.get(indicador.chave)
+        )
+
         if info:
             linhas_validacao.append(
                 {
@@ -369,7 +350,11 @@ def render() -> None:
                 }
             )
 
-    st.dataframe(pd.DataFrame(linhas_validacao), use_container_width=True, hide_index=True)
+    st.dataframe(
+        pd.DataFrame(linhas_validacao),
+        use_container_width=True,
+        hide_index=True,
+    )
 
     if desconhecidos:
         st.warning("Arquivos não reconhecidos: " + " | ".join(desconhecidos))
@@ -387,6 +372,7 @@ def render() -> None:
     )
 
     col1, col2 = st.columns(2)
+
     with col1:
         iniciar = st.button(
             "Executar todos os indicadores",
@@ -394,6 +380,7 @@ def render() -> None:
             disabled=not pode_processar,
             use_container_width=True,
         )
+
     with col2:
         limpar = st.button(
             "Limpar seleção",
@@ -430,8 +417,8 @@ def render() -> None:
                 resultado = executar_modulo(indicador, info["bytes"])
                 resultado["nome_entrada"] = info["nome"]
                 resultados.append(resultado)
-
                 progresso_modulo.progress(1.0)
+
             except Exception as exc:
                 resultados.append(
                     {
@@ -477,9 +464,14 @@ def render() -> None:
             }
         )
 
-    st.dataframe(pd.DataFrame(tabela_resumo), use_container_width=True, hide_index=True)
+    st.dataframe(
+        pd.DataFrame(tabela_resumo),
+        use_container_width=True,
+        hide_index=True,
+    )
 
     st.subheader("Downloads individuais")
+
     for item in resultados:
         if item["status"] != "sucesso":
             continue
@@ -505,4 +497,5 @@ def render() -> None:
         )
 
 
+interface_todos_indicadores = render
 interface_todos_os_indicadores = render
