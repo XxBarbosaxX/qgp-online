@@ -27,10 +27,12 @@ from modulos.utils import (
     encontrar_coluna_hora,
     encontrar_coluna_por_nomes,
     filtrar_apenas_registros_posteriores,
+    gerar_arquivo_excel,
     nome_arquivo_padrao,
     normalizar_colunas,
     obter_ultima_datahora,
     renomear_colunas_equivalentes,
+    selecionar_aba_atualizacao,
 )
 
 NOME_ARQUIVO_FINAL = nome_arquivo_padrao(3, "CVP-SIP-ENDERECO")
@@ -98,20 +100,8 @@ def _normalizar_nome_aba(nome: str) -> str:
 
 
 def _selecionar_aba_arquivo_02(sheet_names: list[str]) -> str:
-    """Seleciona a aba correta do Arquivo 02 para CVP SIP."""
-    alvo = "CVPSIP"
-    for aba in sheet_names:
-        if _normalizar_nome_aba(aba) == alvo:
-            return aba
-
-    for aba in sheet_names:
-        nome = _normalizar_nome_aba(aba)
-        if "CVP" in nome and "SIP" in nome:
-            return aba
-
-    raise ValueError(
-        f"Aba 'CVPSIP' nao encontrada no Arquivo 02. Abas disponiveis: {sheet_names}"
-    )
+    """Seleciona a aba correta do Arquivo 02 conforme chaveamento oficial."""
+    return selecionar_aba_atualizacao(sheet_names, "cvp_sip")
 
 
 def _selecionar_aba_arquivo_01(sheet_names: list[str]) -> str:
@@ -133,11 +123,7 @@ def _selecionar_aba_arquivo_01(sheet_names: list[str]) -> str:
 
 def gerar_excel_em_memoria(df: pd.DataFrame) -> bytes:
     """Gera arquivo Excel em memória."""
-    buffer = BytesIO()
-    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, sheet_name="CVP_SIP_ENDERECO")
-    buffer.seek(0)
-    return buffer.getvalue()
+    return gerar_arquivo_excel(df, sheet_name="CVP_SIP_ENDERECO")
 
 
 @st.cache_data(show_spinner=False)
@@ -844,6 +830,7 @@ def processar_cvp_sip(arquivo_01, arquivo_02):
         "aba_arquivo_01": aba_base,
         "aba_arquivo_02": aba_novo,
         "contagens_nivel": contagens_nivel,
+        "nome_arquivo": NOME_ARQUIVO_FINAL,
     }
 
     return df_final, resumo
