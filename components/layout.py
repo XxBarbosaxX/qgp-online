@@ -169,6 +169,30 @@ def render_panel_geocodificacao() -> None:
         )
 
 
+def render_panel_conversao() -> None:
+    with st.container(key="panel-conversao"):
+        render_panel_text(
+            "📍 Conversão",
+            "Converter UTM para SIRGAS 2000 24S",
+            "Converta camadas em UTM para o sistema de referência SIRGAS 2000 / UTM zona 24S com padronização para uso geoespacial.",
+        )
+
+        st.markdown('<div class="panel-divider"></div>', unsafe_allow_html=True)
+
+        if st.button("Abrir módulo de conversão", key="btn_conversao", use_container_width=True):
+            selecionar_indicador("CONVERSÃO")
+            st.rerun()
+
+        st.markdown(
+            """
+            <div class="panel-footer">
+                Indicado para padronização cartográfica e preparação de camadas para análises territoriais no Ceará.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
 def render_panel_consolidacao() -> None:
     with st.container(key="panel-consolidacao"):
         render_panel_text(
@@ -208,6 +232,8 @@ def render_home() -> None:
 
     with col2:
         render_panel_geocodificacao()
+        st.markdown('<div class="field-gap"></div>', unsafe_allow_html=True)
+        render_panel_conversao()
 
     with col3:
         render_panel_consolidacao()
