@@ -7,6 +7,7 @@ import zipfile
 from contextlib import contextmanager
 from datetime import datetime
 from io import BytesIO
+from pathlib import Path
 from types import SimpleNamespace
 
 import pandas as pd
@@ -683,13 +684,34 @@ def _processar_cvp_sportal(buf_01: BytesIO, buf_02: BytesIO):
     return df_final, resumo
 
 
-def _criar_config_padrao_sip() -> SimpleNamespace:
+def _resolver_caminho_base_enxuta() -> str:
+    candidatos = [
+        Path("services/CVP_SIP_GEOCODIFICAR.parquet"),
+        Path("./services/CVP_SIP_GEOCODIFICAR.parquet"),
+        Path("CVP_SIP_GEOCODIFICAR.parquet"),
+        Path("./CVP_SIP_GEOCODIFICAR.parquet"),
+    ]
+
+    for caminho in candidatos:
+        if caminho.exists():
+            return str(caminho)
+
+    return str(candidatos[0])
+
+
+def _criar_config_padrao_sip(nome_indicador: str) -> SimpleNamespace:
+    filtro = "VEICULO"
+    if nome_indicador == "ROUBO DE VEÍCULO (SIP)":
+        filtro = "VEICULO"
+    elif nome_indicador == "FURTO DE VEÍCULO (SIP)":
+        filtro = "VEICULO"
+
     return SimpleNamespace(
         origem="todos_indicadores",
         modo_silencioso=True,
         usar_cache=True,
-        valor_filtro_natureza="",
-        caminho_base_enxuta=None,
+        valor_filtro_natureza=filtro,
+        caminho_base_enxuta=_resolver_caminho_base_enxuta(),
     )
 
 
@@ -734,7 +756,7 @@ def _chamar_processador(nome_indicador: str, buf_01: BytesIO, buf_02: BytesIO):
             )
 
         if nome_indicador == "ROUBO DE VEÍCULO (SIP)":
-            config_padrao = _criar_config_padrao_sip()
+            config_padrao = _criar_config_padrao_sip(nome_indicador)
             return _normalizar_saida_processamento(
                 processar_roubo_veiculo_sip(buf_01, buf_02, config=config_padrao),
                 nome_indicador,
@@ -753,7 +775,7 @@ def _chamar_processador(nome_indicador: str, buf_01: BytesIO, buf_02: BytesIO):
             )
 
         if nome_indicador == "FURTO DE VEÍCULO (SIP)":
-            config_padrao = _criar_config_padrao_sip()
+            config_padrao = _criar_config_padrao_sip(nome_indicador)
             return _normalizar_saida_processamento(
                 processar_furto_veiculo_sip(buf_01, buf_02, config=config_padrao),
                 nome_indicador,
