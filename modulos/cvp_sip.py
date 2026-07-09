@@ -667,7 +667,11 @@ def processar_cvp_sip(arquivo_01, arquivo_02):
     )
 
     col_lat_base = encontrar_coluna_por_nomes(df_base, ["lat", "latitude"], obrigatoria=True)
-    col_lon_base = encontrar_coluna_por_nomes(df_base, ["lon", "long", "longitude"], obrigatoria=True)
+    col_lon_base = encontrar_coluna_por_nomes(
+        df_base,
+        ["lon", "long", "longitude"],
+        obrigatoria=True,
+    )
 
     col_endereco = encontrar_coluna_por_nomes(
         df_novo,
@@ -695,7 +699,14 @@ def processar_cvp_sip(arquivo_01, arquivo_02):
     if col_territorio_novo and col_territorio_novo != "Território":
         df_novo = df_novo.rename(columns={col_territorio_novo: "Território"})
 
-    df_novo = renomear_colunas_equivalentes(df_base, df_novo)
+    df_novo = renomear_colunas_equivalentes(
+        df_base,
+        df_novo,
+        mapa_extra={
+            "AISNova": ["AIS", "AISNova", "AIS Nova", "AIS_Nova", "aisnova"],
+            "AIS": ["AISNova", "AIS Nova", "AIS_Nova", "aisnova"],
+        },
+    )
 
     df_base = criar_coluna_datahora(df_base, col_data_base, col_hora_base, "__datahora__")
     df_novo["__datahora__"] = pd.to_datetime(
