@@ -160,6 +160,7 @@ div[data-testid="column"] > div {
 /* Cards dos módulos – usando key */
 .st-key-panel-atualizacao,
 .st-key-panel-geocodificacao,
+.st-key-panel-conversao,
 .st-key-panel-consolidacao {
     background: radial-gradient(circle at top left, rgba(243, 154, 31, 0.08), transparent 40%),
         linear-gradient(180deg, rgba(9, 33, 30, 0.95) 0%, rgba(5, 25, 22, 0.98) 100%);
@@ -175,6 +176,7 @@ div[data-testid="column"] > div {
 
 .st-key-panel-atualizacao:hover,
 .st-key-panel-geocodificacao:hover,
+.st-key-panel-conversao:hover,
 .st-key-panel-consolidacao:hover {
     transform: translateY(-2px);
     box-shadow: var(--shadow-card-hover);
@@ -183,6 +185,7 @@ div[data-testid="column"] > div {
 
 .st-key-panel-atualizacao > div,
 .st-key-panel-geocodificacao > div,
+.st-key-panel-conversao > div,
 .st-key-panel-consolidacao > div {
     background: transparent !important;
     border: none !important;
@@ -441,6 +444,7 @@ hr {
     .hero-card,
     .st-key-panel-atualizacao,
     .st-key-panel-geocodificacao,
+    .st-key-panel-conversao,
     .st-key-panel-consolidacao {
         padding: 1rem;
         border-radius: 16px;
