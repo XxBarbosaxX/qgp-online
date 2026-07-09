@@ -213,6 +213,13 @@ def _aplicar_estilo_todos_indicadores() -> None:
                 border: 1px solid rgba(239, 68, 68, 0.22);
             }
 
+            .todos-upload-label {
+                font-size: 0.86rem;
+                font-weight: 700;
+                color: rgba(249, 250, 251, 0.92);
+                margin-bottom: 0.15rem;
+            }
+
             @media (max-width: 900px) {
                 .todos-grid {
                     grid-template-columns: 1fr;
@@ -372,10 +379,64 @@ def _render_resultados(resultados: dict[str, dict[str, Any]]) -> None:
                     label=f"💾 Baixar resultado - {config['label']}",
                     data=resultado["excel_bytes"],
                     file_name=f"{config['id']}_processado.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    mime=(
+                        "application/vnd.openxmlformats-officedocument."
+                        "spreadsheetml.sheet"
+                    ),
                     key=f"download_{config['id']}",
                     use_container_width=True,
                 )
+
+
+def _render_uploads_por_modulo() -> None:
+    """Renderiza área de upload de Arquivo 01 e 02 para cada módulo."""
+    st.markdown(
+        """
+        <div class="todos-card">
+            <div class="todos-card-title">Arquivos por módulo</div>
+            <div class="todos-card-desc">
+                Carregue os arquivos 01 (base) e 02 (complemento) diretamente por módulo. 
+                Esses arquivos serão usados tanto nas interfaces individuais quanto no 
+                processamento consolidado.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    for config in MODULOS_CONFIG:
+        with st.expander(f"Arquivos - {config['label']}", expanded=False):
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.markdown(
+                    '<div class="todos-upload-label">📁 Arquivo 01 - Base</div>',
+                    unsafe_allow_html=True,
+                )
+                arq1 = st.file_uploader(
+                    f"Arquivo 01 - {config['label']}",
+                    type=["xlsx", "xls"],
+                    key=f"{config['id']}_arquivo_01_upload",
+                    label_visibility="collapsed",
+                )
+                if arq1 is not None:
+                    st.session_state[config["arquivo_01_key"]] = arq1.getvalue()
+                    st.caption("✅ Arquivo 01 carregado na sessão.")
+
+            with col2:
+                st.markdown(
+                    '<div class="todos-upload-label">📁 Arquivo 02 - Complemento</div>',
+                    unsafe_allow_html=True,
+                )
+                arq2 = st.file_uploader(
+                    f"Arquivo 02 - {config['label']}",
+                    type=["xlsx", "xls"],
+                    key=f"{config['id']}_arquivo_02_upload",
+                    label_visibility="collapsed",
+                )
+                if arq2 is not None:
+                    st.session_state[config["arquivo_02_key"]] = arq2.getvalue()
+                    st.caption("✅ Arquivo 02 carregado na sessão.")
 
 
 def interface_todos_indicadores() -> None:
@@ -391,9 +452,9 @@ def interface_todos_indicadores() -> None:
                 <div class="todos-kicker">Processamento consolidado</div>
                 <div class="todos-title">Todos os Indicadores</div>
                 <p class="todos-description">
-                    Execute em lote os módulos disponíveis do QGP Online com base nos arquivos já
-                    carregados nas interfaces individuais. O sistema tentará processar cada indicador
-                    de forma independente e exibirá o status consolidado ao final.
+                    Execute em lote os módulos disponíveis do QGP Online. Você pode carregar os
+                    arquivos de cada módulo diretamente aqui ou nas interfaces individuais. O
+                    sistema utiliza sempre os arquivos persistidos em memória na sessão atual.
                 </p>
             </div>
         </div>
@@ -401,14 +462,16 @@ def interface_todos_indicadores() -> None:
         unsafe_allow_html=True,
     )
 
+    _render_uploads_por_modulo()
+
     st.markdown(
         """
         <div class="todos-card">
-            <div class="todos-card-title">Requisitos para execução</div>
+            <div class="todos-card-title">Execução consolidada</div>
             <div class="todos-card-desc">
-                Antes de executar o processamento consolidado, carregue os arquivos de cada módulo
-                nas respectivas interfaces individuais. O agregador utiliza os arquivos persistidos
-                em memória na sessão atual.
+                Ao iniciar o processamento, cada módulo será executado de forma independente 
+                com base nos arquivos atualmente disponíveis em memória. Módulos sem arquivos 
+                carregados serão marcados como falha na execução.
             </div>
         </div>
         """,
@@ -416,7 +479,7 @@ def interface_todos_indicadores() -> None:
     )
 
     executar = st.button(
-        "Processar todos os indicadores",
+        "🚀 Processar todos os indicadores",
         type="primary",
         use_container_width=True,
         key="btn_processar_todos_indicadores",
