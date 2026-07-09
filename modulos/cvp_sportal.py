@@ -10,21 +10,27 @@ import streamlit as st
 
 from modulos.utils import (
     alinhar_colunas_com_base,
-    criar_coluna_datahora,
-    excluir_coordenadas_invalidas,
     converter_coordenadas_para_wgs84_auto,
+    criar_coluna_datahora,
     encontrar_coluna_data,
     encontrar_coluna_hora,
     encontrar_coluna_por_nomes,
+    excluir_coordenadas_invalidas,
     filtrar_apenas_registros_posteriores,
     gerar_arquivo_excel,
     nome_arquivo_padrao,
     normalizar_colunas,
     obter_ultima_datahora,
     renomear_colunas_equivalentes,
+    selecionar_aba_atualizacao,
 )
 
 NOME_ARQUIVO_FINAL = nome_arquivo_padrao(2, "CVP-SPORTAL")
+
+
+def _selecionar_aba_arquivo_02(sheet_names: list[str]) -> str:
+    """Seleciona a aba correta do Arquivo 02 conforme chaveamento oficial."""
+    return selecionar_aba_atualizacao(sheet_names, "cvp_sportal")
 
 
 def processar_cvp_sportal(arquivo_01, arquivo_02):
@@ -32,8 +38,14 @@ def processar_cvp_sportal(arquivo_01, arquivo_02):
     arquivo_01.seek(0)
     arquivo_02.seek(0)
 
-    df_base = pd.read_excel(arquivo_01)
-    df_novo = pd.read_excel(arquivo_02)
+    xls_base = pd.ExcelFile(arquivo_01)
+    xls_novo = pd.ExcelFile(arquivo_02)
+
+    aba_base = xls_base.sheet_names[0]
+    aba_novo = _selecionar_aba_arquivo_02(xls_novo.sheet_names)
+
+    df_base = pd.read_excel(xls_base, sheet_name=aba_base)
+    df_novo = pd.read_excel(xls_novo, sheet_name=aba_novo)
 
     df_base = normalizar_colunas(df_base)
     df_novo = normalizar_colunas(df_novo)
@@ -134,6 +146,8 @@ def processar_cvp_sportal(arquivo_01, arquivo_02):
         "removidos_invalidos": removidos_invalidos,
         "removidos_por_datahora": removidos_por_datahora,
         "nome_arquivo": NOME_ARQUIVO_FINAL,
+        "aba_arquivo_01": aba_base,
+        "aba_arquivo_02": aba_novo,
     }
 
     return df_final, resumo
@@ -146,9 +160,10 @@ def interface_cvp_sportal() -> None:
         """
     **Instrucoes:**
     - **Arquivo 01:** Base CVP existente (dados historicos)
-    - **Arquivo 02:** Complemento SPORTAL (novos registros)
+    - **Arquivo 02:** Complemento SPORTAL
 
     O sistema ira:
+    - Ler a aba correta do Arquivo 02 conforme o chaveamento oficial
     - Verificar coordenadas validas
     - Converter coordenadas UTM (SIRGAS2000) para WGS84
     - Adicionar apenas registros posteriores a ultima DataHora da base
@@ -196,6 +211,10 @@ def interface_cvp_sportal() -> None:
                 st.metric("Ultima DataHora Base", resumo["ultima_datahora_base"])
 
             st.info(f"**Situacao:** {resumo['situacao']}")
+            st.info(
+                f"**Aba Arquivo 01:** {resumo['aba_arquivo_01']} | "
+                f"**Aba Arquivo 02:** {resumo['aba_arquivo_02']}"
+            )
 
             if resumo["removidos_invalidos"] > 0:
                 st.warning(
