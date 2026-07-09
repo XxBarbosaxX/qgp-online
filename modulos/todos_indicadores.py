@@ -1,4 +1,8 @@
-"""<br>Módulo TODOS OS INDICADORES<br><br>Processamento consolidado de múltiplos indicadores.<br><br>Chama os módulos individuais com suas lógicas reais (incluindo geocodificação).<br><br>"""
+"""<br>Módulo TODOS OS INDICADORES<br>
+Processamento consolidado de múltiplos indicadores.<br>
+Chama os módulos individuais com suas lógicas reais (incluindo geocodificação).<br>
+"""
+
 from __future__ import annotations
 
 import re
@@ -7,8 +11,6 @@ import zipfile
 from contextlib import contextmanager
 from datetime import datetime
 from io import BytesIO
-from pathlib import Path
-from types import SimpleNamespace
 
 import pandas as pd
 import streamlit as st
@@ -17,10 +19,8 @@ from modulos.acidente_transito import processar_acidente_transito
 from modulos.cvli import ProcessadorCVLI
 from modulos.cvp_sip import processar_cvp_sip
 from modulos.deslocamento_forcado import processar_deslocamento_forcado
-from modulos.furto_veiculo_sip import processar_furto_veiculo_sip
 from modulos.furto_veiculo_sportal import processar_furto_veiculo_sportal
 from modulos.perturbacao_sossego import processar_perturbacao_sossego
-from modulos.roubo_veiculo_sip import processar_roubo_veiculo_sip
 from modulos.roubo_veiculo_sportal import processar_roubo_veiculo_sportal
 from modulos.utils import (
     alinhar_colunas_com_base,
@@ -257,17 +257,6 @@ def _aplicar_estilo_todos_indicadores() -> None:
                 background: rgba(239, 68, 68, 0.10);
                 color: #fecaca;
                 border-color: rgba(239, 68, 68, 0.22);
-            }
-
-            .todos-mini-list {
-                margin: 0.6rem 0 0 0;
-                padding-left: 1rem;
-                color: rgba(255,255,255,0.78);
-                font-size: 0.92rem;
-            }
-
-            .todos-divider-space {
-                height: 0.2rem;
             }
 
             @media (max-width: 980px) {
@@ -684,37 +673,6 @@ def _processar_cvp_sportal(buf_01: BytesIO, buf_02: BytesIO):
     return df_final, resumo
 
 
-def _resolver_caminho_base_enxuta() -> str:
-    candidatos = [
-        Path("services/CVP_SIP_GEOCODIFICAR.parquet"),
-        Path("./services/CVP_SIP_GEOCODIFICAR.parquet"),
-        Path("CVP_SIP_GEOCODIFICAR.parquet"),
-        Path("./CVP_SIP_GEOCODIFICAR.parquet"),
-    ]
-
-    for caminho in candidatos:
-        if caminho.exists():
-            return str(caminho)
-
-    return str(candidatos[0])
-
-
-def _criar_config_padrao_sip(nome_indicador: str) -> SimpleNamespace:
-    filtro = "VEICULO"
-    if nome_indicador == "ROUBO DE VEÍCULO (SIP)":
-        filtro = "VEICULO"
-    elif nome_indicador == "FURTO DE VEÍCULO (SIP)":
-        filtro = "VEICULO"
-
-    return SimpleNamespace(
-        origem="todos_indicadores",
-        modo_silencioso=True,
-        usar_cache=True,
-        valor_filtro_natureza=filtro,
-        caminho_base_enxuta=_resolver_caminho_base_enxuta(),
-    )
-
-
 def _chamar_processador(nome_indicador: str, buf_01: BytesIO, buf_02: BytesIO):
     buf_01.seek(0)
     buf_02.seek(0)
@@ -756,10 +714,10 @@ def _chamar_processador(nome_indicador: str, buf_01: BytesIO, buf_02: BytesIO):
             )
 
         if nome_indicador == "ROUBO DE VEÍCULO (SIP)":
-            config_padrao = _criar_config_padrao_sip(nome_indicador)
-            return _normalizar_saida_processamento(
-                processar_roubo_veiculo_sip(buf_01, buf_02, config=config_padrao),
-                nome_indicador,
+            raise RuntimeError(
+                "Integração temporariamente desabilitada no fluxo 'Todos os Indicadores'. "
+                "O módulo SIP exige configuração interna específica (filtro de Natureza e atributos extras de config) "
+                "que deve ser corrigida diretamente em 'roubo_veiculo_sip.py'."
             )
 
         if nome_indicador == "ACIDENTE DE TRÂNSITO":
@@ -775,10 +733,10 @@ def _chamar_processador(nome_indicador: str, buf_01: BytesIO, buf_02: BytesIO):
             )
 
         if nome_indicador == "FURTO DE VEÍCULO (SIP)":
-            config_padrao = _criar_config_padrao_sip(nome_indicador)
-            return _normalizar_saida_processamento(
-                processar_furto_veiculo_sip(buf_01, buf_02, config=config_padrao),
-                nome_indicador,
+            raise RuntimeError(
+                "Integração temporariamente desabilitada no fluxo 'Todos os Indicadores'. "
+                "O módulo SIP exige atributos obrigatórios no objeto config, como 'uf_codigo', "
+                "além de caminho de base enxuta válido, que devem ser corrigidos diretamente em 'furto_veiculo_sip.py'."
             )
 
         raise ValueError(f"Indicador desconhecido: {nome_indicador}")
