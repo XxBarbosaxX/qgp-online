@@ -4,10 +4,10 @@ Módulo Todos os Indicadores - Orquestrador principal do QGP Online.
 Fluxo:
 - recebe 1 arquivo mestre com várias abas;
 - recebe os 10 arquivos consolidados;
-- valida qual arquivo pertence a cada indicador pelo nome;
+- identifica cada indicador pelo nome do arquivo consolidado;
 - mantém uma fila de execução na ordem oficial;
 - executa um indicador por vez ao clicar no botão;
-- respeita a ordem de arquivos específica de cada módulo;
+- respeita o contrato de arquivos de cada módulo individual;
 - acumula resultados, exibe status e gera ZIP final.
 """
 
@@ -31,6 +31,7 @@ from modulos.utils import nome_arquivo_padrao
 
 @dataclass(frozen=True)
 class IndicadorDef:
+    """Definição estática de cada indicador na fila."""
     chave: str
     ordem: int
     titulo: str
@@ -38,6 +39,9 @@ class IndicadorDef:
     modulo: str
     funcao: str
     nome_saida: str
+    # contrato de arquivos:
+    # - "mestre_primeiro": arquivo_01 = mestre, arquivo_02 = consolidado
+    # - "consolidado_primeiro": arquivo_01 = consolidado, arquivo_02 = mestre
     ordem_arquivos: str = "mestre_primeiro"
 
 
@@ -60,7 +64,8 @@ INDICADORES: list[IndicadorDef] = [
         modulo="cvp_sportal",
         funcao="processar_cvp_sportal",
         nome_saida=nome_arquivo_padrao(2, "CVP-SPORTAL"),
-        ordem_arquivos="mestre_primeiro",
+        # CONTRATO: módulos individuais usam Arquivo 01 = consolidado, Arquivo 02 = mestre
+        ordem_arquivos="consolidado_primeiro",
     ),
     IndicadorDef(
         chave="cvp_sip",
@@ -70,7 +75,8 @@ INDICADORES: list[IndicadorDef] = [
         modulo="cvp_sip",
         funcao="processar_cvp_sip",
         nome_saida=nome_arquivo_padrao(3, "CVP-SIP-ENDERECO"),
-        ordem_arquivos="mestre_primeiro",
+        # CONTRATO: mesma lógica do módulo individual de CVP SIP
+        ordem_arquivos="consolidado_primeiro",
     ),
     IndicadorDef(
         chave="perturbacao_sossego",
@@ -80,6 +86,7 @@ INDICADORES: list[IndicadorDef] = [
         modulo="perturbacao_sossego",
         funcao="processar_perturbacao_sossego",
         nome_saida=nome_arquivo_padrao(4, "PERTURBACAO-AO-SOSSEGO-ALHEIO"),
+        # consolidado primeiro, mestre depois, como módulo individual
         ordem_arquivos="consolidado_primeiro",
     ),
     IndicadorDef(
@@ -146,14 +153,18 @@ INDICADORES: list[IndicadorDef] = [
 
 
 def carregar_processador(indicador: IndicadorDef) -> Callable:
-    """Importa sob demanda a função processadora de um indicador."""
+    """
+    Importa sob demanda a função processadora de um indicador.
+
+    Não altera a lógica do módulo individual, apenas obtém a função correta.
+    """
     try:
         modulo = importlib.import_module(f"modulos.{indicador.modulo}")
         funcao = getattr(modulo, indicador.funcao, None)
 
         if funcao is None or not callable(funcao):
             raise AttributeError(
-                f"Função '{indicador.funcao}' não encontrada no módulo '{indicador.modulo}'."
+                f"Função '{indicador.funcao}' não encontrada ou não executável em '{indicador.modulo}'."
             )
 
         return funcao
@@ -164,6 +175,7 @@ def carregar_processador(indicador: IndicadorDef) -> Callable:
 
 
 def normalizar_nome_arquivo(nome: str) -> str:
+    """Normaliza nome de arquivo para comparação por tokens."""
     texto = str(nome or "").strip()
     texto = unicodedata.normalize("NFKD", texto)
     texto = "".join(c for c in texto if not unicodedata.combining(c))
@@ -176,6 +188,7 @@ def normalizar_nome_arquivo(nome: str) -> str:
 
 
 def identificar_indicador_por_nome(nome_arquivo: str) -> IndicadorDef | None:
+    """Descobre qual indicador corresponde ao arquivo consolidado enviado."""
     nome_norm = normalizar_nome_arquivo(nome_arquivo)
 
     candidatos: list[IndicadorDef] = []
@@ -190,6 +203,7 @@ def identificar_indicador_por_nome(nome_arquivo: str) -> IndicadorDef | None:
 
 
 def gerar_excel_em_memoria(df: pd.DataFrame, sheet_name: str = "Dados") -> bytes:
+    """Gera Excel em memória a partir do DataFrame final do módulo individual."""
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name=sheet_name[:31])
@@ -197,6 +211,7 @@ def gerar_excel_em_memoria(df: pd.DataFrame, sheet_name: str = "Dados") -> bytes
 
 
 def empacotar_resultados_zip(resultados: list[dict]) -> bytes:
+    """Empacota em ZIP apenas os resultados com status 'sucesso'."""
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
         for item in resultados:
@@ -208,6 +223,7 @@ def empacotar_resultados_zip(resultados: list[dict]) -> bytes:
 
 
 def init_state() -> None:
+    """Inicializa o estado do módulo Todos os Indicadores."""
     defaults = {
         "todos_indicadores_arquivo_mestre_nome": None,
         "todos_indicadores_arquivo_mestre_bytes": None,
@@ -222,6 +238,7 @@ def init_state() -> None:
 
 
 def limpar_estado() -> None:
+    """Limpa completamente o estado do módulo Todos os Indicadores."""
     chaves = [
         "todos_indicadores_arquivo_mestre_nome",
         "todos_indicadores_arquivo_mestre_bytes",
@@ -242,12 +259,21 @@ def montar_arquivos_para_modulo(
     arquivo_mestre_bytes: bytes,
     arquivo_consolidado_bytes: bytes,
 ) -> tuple[io.BytesIO, io.BytesIO]:
+    """
+    Monta arquivo_01 e arquivo_02 exatamente no contrato esperado pelo módulo individual.
+
+    Não altera o conteúdo, apenas a posição: quem é mestre e quem é consolidado.
+    """
+    # Sempre reposiciona ponteiro no início para garantir leitura correta.
     if indicador.ordem_arquivos == "consolidado_primeiro":
         arquivo_01 = io.BytesIO(arquivo_consolidado_bytes)
         arquivo_02 = io.BytesIO(arquivo_mestre_bytes)
     else:
         arquivo_01 = io.BytesIO(arquivo_mestre_bytes)
         arquivo_02 = io.BytesIO(arquivo_consolidado_bytes)
+
+    arquivo_01.seek(0)
+    arquivo_02.seek(0)
 
     return arquivo_01, arquivo_02
 
@@ -258,6 +284,14 @@ def executar_modulo(
     arquivo_consolidado_bytes: bytes,
     nome_entrada: str,
 ) -> dict:
+    """
+    Executa o módulo individual respeitando seu contrato de arquivos,
+    sem interferir na lógica interna.
+
+    Aceita:
+    - retorno DataFrame direto;
+    - retorno (DataFrame, resumo dict).
+    """
     processador = carregar_processador(indicador)
 
     arquivo_01, arquivo_02 = montar_arquivos_para_modulo(
@@ -301,6 +335,7 @@ def executar_modulo(
 
 
 def render() -> None:
+    """Interface Streamlit para orquestrar todos os indicadores."""
     init_state()
 
     st.title("Todos os Indicadores")
@@ -485,7 +520,9 @@ def render() -> None:
         info = st.session_state.todos_indicadores_uploads.get(indicador.chave)
 
         if info is None:
-            st.error(f"Não há arquivo consolidado para o indicador {indicador.titulo}.")
+            st.error(
+                f"Não há arquivo consolidado para o indicador {indicador.titulo}."
+            )
         else:
             status_global.info(
                 f"Executando indicador {indice_atual + 1}/{total_indicadores}: "
@@ -556,7 +593,9 @@ def render() -> None:
                 "Status": item["status"].upper(),
                 "Arquivo de entrada": item["nome_entrada"],
                 "Arquivo de saída": item["nome_saida"] or "-",
-                "Linhas saída": item["linhas_saida"] if item["linhas_saida"] is not None else "-",
+                "Linhas saída": item["linhas_saida"]
+                if item["linhas_saida"] is not None
+                else "-",
                 "Erro": item["erro"] or "-",
             }
         )
