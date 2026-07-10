@@ -8,7 +8,7 @@ Fluxo:
 - mantém uma fila de execução na ordem oficial;
 - executa um indicador por vez ao clicar no botão;
 - respeita o contrato de arquivos de cada módulo individual;
-- preserva a estrutura de colunas do arquivo consolidado;
+- preserva a estrutura de colunas do arquivo consolidado apenas no momento da execução;
 - acumula resultados, exibe status e gera ZIP final.
 """
 
@@ -268,20 +268,17 @@ def montar_arquivos_para_modulo(
 
 def obter_colunas_do_consolidado(arquivo_bytes: bytes) -> list[str]:
     """
-    Obtém as colunas do arquivo consolidado enviado pelo usuário.
-
-    Usa a primeira aba do arquivo consolidado, preservando exatamente
-    a estrutura padrão que deve existir no resultado final.
+    Obtém as colunas do arquivo consolidado apenas no momento da execução.
     """
     buffer = io.BytesIO(arquivo_bytes)
     buffer.seek(0)
 
-    excel = pd.ExcelFile(buffer)
-    if not excel.sheet_names:
-        raise ValueError("O arquivo consolidado não possui abas disponíveis.")
+    with pd.ExcelFile(buffer) as excel:
+        if not excel.sheet_names:
+            raise ValueError("O arquivo consolidado não possui abas disponíveis.")
 
-    primeira_aba = excel.sheet_names[0]
-    df_base = pd.read_excel(buffer, sheet_name=primeira_aba, nrows=0)
+        primeira_aba = excel.sheet_names[0]
+        df_base = pd.read_excel(excel, sheet_name=primeira_aba, nrows=0)
 
     return list(df_base.columns)
 
@@ -291,10 +288,7 @@ def alinhar_resultado_ao_consolidado(
     colunas_consolidado: list[str],
 ) -> pd.DataFrame:
     """
-    Força o resultado final a seguir exatamente as colunas do consolidado:
-    - remove colunas extras;
-    - recria colunas faltantes vazias;
-    - preserva a ordem original.
+    Força o resultado final a seguir exatamente as colunas do consolidado.
     """
     return df_resultado.reindex(columns=colunas_consolidado)
 
@@ -394,8 +388,7 @@ def render() -> None:
         8. ACIDENTE DE TRÂNSITO_SPORTAL_QGP  
         9. FURTO DE VEICULO_SPORTAL - QGP  
         10. FURTO DE VEICULO_SIP QGP
-        """,
-        unsafe_allow_html=False,
+        """
     )
 
     arquivos = st.file_uploader(
