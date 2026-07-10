@@ -39,6 +39,7 @@ from modulos.utils import nome_arquivo_padrao
 
 @dataclass(frozen=True)
 class IndicadorDef:
+    """Definição de um indicador na fila de execução."""
     chave: str
     ordem: int
     titulo: str
@@ -48,6 +49,7 @@ class IndicadorDef:
     ordem_arquivos: str = "mestre_primeiro"
 
 
+# IMPORTANTE: ordem_arquivos ajustada para refletir o contrato real de cada módulo.
 INDICADORES: list[IndicadorDef] = [
     IndicadorDef(
         chave="cvli",
@@ -65,7 +67,8 @@ INDICADORES: list[IndicadorDef] = [
         tokens_obrigatorios=["CVP", "SPORTAL", "QGP"],
         processar=processar_cvp_sportal,
         nome_saida=nome_arquivo_padrao(2, "CVP-SPORTAL"),
-        ordem_arquivos="consolidado_primeiro",
+        # AJUSTE: módulo espera arquivo_01 = base, arquivo_02 = complemento SPORTAL
+        ordem_arquivos="mestre_primeiro",
     ),
     IndicadorDef(
         chave="cvp_sip",
@@ -74,7 +77,8 @@ INDICADORES: list[IndicadorDef] = [
         tokens_obrigatorios=["CVP", "SIP", "ENDERECO", "QGP"],
         processar=processar_cvp_sip,
         nome_saida=nome_arquivo_padrao(3, "CVP-SIP-ENDERECO"),
-        ordem_arquivos="consolidado_primeiro",
+        # AJUSTE: módulo espera arquivo_01 = base histórica CVP, arquivo_02 = complemento SIP
+        ordem_arquivos="mestre_primeiro",
     ),
     IndicadorDef(
         chave="perturbacao_sossego",
@@ -83,6 +87,7 @@ INDICADORES: list[IndicadorDef] = [
         tokens_obrigatorios=["PERTURBACAO", "SOSSEGO", "ALHEIO", "QGP"],
         processar=processar_perturbacao_sossego,
         nome_saida=nome_arquivo_padrao(4, "PERTURBACAO-AO-SOSSEGO-ALHEIO"),
+        # Mantido: módulo de consolidação recebe primeiro o arquivo consolidado
         ordem_arquivos="consolidado_primeiro",
     ),
     IndicadorDef(
@@ -118,7 +123,7 @@ INDICADORES: list[IndicadorDef] = [
         titulo="Acidente de Trânsito Sportal",
         tokens_obrigatorios=["ACIDENTE", "TRANSITO", "SPORTAL", "QGP"],
         processar=processar_acidente_transito,
-        nome_saida=nome_arquivo_padrao(8, "ACIDENTE-DE-TRANSITO-SPORTAL"),
+        nome_saida=nome_arquivo_padrao(8, "ACIDENTE-DE-TRANSITO-SPORTAL-QGP"),
         ordem_arquivos="mestre_primeiro",
     ),
     IndicadorDef(
@@ -143,6 +148,7 @@ INDICADORES: list[IndicadorDef] = [
 
 
 def normalizar_nome_arquivo(nome: str) -> str:
+    """Normaliza nome de arquivo para comparação baseada em tokens."""
     texto = str(nome or "").strip()
     texto = unicodedata.normalize("NFKD", texto)
     texto = "".join(c for c in texto if not unicodedata.combining(c))
@@ -155,6 +161,7 @@ def normalizar_nome_arquivo(nome: str) -> str:
 
 
 def identificar_indicador_por_nome(nome_arquivo: str) -> IndicadorDef | None:
+    """Identifica qual indicador corresponde a um arquivo pelo nome normalizado."""
     nome_norm = normalizar_nome_arquivo(nome_arquivo)
 
     candidatos: list[IndicadorDef] = []
@@ -169,6 +176,7 @@ def identificar_indicador_por_nome(nome_arquivo: str) -> IndicadorDef | None:
 
 
 def gerar_excel_em_memoria(df: pd.DataFrame, sheet_name: str = "Dados") -> bytes:
+    """Gera Excel em memória com nome de aba limitado a 31 caracteres."""
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name=sheet_name[:31])
@@ -176,6 +184,7 @@ def gerar_excel_em_memoria(df: pd.DataFrame, sheet_name: str = "Dados") -> bytes
 
 
 def empacotar_resultados_zip(resultados: list[dict]) -> bytes:
+    """Empacota em ZIP apenas os resultados concluídos com sucesso."""
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
         for item in resultados:
@@ -187,6 +196,7 @@ def empacotar_resultados_zip(resultados: list[dict]) -> bytes:
 
 
 def init_state() -> None:
+    """Inicializa chaves de estado para o módulo de todos os indicadores."""
     defaults = {
         "todos_indicadores_arquivo_mestre_nome": None,
         "todos_indicadores_arquivo_mestre_bytes": None,
@@ -201,6 +211,7 @@ def init_state() -> None:
 
 
 def limpar_estado() -> None:
+    """Limpa completamente o estado do módulo de todos os indicadores."""
     chaves = [
         "todos_indicadores_arquivo_mestre_nome",
         "todos_indicadores_arquivo_mestre_bytes",
@@ -221,6 +232,12 @@ def montar_arquivos_para_modulo(
     arquivo_mestre_bytes: bytes,
     arquivo_consolidado_bytes: bytes,
 ) -> tuple[io.BytesIO, io.BytesIO]:
+    """
+    Monta arquivo_01 e arquivo_02 para o módulo, respeitando a ordem requerida.
+
+    - mestre_primeiro: arquivo_01 = mestre (base geral), arquivo_02 = consolidado.
+    - consolidado_primeiro: arquivo_01 = consolidado, arquivo_02 = mestre.
+    """
     if indicador.ordem_arquivos == "consolidado_primeiro":
         arquivo_01 = io.BytesIO(arquivo_consolidado_bytes)
         arquivo_02 = io.BytesIO(arquivo_mestre_bytes)
@@ -237,6 +254,12 @@ def executar_modulo(
     arquivo_consolidado_bytes: bytes,
     nome_entrada: str,
 ) -> dict:
+    """
+    Executa o módulo de um indicador, garantindo retorno em DataFrame e Excel.
+
+    Aceita módulos que retornem diretamente um DataFrame ou uma tupla
+    (DataFrame, resumo).
+    """
     arquivo_01, arquivo_02 = montar_arquivos_para_modulo(
         indicador=indicador,
         arquivo_mestre_bytes=arquivo_mestre_bytes,
@@ -245,15 +268,15 @@ def executar_modulo(
 
     retorno = indicador.processar(arquivo_01, arquivo_02)
 
-    resumo = {}
-    df_final = None
+    resumo: dict = {}
+    df_final: pd.DataFrame | None = None
 
     if isinstance(retorno, pd.DataFrame):
         df_final = retorno
     elif isinstance(retorno, tuple):
         if len(retorno) >= 1 and isinstance(retorno[0], pd.DataFrame):
             df_final = retorno[0]
-            if len(retorno) > 1:
+            if len(retorno) > 1 and isinstance(retorno[1], dict):
                 resumo = retorno[1]
 
     if df_final is None:
@@ -278,6 +301,7 @@ def executar_modulo(
 
 
 def render() -> None:
+    """Interface Streamlit para orquestrar todos os indicadores."""
     init_state()
 
     st.title("Todos os Indicadores")
@@ -355,7 +379,7 @@ def render() -> None:
 
     st.subheader("Validação dos arquivos")
 
-    linhas_validacao = []
+    linhas_validacao: list[dict] = []
     pendentes: list[str] = []
 
     for indicador in INDICADORES:
@@ -519,7 +543,7 @@ def render() -> None:
 
     st.subheader("Resumo da fila e resultados")
 
-    tabela_resumo = []
+    tabela_resumo: list[dict] = []
     for item in sorted(resultados, key=lambda x: x["ordem"]):
         estado_fila = "Concluído" if item["status"] == "sucesso" else "Erro"
 
@@ -545,7 +569,6 @@ def render() -> None:
     )
 
     st.subheader("Downloads individuais (já concluídos)")
-
     for item in sorted(resultados, key=lambda x: x["ordem"]):
         if item["status"] != "sucesso":
             continue
