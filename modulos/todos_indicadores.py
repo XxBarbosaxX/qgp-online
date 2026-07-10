@@ -8,6 +8,7 @@ Fluxo:
 - mantém uma fila de execução na ordem oficial;
 - executa um indicador por vez ao clicar no botão;
 - respeita o contrato de arquivos de cada módulo individual;
+- preserva a estrutura de colunas do arquivo consolidado;
 - acumula resultados, exibe status e gera ZIP final.
 """
 
@@ -39,9 +40,6 @@ class IndicadorDef:
     modulo: str
     funcao: str
     nome_saida: str
-    # contrato de arquivos:
-    # - "mestre_primeiro": arquivo_01 = mestre, arquivo_02 = consolidado
-    # - "consolidado_primeiro": arquivo_01 = consolidado, arquivo_02 = mestre
     ordem_arquivos: str = "mestre_primeiro"
 
 
@@ -64,7 +62,6 @@ INDICADORES: list[IndicadorDef] = [
         modulo="cvp_sportal",
         funcao="processar_cvp_sportal",
         nome_saida=nome_arquivo_padrao(2, "CVP-SPORTAL"),
-        # CONTRATO: módulos individuais usam Arquivo 01 = consolidado, Arquivo 02 = mestre
         ordem_arquivos="consolidado_primeiro",
     ),
     IndicadorDef(
@@ -75,7 +72,6 @@ INDICADORES: list[IndicadorDef] = [
         modulo="cvp_sip",
         funcao="processar_cvp_sip",
         nome_saida=nome_arquivo_padrao(3, "CVP-SIP-ENDERECO"),
-        # CONTRATO: mesma lógica do módulo individual de CVP SIP
         ordem_arquivos="consolidado_primeiro",
     ),
     IndicadorDef(
@@ -86,7 +82,6 @@ INDICADORES: list[IndicadorDef] = [
         modulo="perturbacao_sossego",
         funcao="processar_perturbacao_sossego",
         nome_saida=nome_arquivo_padrao(4, "PERTURBACAO-AO-SOSSEGO-ALHEIO"),
-        # consolidado primeiro, mestre depois, como módulo individual
         ordem_arquivos="consolidado_primeiro",
     ),
     IndicadorDef(
@@ -153,11 +148,7 @@ INDICADORES: list[IndicadorDef] = [
 
 
 def carregar_processador(indicador: IndicadorDef) -> Callable:
-    """
-    Importa sob demanda a função processadora de um indicador.
-
-    Não altera a lógica do módulo individual, apenas obtém a função correta.
-    """
+    """Importa sob demanda a função processadora de um indicador."""
     try:
         modulo = importlib.import_module(f"modulos.{indicador.modulo}")
         funcao = getattr(modulo, indicador.funcao, None)
@@ -203,7 +194,7 @@ def identificar_indicador_por_nome(nome_arquivo: str) -> IndicadorDef | None:
 
 
 def gerar_excel_em_memoria(df: pd.DataFrame, sheet_name: str = "Dados") -> bytes:
-    """Gera Excel em memória a partir do DataFrame final do módulo individual."""
+    """Gera Excel em memória a partir do DataFrame final."""
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name=sheet_name[:31])
@@ -211,7 +202,7 @@ def gerar_excel_em_memoria(df: pd.DataFrame, sheet_name: str = "Dados") -> bytes
 
 
 def empacotar_resultados_zip(resultados: list[dict]) -> bytes:
-    """Empacota em ZIP apenas os resultados com status 'sucesso'."""
+    """Empacota em ZIP apenas os resultados com status sucesso."""
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
         for item in resultados:
@@ -223,7 +214,7 @@ def empacotar_resultados_zip(resultados: list[dict]) -> bytes:
 
 
 def init_state() -> None:
-    """Inicializa o estado do módulo Todos os Indicadores."""
+    """Inicializa o estado do módulo."""
     defaults = {
         "todos_indicadores_arquivo_mestre_nome": None,
         "todos_indicadores_arquivo_mestre_bytes": None,
@@ -238,7 +229,7 @@ def init_state() -> None:
 
 
 def limpar_estado() -> None:
-    """Limpa completamente o estado do módulo Todos os Indicadores."""
+    """Limpa completamente o estado do módulo."""
     chaves = [
         "todos_indicadores_arquivo_mestre_nome",
         "todos_indicadores_arquivo_mestre_bytes",
@@ -260,11 +251,8 @@ def montar_arquivos_para_modulo(
     arquivo_consolidado_bytes: bytes,
 ) -> tuple[io.BytesIO, io.BytesIO]:
     """
-    Monta arquivo_01 e arquivo_02 exatamente no contrato esperado pelo módulo individual.
-
-    Não altera o conteúdo, apenas a posição: quem é mestre e quem é consolidado.
+    Monta arquivo_01 e arquivo_02 exatamente no contrato esperado pelo módulo.
     """
-    # Sempre reposiciona ponteiro no início para garantir leitura correta.
     if indicador.ordem_arquivos == "consolidado_primeiro":
         arquivo_01 = io.BytesIO(arquivo_consolidado_bytes)
         arquivo_02 = io.BytesIO(arquivo_mestre_bytes)
@@ -278,6 +266,39 @@ def montar_arquivos_para_modulo(
     return arquivo_01, arquivo_02
 
 
+def obter_colunas_do_consolidado(arquivo_bytes: bytes) -> list[str]:
+    """
+    Obtém as colunas do arquivo consolidado enviado pelo usuário.
+
+    Usa a primeira aba do arquivo consolidado, preservando exatamente
+    a estrutura padrão que deve existir no resultado final.
+    """
+    buffer = io.BytesIO(arquivo_bytes)
+    buffer.seek(0)
+
+    excel = pd.ExcelFile(buffer)
+    if not excel.sheet_names:
+        raise ValueError("O arquivo consolidado não possui abas disponíveis.")
+
+    primeira_aba = excel.sheet_names[0]
+    df_base = pd.read_excel(buffer, sheet_name=primeira_aba, nrows=0)
+
+    return list(df_base.columns)
+
+
+def alinhar_resultado_ao_consolidado(
+    df_resultado: pd.DataFrame,
+    colunas_consolidado: list[str],
+) -> pd.DataFrame:
+    """
+    Força o resultado final a seguir exatamente as colunas do consolidado:
+    - remove colunas extras;
+    - recria colunas faltantes vazias;
+    - preserva a ordem original.
+    """
+    return df_resultado.reindex(columns=colunas_consolidado)
+
+
 def executar_modulo(
     indicador: IndicadorDef,
     arquivo_mestre_bytes: bytes,
@@ -285,12 +306,8 @@ def executar_modulo(
     nome_entrada: str,
 ) -> dict:
     """
-    Executa o módulo individual respeitando seu contrato de arquivos,
-    sem interferir na lógica interna.
-
-    Aceita:
-    - retorno DataFrame direto;
-    - retorno (DataFrame, resumo dict).
+    Executa o módulo individual respeitando seu contrato de arquivos
+    e padroniza a saída final para manter as colunas do consolidado.
     """
     processador = carregar_processador(indicador)
 
@@ -317,6 +334,9 @@ def executar_modulo(
         raise ValueError(
             f"O módulo '{indicador.chave}' retornou tipo inválido: {type(retorno).__name__}"
         )
+
+    colunas_consolidado = obter_colunas_do_consolidado(arquivo_consolidado_bytes)
+    df_final = alinhar_resultado_ao_consolidado(df_final, colunas_consolidado)
 
     arquivo_saida = gerar_excel_em_memoria(df_final, sheet_name=indicador.titulo[:31])
 
