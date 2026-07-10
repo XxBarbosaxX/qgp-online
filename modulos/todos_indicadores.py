@@ -13,8 +13,10 @@ Fluxo:
 
 from __future__ import annotations
 
+import importlib
 import io
 import re
+import traceback
 import unicodedata
 import zipfile
 from dataclasses import dataclass
@@ -24,39 +26,29 @@ from typing import Callable
 import pandas as pd
 import streamlit as st
 
-from modulos.acidente_transito import processar_acidente_transito
-from modulos.cvli import processar_cvli
-from modulos.cvp_sip import processar_cvp_sip
-from modulos.cvp_sportal import processar_cvp_sportal
-from modulos.deslocamento_forcado import processar_deslocamento_forcado
-from modulos.furto_veiculo_sip import processar_furto_veiculo_sip
-from modulos.furto_veiculo_sportal import processar_furto_veiculo_sportal
-from modulos.perturbacao_sossego import processar_perturbacao_sossego
-from modulos.roubo_veiculo_sip import processar_roubo_veiculo_sip
-from modulos.roubo_veiculo_sportal import processar_roubo_veiculo_sportal
 from modulos.utils import nome_arquivo_padrao
 
 
 @dataclass(frozen=True)
 class IndicadorDef:
-    """Definição de um indicador na fila de execução."""
     chave: str
     ordem: int
     titulo: str
     tokens_obrigatorios: list[str]
-    processar: Callable
+    modulo: str
+    funcao: str
     nome_saida: str
     ordem_arquivos: str = "mestre_primeiro"
 
 
-# IMPORTANTE: ordem_arquivos ajustada para refletir o contrato real de cada módulo.
 INDICADORES: list[IndicadorDef] = [
     IndicadorDef(
         chave="cvli",
         ordem=1,
         titulo="CVLI",
         tokens_obrigatorios=["CVLI", "QGP"],
-        processar=processar_cvli,
+        modulo="cvli",
+        funcao="processar_cvli",
         nome_saida=nome_arquivo_padrao(1, "CVLI"),
         ordem_arquivos="mestre_primeiro",
     ),
@@ -65,9 +57,9 @@ INDICADORES: list[IndicadorDef] = [
         ordem=2,
         titulo="CVP Sportal",
         tokens_obrigatorios=["CVP", "SPORTAL", "QGP"],
-        processar=processar_cvp_sportal,
+        modulo="cvp_sportal",
+        funcao="processar_cvp_sportal",
         nome_saida=nome_arquivo_padrao(2, "CVP-SPORTAL"),
-        # AJUSTE: módulo espera arquivo_01 = base, arquivo_02 = complemento SPORTAL
         ordem_arquivos="mestre_primeiro",
     ),
     IndicadorDef(
@@ -75,9 +67,9 @@ INDICADORES: list[IndicadorDef] = [
         ordem=3,
         titulo="CVP SIP Endereço",
         tokens_obrigatorios=["CVP", "SIP", "ENDERECO", "QGP"],
-        processar=processar_cvp_sip,
+        modulo="cvp_sip",
+        funcao="processar_cvp_sip",
         nome_saida=nome_arquivo_padrao(3, "CVP-SIP-ENDERECO"),
-        # AJUSTE: módulo espera arquivo_01 = base histórica CVP, arquivo_02 = complemento SIP
         ordem_arquivos="mestre_primeiro",
     ),
     IndicadorDef(
@@ -85,9 +77,9 @@ INDICADORES: list[IndicadorDef] = [
         ordem=4,
         titulo="Perturbação ao Sossego Alheio",
         tokens_obrigatorios=["PERTURBACAO", "SOSSEGO", "ALHEIO", "QGP"],
-        processar=processar_perturbacao_sossego,
+        modulo="perturbacao_sossego",
+        funcao="processar_perturbacao_sossego",
         nome_saida=nome_arquivo_padrao(4, "PERTURBACAO-AO-SOSSEGO-ALHEIO"),
-        # Mantido: módulo de consolidação recebe primeiro o arquivo consolidado
         ordem_arquivos="consolidado_primeiro",
     ),
     IndicadorDef(
@@ -95,7 +87,8 @@ INDICADORES: list[IndicadorDef] = [
         ordem=5,
         titulo="Deslocamento Forçado",
         tokens_obrigatorios=["DESLOCAMENTO", "FORCADO", "QGP"],
-        processar=processar_deslocamento_forcado,
+        modulo="deslocamento_forcado",
+        funcao="processar_deslocamento_forcado",
         nome_saida=nome_arquivo_padrao(5, "DESLOCAMENTO-FORCADO"),
         ordem_arquivos="mestre_primeiro",
     ),
@@ -104,7 +97,8 @@ INDICADORES: list[IndicadorDef] = [
         ordem=6,
         titulo="Roubo de Veículo Sportal",
         tokens_obrigatorios=["ROUBO", "VEICULO", "SPORTAL", "LAT", "LONG", "QGP"],
-        processar=processar_roubo_veiculo_sportal,
+        modulo="roubo_veiculo_sportal",
+        funcao="processar_roubo_veiculo_sportal",
         nome_saida=nome_arquivo_padrao(6, "ROUBO-DE-VEICULO-SPORTAL-LAT-LONG"),
         ordem_arquivos="consolidado_primeiro",
     ),
@@ -113,7 +107,8 @@ INDICADORES: list[IndicadorDef] = [
         ordem=7,
         titulo="Roubo de Veículo SIP Endereço",
         tokens_obrigatorios=["ROUBO", "VEICULO", "SIP", "ENDERECO", "QGP"],
-        processar=processar_roubo_veiculo_sip,
+        modulo="roubo_veiculo_sip",
+        funcao="processar_roubo_veiculo_sip",
         nome_saida=nome_arquivo_padrao(7, "ROUBO-DE-VEICULO-SIP-ENDERECO"),
         ordem_arquivos="consolidado_primeiro",
     ),
@@ -122,7 +117,8 @@ INDICADORES: list[IndicadorDef] = [
         ordem=8,
         titulo="Acidente de Trânsito Sportal",
         tokens_obrigatorios=["ACIDENTE", "TRANSITO", "SPORTAL", "QGP"],
-        processar=processar_acidente_transito,
+        modulo="acidente_transito",
+        funcao="processar_acidente_transito",
         nome_saida=nome_arquivo_padrao(8, "ACIDENTE-DE-TRANSITO-SPORTAL-QGP"),
         ordem_arquivos="mestre_primeiro",
     ),
@@ -131,7 +127,8 @@ INDICADORES: list[IndicadorDef] = [
         ordem=9,
         titulo="Furto de Veículo Sportal",
         tokens_obrigatorios=["FURTO", "VEICULO", "SPORTAL", "QGP"],
-        processar=processar_furto_veiculo_sportal,
+        modulo="furto_veiculo_sportal",
+        funcao="processar_furto_veiculo_sportal",
         nome_saida=nome_arquivo_padrao(9, "FURTO-DE-VEICULO-SPORTAL"),
         ordem_arquivos="consolidado_primeiro",
     ),
@@ -140,15 +137,33 @@ INDICADORES: list[IndicadorDef] = [
         ordem=10,
         titulo="Furto de Veículo SIP",
         tokens_obrigatorios=["FURTO", "VEICULO", "SIP", "QGP"],
-        processar=processar_furto_veiculo_sip,
+        modulo="furto_veiculo_sip",
+        funcao="processar_furto_veiculo_sip",
         nome_saida=nome_arquivo_padrao(10, "FURTO-DE-VEICULO-SIP"),
         ordem_arquivos="mestre_primeiro",
     ),
 ]
 
 
+def carregar_processador(indicador: IndicadorDef) -> Callable:
+    """Importa sob demanda a função processadora de um indicador."""
+    try:
+        modulo = importlib.import_module(f"modulos.{indicador.modulo}")
+        funcao = getattr(modulo, indicador.funcao, None)
+
+        if funcao is None or not callable(funcao):
+            raise AttributeError(
+                f"Função '{indicador.funcao}' não encontrada no módulo '{indicador.modulo}'."
+            )
+
+        return funcao
+    except Exception as exc:  # noqa: BLE001
+        raise ImportError(
+            f"Falha ao carregar o processador do indicador '{indicador.titulo}': {exc}"
+        ) from exc
+
+
 def normalizar_nome_arquivo(nome: str) -> str:
-    """Normaliza nome de arquivo para comparação baseada em tokens."""
     texto = str(nome or "").strip()
     texto = unicodedata.normalize("NFKD", texto)
     texto = "".join(c for c in texto if not unicodedata.combining(c))
@@ -161,7 +176,6 @@ def normalizar_nome_arquivo(nome: str) -> str:
 
 
 def identificar_indicador_por_nome(nome_arquivo: str) -> IndicadorDef | None:
-    """Identifica qual indicador corresponde a um arquivo pelo nome normalizado."""
     nome_norm = normalizar_nome_arquivo(nome_arquivo)
 
     candidatos: list[IndicadorDef] = []
@@ -176,7 +190,6 @@ def identificar_indicador_por_nome(nome_arquivo: str) -> IndicadorDef | None:
 
 
 def gerar_excel_em_memoria(df: pd.DataFrame, sheet_name: str = "Dados") -> bytes:
-    """Gera Excel em memória com nome de aba limitado a 31 caracteres."""
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name=sheet_name[:31])
@@ -184,7 +197,6 @@ def gerar_excel_em_memoria(df: pd.DataFrame, sheet_name: str = "Dados") -> bytes
 
 
 def empacotar_resultados_zip(resultados: list[dict]) -> bytes:
-    """Empacota em ZIP apenas os resultados concluídos com sucesso."""
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
         for item in resultados:
@@ -196,7 +208,6 @@ def empacotar_resultados_zip(resultados: list[dict]) -> bytes:
 
 
 def init_state() -> None:
-    """Inicializa chaves de estado para o módulo de todos os indicadores."""
     defaults = {
         "todos_indicadores_arquivo_mestre_nome": None,
         "todos_indicadores_arquivo_mestre_bytes": None,
@@ -211,7 +222,6 @@ def init_state() -> None:
 
 
 def limpar_estado() -> None:
-    """Limpa completamente o estado do módulo de todos os indicadores."""
     chaves = [
         "todos_indicadores_arquivo_mestre_nome",
         "todos_indicadores_arquivo_mestre_bytes",
@@ -232,12 +242,6 @@ def montar_arquivos_para_modulo(
     arquivo_mestre_bytes: bytes,
     arquivo_consolidado_bytes: bytes,
 ) -> tuple[io.BytesIO, io.BytesIO]:
-    """
-    Monta arquivo_01 e arquivo_02 para o módulo, respeitando a ordem requerida.
-
-    - mestre_primeiro: arquivo_01 = mestre (base geral), arquivo_02 = consolidado.
-    - consolidado_primeiro: arquivo_01 = consolidado, arquivo_02 = mestre.
-    """
     if indicador.ordem_arquivos == "consolidado_primeiro":
         arquivo_01 = io.BytesIO(arquivo_consolidado_bytes)
         arquivo_02 = io.BytesIO(arquivo_mestre_bytes)
@@ -254,19 +258,15 @@ def executar_modulo(
     arquivo_consolidado_bytes: bytes,
     nome_entrada: str,
 ) -> dict:
-    """
-    Executa o módulo de um indicador, garantindo retorno em DataFrame e Excel.
+    processador = carregar_processador(indicador)
 
-    Aceita módulos que retornem diretamente um DataFrame ou uma tupla
-    (DataFrame, resumo).
-    """
     arquivo_01, arquivo_02 = montar_arquivos_para_modulo(
         indicador=indicador,
         arquivo_mestre_bytes=arquivo_mestre_bytes,
         arquivo_consolidado_bytes=arquivo_consolidado_bytes,
     )
 
-    retorno = indicador.processar(arquivo_01, arquivo_02)
+    retorno = processador(arquivo_01, arquivo_02)
 
     resumo: dict = {}
     df_final: pd.DataFrame | None = None
@@ -301,7 +301,6 @@ def executar_modulo(
 
 
 def render() -> None:
-    """Interface Streamlit para orquestrar todos os indicadores."""
     init_state()
 
     st.title("Todos os Indicadores")
@@ -340,7 +339,8 @@ def render() -> None:
         8. ACIDENTE DE TRÂNSITO_SPORTAL_QGP  
         9. FURTO DE VEICULO_SPORTAL - QGP  
         10. FURTO DE VEICULO_SIP QGP
-        """
+        """,
+        unsafe_allow_html=False,
     )
 
     arquivos = st.file_uploader(
@@ -485,9 +485,7 @@ def render() -> None:
         info = st.session_state.todos_indicadores_uploads.get(indicador.chave)
 
         if info is None:
-            st.error(
-                f"Não há arquivo consolidado para o indicador {indicador.titulo}."
-            )
+            st.error(f"Não há arquivo consolidado para o indicador {indicador.titulo}.")
         else:
             status_global.info(
                 f"Executando indicador {indice_atual + 1}/{total_indicadores}: "
@@ -507,10 +505,13 @@ def render() -> None:
                 status_modulo.success(
                     f"Indicador {indicador.titulo} concluído com sucesso."
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 st.error(
                     f"Erro no indicador {indicador.ordem} - {indicador.titulo}: {exc}"
                 )
+                with st.expander("Detalhes do erro"):
+                    st.code(traceback.format_exc())
+
                 st.session_state.todos_indicadores_resultados.append(
                     {
                         "chave": indicador.chave,
@@ -555,9 +556,7 @@ def render() -> None:
                 "Status": item["status"].upper(),
                 "Arquivo de entrada": item["nome_entrada"],
                 "Arquivo de saída": item["nome_saida"] or "-",
-                "Linhas saída": item["linhas_saida"]
-                if item["linhas_saida"] is not None
-                else "-",
+                "Linhas saída": item["linhas_saida"] if item["linhas_saida"] is not None else "-",
                 "Erro": item["erro"] or "-",
             }
         )
