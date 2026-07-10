@@ -1,39 +1,58 @@
 from __future__ import annotations
 
 import base64
-from pathlib import Path
 
 import streamlit as st
 
+from config.settings import BASE_DIR
 from services.modules_loader import (
-    INDICADORES_ATUALIZACAO,
     MAPEAMENTO,
     carregar_modulo,
     executar_interface_segura,
 )
 
 
+INDICADORES_ATUALIZACAO: list[str] = [
+    nome
+    for nome in MAPEAMENTO.keys()
+    if nome not in {"TODOS OS INDICADORES", "GEOCODIFICAÇÃO", "CONVERSÃO", "CONSOLIDAR INDICADORES"}
+]
+
+
 def selecionar_indicador(nome: str) -> None:
+    """Seleciona o módulo ativo."""
     st.session_state.indicador_selecionado = nome
 
 
 def voltar_inicio() -> None:
+    """Retorna para a tela inicial."""
     st.session_state.indicador_selecionado = "Selecione um indicador..."
 
 
+@st.cache_data(show_spinner=False)
 def _obter_logo_base64() -> str | None:
-    caminho_logo = Path("assets") / "LXogo DIESP.PNG"
+    """Carrega o logo da aplicação e retorna em base64."""
+    candidatos = [
+        BASE_DIR / "assets" / "Logo DIESP.PNG",
+        BASE_DIR / "assets" / "LOGO DIESP.PNG",
+        BASE_DIR / "assets" / "logo diesp.png",
+        BASE_DIR / "assets" / "LXogo DIESP.PNG",
+    ]
 
-    if not caminho_logo.exists():
-        return None
+    for caminho_logo in candidatos:
+        if not caminho_logo.exists():
+            continue
 
-    try:
-        return base64.b64encode(caminho_logo.read_bytes()).decode("utf-8")
-    except Exception:
-        return None
+        try:
+            return base64.b64encode(caminho_logo.read_bytes()).decode("utf-8")
+        except Exception:
+            continue
+
+    return None
 
 
 def render_topbar() -> None:
+    """Renderiza o cabeçalho superior da aplicação."""
     logo_base64 = _obter_logo_base64()
 
     if logo_base64:
@@ -64,6 +83,7 @@ def render_topbar() -> None:
 
 
 def render_home_hero() -> None:
+    """Renderiza o bloco principal da página inicial."""
     st.markdown(
         """
         <div class="hero-card">
@@ -79,6 +99,7 @@ def render_home_hero() -> None:
 
 
 def render_panel_text(kicker: str, titulo: str, descricao: str) -> None:
+    """Renderiza o conteúdo textual padrão de um painel."""
     st.markdown(
         f"""
         <div class="panel-kicker">{kicker}</div>
@@ -90,6 +111,7 @@ def render_panel_text(kicker: str, titulo: str, descricao: str) -> None:
 
 
 def render_panel_atualizacao() -> None:
+    """Renderiza o painel de atualização dos indicadores."""
     with st.container(key="panel-atualizacao"):
         render_panel_text(
             "🔄 Atualização",
@@ -129,6 +151,7 @@ def render_panel_atualizacao() -> None:
 
 
 def render_panel_geocodificacao() -> None:
+    """Renderiza o painel do módulo de geocodificação."""
     with st.container(key="panel-geocodificacao"):
         render_panel_text(
             "🌐 Geoprocessamento",
@@ -145,7 +168,7 @@ def render_panel_geocodificacao() -> None:
         st.markdown(
             """
             <div class="panel-footer">
-                Recomendado para Geocodificar ocorrências por endereços.
+                Recomendado para geocodificar ocorrências por endereços.
             </div>
             """,
             unsafe_allow_html=True,
@@ -153,6 +176,7 @@ def render_panel_geocodificacao() -> None:
 
 
 def render_panel_conversao() -> None:
+    """Renderiza o painel do módulo de conversão."""
     with st.container(key="panel-conversao"):
         render_panel_text(
             "📍 Conversão",
@@ -177,6 +201,7 @@ def render_panel_conversao() -> None:
 
 
 def render_panel_consolidacao() -> None:
+    """Renderiza o painel do módulo de consolidação."""
     with st.container(key="panel-consolidacao"):
         render_panel_text(
             "✅ Consolidação",
@@ -201,6 +226,7 @@ def render_panel_consolidacao() -> None:
 
 
 def render_home() -> None:
+    """Renderiza a tela inicial da aplicação."""
     render_home_hero()
 
     st.markdown(
@@ -222,6 +248,7 @@ def render_home() -> None:
 
 
 def render_modulo() -> None:
+    """Renderiza o módulo selecionado pelo usuário."""
     indicador = st.session_state.indicador_selecionado
 
     col_titulo, col_acao = st.columns([10, 2], gap="medium")
