@@ -632,7 +632,7 @@ def render() -> None:
 
     st.title("Todos os Indicadores")
     st.caption(
-        "Execução integrada dos indicadores do QGP Online a partir de um arquivo mestre e dos "
+        "Execução integrada dos indicadores do QGP Online a partir dos Indicadores Criminais e dos "
         "consolidados atuais, com alinhamento automático e fila de processamento."
     )
 
@@ -762,7 +762,7 @@ def render() -> None:
         <div class="qgp-card">
             <div class="qgp-card-header">Entrada de arquivos</div>
             <div class="qgp-card-desc">
-                Envie o arquivo mestre com todas as abas necessárias e os 10 arquivos consolidados
+                Envie o arquivo dos Indicadores Criminais e os 10 arquivos consolidados
                 oficiais do QGP. A fila será executada automaticamente após o primeiro clique em
                 <strong>Executar</strong>.
             </div>
@@ -775,7 +775,7 @@ def render() -> None:
 
     with col_upload_mestre:
         arquivo_mestre = st.file_uploader(
-            "Arquivo mestre (várias abas)",
+            "Arquivo de Indicadores Criminais (várias abas)",
             type=["xlsx", "xls"],
             accept_multiple_files=False,
             key="todos_indicadores_upload_mestre_widget",
