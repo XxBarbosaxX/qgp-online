@@ -1,4 +1,7 @@
-"""<br>Módulo Furto de Veículo (SIP) - Geocodificação por endereço<br>Versão Streamlit adaptada para o QGP Online.<br>"""
+"""
+Módulo Furto de Veículo (SIP) - Geocodificação por endereço
+Versão Streamlit adaptada para o QGP Online.
+"""
 
 from __future__ import annotations
 
@@ -468,6 +471,31 @@ def _eh_furto_veiculo(valor: str) -> bool:
     if not txt:
         return False
 
+    termos_excludentes = [
+        "PLACA",
+        "PLACAS",
+        "DOCUMENTO",
+        "DOCUMENTOS",
+        "CRLV",
+        "CRV",
+        "CHAVE",
+        "CHAVES",
+        "ESTEPE",
+        "PNEU",
+        "PNEUS",
+        "RODA",
+        "RODAS",
+        "BATERIA",
+        "SOM",
+        "RETROVISOR",
+        "ACESSORIO",
+        "ACESSORIOS",
+        "PECAS",
+        "PECA",
+    ]
+    if any(termo in txt for termo in termos_excludentes):
+        return False
+
     padroes_exatos_ou_fortes = [
         "FURTO DE VEICULO",
         "FURTO VEICULO",
@@ -477,12 +505,16 @@ def _eh_furto_veiculo(valor: str) -> bool:
         "FURTO AUTOMOVEL",
         "FURTO DE MOTOCICLETA",
         "FURTO MOTOCICLETA",
+        "FURTO DE CARRO",
+        "FURTO CARRO",
+        "FURTO DE MOTO",
+        "FURTO MOTO",
     ]
 
-    if any(p in txt for p in padroes_exatos_ou_fortes):
+    if any(padrao in txt for padrao in padroes_exatos_ou_fortes):
         return True
 
-    return "FURTO" in txt and "VEICULO" in txt
+    return "FURTO" in txt and "VEICULO" in txt and "PLACA" not in txt
 
 
 def gerar_excel_em_memoria(df: pd.DataFrame) -> bytes:
