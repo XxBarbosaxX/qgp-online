@@ -5,6 +5,8 @@ Processamento e atualizacao de dados CVP do sistema SPORTAL para QGP Online
 
 from __future__ import annotations
 
+import traceback
+
 import pandas as pd
 import streamlit as st
 
@@ -169,91 +171,210 @@ def processar_cvp_sportal(arquivo_01, arquivo_02):
     return df_final, resumo
 
 
-def interface_cvp_sportal() -> None:
-    """Interface Streamlit para CVP SPORTAL."""
-    st.markdown("## Atualizar CVP (SPORTAL)")
-    st.info(
+def _render_resumo_cvp_sportal(resumo: dict) -> None:
+    """Renderiza o resumo do processamento com componentes nativos do Streamlit."""
+    st.markdown(
         """
-    **Instrucoes:**
-    - **Arquivo 01:** Base CVP existente (dados historicos)
-    - **Arquivo 02:** Complemento SPORTAL
-
-    O sistema ira:
-    - Ler a aba correta do Arquivo 02 conforme o chaveamento oficial
-    - Ajustar colunas equivalentes, como Território/Regiões e AIS/AISNova
-    - Verificar coordenadas validas
-    - Converter coordenadas UTM (SIRGAS2000) para WGS84
-    - Adicionar apenas registros posteriores a ultima DataHora da base
-    - Gerar arquivo final consolidado para download
-    """
+        <div class="cvp-sportal-card">
+            <div class="cvp-sportal-card-header">Resultado do processamento</div>
+            <div class="cvp-sportal-card-desc">
+                O processamento foi concluído com sucesso. Abaixo estão os principais indicadores da execução.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-    st.markdown("---")
+    st.success("Processamento finalizado com sucesso.")
+    st.caption(resumo["situacao"])
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Registros adicionados", resumo["adicionados"])
+    with col2:
+        st.metric("Total final", resumo["total_final"])
+    with col3:
+        st.metric("Última DataHora base", resumo["ultima_datahora_base"])
+
+    col4, col5 = st.columns(2)
+    with col4:
+        st.info(f"**Aba arquivo 01:** {resumo['aba_arquivo_01']}")
+    with col5:
+        st.info(f"**Aba arquivo 02:** {resumo['aba_arquivo_02']}")
+
+    if resumo["removidos_invalidos"] > 0:
+        st.warning(
+            f"Registros excluídos por coordenadas inválidas: {resumo['removidos_invalidos']}"
+        )
+
+    if resumo["removidos_por_datahora"] > 0:
+        st.warning(
+            "Registros excluídos por serem anteriores ou iguais à última DataHora: "
+            f"{resumo['removidos_por_datahora']}"
+        )
+
+
+def interface_cvp_sportal() -> None:
+    """Interface Streamlit para CVP SPORTAL."""
+    st.markdown(
+        """
+        <style>
+        .cvp-sportal-card {
+            border-radius: 0.85rem;
+            padding: 1rem 1.1rem;
+            margin-bottom: 0.75rem;
+            border: 1px solid rgba(148, 163, 184, 0.30);
+            background: #020617;
+        }
+        .cvp-sportal-card-header {
+            font-weight: 700;
+            font-size: 0.98rem;
+            margin-bottom: 0.35rem;
+            color: rgba(248, 250, 252, 0.98);
+        }
+        .cvp-sportal-card-desc {
+            font-size: 0.84rem;
+            color: rgba(226, 232, 240, 0.82);
+            margin-bottom: 0.2rem;
+        }
+        .cvp-sportal-file-card {
+            border-radius: 0.75rem;
+            padding: 0.75rem 0.85rem;
+            background: rgba(15, 23, 42, 0.92);
+            border: 1px solid rgba(148, 163, 184, 0.20);
+            margin-top: 0.4rem;
+            margin-bottom: 0.45rem;
+        }
+        .cvp-sportal-file-title {
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: rgba(248, 250, 252, 0.98);
+            margin-bottom: 0.2rem;
+        }
+        .cvp-sportal-file-desc {
+            font-size: 0.78rem;
+            color: rgba(148, 163, 184, 0.95);
+        }
+        .element-container:has(#cvp-sportal-download-marker) + div button {
+            background: linear-gradient(135deg, #ea580c, #f97316) !important;
+            border-color: rgba(248, 250, 252, 0.15) !important;
+            color: #fff7ed !important;
+            font-weight: 700 !important;
+        }
+        .element-container:has(#cvp-sportal-download-marker) + div button:hover {
+            background: linear-gradient(135deg, #c2410c, #ea580c) !important;
+        }
+        .element-container:has(#cvp-sportal-download-marker) + div button p {
+            color: #fff7ed !important;
+            font-weight: 700 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("## CVP Sportal")
+    st.caption(
+        "Atualização da base de Crimes Violentos contra o Patrimônio com dados do sistema SPORTAL."
+    )
+
+    st.markdown(
+        """
+        <div class="cvp-sportal-card">
+            <div class="cvp-sportal-card-header">Entrada de arquivos</div>
+            <div class="cvp-sportal-card-desc">
+                Envie a base atual do CVP e o arquivo complementar do SPORTAL. O sistema irá localizar a aba correta,
+                validar coordenadas, converter o sistema geográfico quando necessário e adicionar apenas registros
+                posteriores à última DataHora da base.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown("#### Arquivo 01 - Base CVP")
+        st.markdown(
+            """
+            <div class="cvp-sportal-file-card">
+                <div class="cvp-sportal-file-title">Arquivo 01</div>
+                <div class="cvp-sportal-file-desc">Base histórica consolidada do CVP.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
         arquivo_base = st.file_uploader(
-            "Selecione o arquivo base",
+            "Arquivo 01 - Base CVP",
             type=["xlsx", "xls"],
             key="cvp_sportal_base",
+            label_visibility="collapsed",
         )
 
     with col2:
-        st.markdown("#### Arquivo 02 - Complemento SPORTAL")
+        st.markdown(
+            """
+            <div class="cvp-sportal-file-card">
+                <div class="cvp-sportal-file-title">Arquivo 02</div>
+                <div class="cvp-sportal-file-desc">Arquivo complementar do SPORTAL para atualização.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
         arquivo_novo = st.file_uploader(
-            "Selecione o arquivo complemento",
+            "Arquivo 02 - Complemento SPORTAL",
             type=["xlsx", "xls"],
             key="cvp_sportal_novo",
+            label_visibility="collapsed",
         )
 
-    if not arquivo_base or not arquivo_novo:
-        st.warning("Por favor, faca upload dos dois arquivos para continuar.")
+    pode_processar = arquivo_base is not None and arquivo_novo is not None
+    processar = st.button(
+        "Processar CVP Sportal",
+        type="primary",
+        use_container_width=True,
+        disabled=not pode_processar,
+        key="processar_cvp_sportal",
+    )
+
+    if not processar:
         return
 
-    if st.button("Processar Arquivos", type="primary", use_container_width=True):
-        try:
-            with st.spinner("Processando arquivos..."):
-                df_final, resumo = processar_cvp_sportal(arquivo_base, arquivo_novo)
+    if not arquivo_base or not arquivo_novo:
+        st.warning("Envie os dois arquivos para continuar.")
+        return
 
-            st.success("Processamento Finalizado com Sucesso!")
-            st.markdown("### Resumo")
+    try:
+        with st.spinner("Processando arquivos..."):
+            df_final, resumo = processar_cvp_sportal(arquivo_base, arquivo_novo)
 
-            col_a, col_b, col_c = st.columns(3)
-            with col_a:
-                st.metric("Registros Adicionados", resumo["adicionados"])
-            with col_b:
-                st.metric("Total Final", resumo["total_final"])
-            with col_c:
-                st.metric("Ultima DataHora Base", resumo["ultima_datahora_base"])
+        _render_resumo_cvp_sportal(resumo)
 
-            st.info(f"**Situacao:** {resumo['situacao']}")
-            st.info(
-                f"**Aba Arquivo 01:** {resumo['aba_arquivo_01']} | "
-                f"**Aba Arquivo 02:** {resumo['aba_arquivo_02']}"
-            )
+        excel_data = gerar_arquivo_excel(df_final, sheet_name="CVP-SPORTAL")
 
-            if resumo["removidos_invalidos"] > 0:
-                st.warning(
-                    f"Registros excluidos por coordenadas invalidas: {resumo['removidos_invalidos']}"
-                )
-            if resumo["removidos_por_datahora"] > 0:
-                st.warning(
-                    "Registros excluidos por serem anteriores/iguais a ultima "
-                    f"DataHora: {resumo['removidos_por_datahora']}"
-                )
+        st.markdown(
+            """
+            <div class="cvp-sportal-card">
+                <div class="cvp-sportal-card-header">Download</div>
+                <div class="cvp-sportal-card-desc">
+                    Baixe o arquivo final processado no padrão oficial do módulo CVP Sportal.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-            excel_data = gerar_arquivo_excel(df_final, sheet_name="CVP-SPORTAL")
-            st.download_button(
-                label="Baixar Arquivo Final",
-                data=excel_data,
-                file_name=NOME_ARQUIVO_FINAL,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
-            )
+        st.markdown('<span id="cvp-sportal-download-marker"></span>', unsafe_allow_html=True)
+        st.download_button(
+            label="Baixar arquivo processado",
+            data=excel_data,
+            file_name=NOME_ARQUIVO_FINAL,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            key="download_cvp_sportal",
+        )
 
-        except Exception as e:
-            st.error(f"Erro durante o processamento: {str(e)}")
-            import traceback
-            with st.expander("Detalhes do erro"):
-                st.code(traceback.format_exc())
+    except Exception as e:
+        st.error(f"Erro durante o processamento: {str(e)}")
+        with st.expander("Detalhes do erro"):
+            st.code(traceback.format_exc())
