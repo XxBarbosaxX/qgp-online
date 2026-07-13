@@ -9,9 +9,11 @@ Estratégia de estabilidade:
 - aplica equivalências de colunas específicas por indicador;
 - evita duplicidade de colunas após compatibilização.
 """
+
 from __future__ import annotations
 
 import importlib
+import inspect
 import io
 import re
 import traceback
@@ -37,6 +39,18 @@ class IndicadorDef:
     funcao: str
     nome_saida: str
     ordem_arquivos: str = "mestre_primeiro"
+
+
+@dataclass(frozen=True)
+class TodosIndicadoresConfigTecnica:
+    usar_externo: bool = True
+    caminho_base_enxuta: str = "CVP_SIP_GEOCODIFICAR.parquet"
+    arq_cache_municipios: str = "municipios_ce.json"
+    limiar_nome: int = 88
+    raio_confirma_m: float = 100.0
+    raio_municipio_km: float = 8.0
+    limiar_suspeito: int = 5
+    valor_filtro_natureza: str = "ROUBO DE VEICULO"
 
 
 INDICADORES: list[IndicadorDef] = [
@@ -267,6 +281,7 @@ def init_state() -> None:
         "todos_indicadores_fila_indice_atual": 0,
         "todos_indicadores_resultados": [],
         "todos_indicadores_auto_run": False,
+        "todos_indicadores_config_tecnica": TodosIndicadoresConfigTecnica(),
     }
     for chave, valor in defaults.items():
         if chave not in st.session_state:
@@ -280,6 +295,15 @@ def limpar_estado() -> None:
         "todos_indicadores_upload_mestre_widget",
         "todos_indicadores_upload_widget",
         "todos_indicadores_auto_run",
+        "todos_indicadores_config_tecnica",
+        "todos_cfg_usar_externo",
+        "todos_cfg_caminho_base_enxuta",
+        "todos_cfg_arq_cache_municipios",
+        "todos_cfg_limiar_nome",
+        "todos_cfg_raio_confirma_m",
+        "todos_cfg_raio_municipio_km",
+        "todos_cfg_limiar_suspeito",
+        "todos_cfg_valor_filtro_natureza",
     ]
     for chave in chaves:
         if chave in st.session_state:
@@ -397,7 +421,7 @@ def consolidar_colunas_duplicadas(df: pd.DataFrame) -> pd.DataFrame:
         else:
             serie_final = df.iloc[:, posicoes[0]].copy()
             for posicao in posicoes[1:]:
-                serie_extra = df.iloc[:, posicoes[1]]
+                serie_extra = df.iloc[:, posicao]
                 serie_final = serie_final.combine_first(serie_extra)
             df_resultado[coluna] = serie_final
 
@@ -521,10 +545,46 @@ def empacotar_resultados_zip(resultados: list[dict]) -> bytes:
     return buffer.getvalue()
 
 
+def _processador_aceita_config(processador: Callable) -> bool:
+    try:
+        assinatura = inspect.signature(processador)
+    except (TypeError, ValueError):
+        return False
+
+    parametros = assinatura.parameters
+    return "config" in parametros
+
+
+def _montar_config_para_modulo(indicador: IndicadorDef, config_ui: TodosIndicadoresConfigTecnica):
+    if indicador.chave != "roubo_veiculo_sip":
+        return config_ui
+
+    try:
+        modulo = importlib.import_module(f"modulos.{indicador.modulo}")
+        classe_config = getattr(modulo, "RouboVeiculoSipConfig", None)
+
+        if classe_config is None:
+            return config_ui
+
+        return classe_config(
+            usar_externo=config_ui.usar_externo,
+            caminho_base_enxuta=config_ui.caminho_base_enxuta,
+            valor_filtro_natureza=config_ui.valor_filtro_natureza,
+            limiar_nome=int(config_ui.limiar_nome),
+            raio_confirma_m=float(config_ui.raio_confirma_m),
+            raio_municipio_km=float(config_ui.raio_municipio_km),
+            limiar_suspeito=int(config_ui.limiar_suspeito),
+            arq_cache_mun=config_ui.arq_cache_municipios,
+        )
+    except Exception:
+        return config_ui
+
+
 def executar_modulo(
     indicador: IndicadorDef,
     arquivo_mestre_upload,
     arquivo_consolidado_upload,
+    config_tecnica: TodosIndicadoresConfigTecnica | None = None,
 ) -> dict:
     processador = carregar_processador(indicador)
 
@@ -534,7 +594,11 @@ def executar_modulo(
         arquivo_consolidado_upload=arquivo_consolidado_upload,
     )
 
-    retorno = processador(arquivo_01, arquivo_02)
+    if config_tecnica is not None and _processador_aceita_config(processador):
+        config_modulo = _montar_config_para_modulo(indicador, config_tecnica)
+        retorno = processador(arquivo_01, arquivo_02, config=config_modulo)
+    else:
+        retorno = processador(arquivo_01, arquivo_02)
 
     resumo: dict = {}
     df_final: pd.DataFrame | None = None
@@ -580,6 +644,7 @@ def _executar_indicador_atual(
     uploads_identificados: dict[str, object],
     arquivo_mestre,
     total_indicadores: int,
+    config_tecnica: TodosIndicadoresConfigTecnica | None = None,
 ) -> None:
     indicador = INDICADORES[indice_atual]
     arquivo_consolidado = uploads_identificados.get(indicador.chave)
@@ -594,6 +659,7 @@ def _executar_indicador_atual(
                 indicador=indicador,
                 arquivo_mestre_upload=arquivo_mestre,
                 arquivo_consolidado_upload=arquivo_consolidado,
+                config_tecnica=config_tecnica,
             )
 
         st.session_state.todos_indicadores_resultados.append(resultado)
@@ -627,8 +693,240 @@ def _executar_indicador_atual(
     st.session_state["todos_indicadores_ultimo_progresso"] = progresso
 
 
+def aplicar_estilo_configuracao_tecnica() -> None:
+    st.markdown(
+        """
+        <style>
+        .qgp-tech-label {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.45rem;
+            margin-top: 0.2rem;
+        }
+        .qgp-tech-label-text {
+            font-size: 0.92rem;
+            font-weight: 700;
+            color: rgba(255, 255, 255, 0.90);
+            line-height: 1.2;
+        }
+        .qgp-tech-tooltip {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            background: rgba(255, 255, 255, 0.05);
+            color: #dbeafe;
+            font-size: 0.72rem;
+            font-weight: 800;
+            cursor: help;
+            flex-shrink: 0;
+        }
+        .qgp-tech-tooltip-box {
+            position: absolute;
+            left: calc(100% + 10px);
+            top: 50%;
+            transform: translateY(-50%);
+            width: 300px;
+            background: #0f172a;
+            color: #e5eefb;
+            border: 1px solid rgba(148, 163, 184, 0.28);
+            border-radius: 12px;
+            padding: 0.75rem 0.85rem;
+            font-size: 0.82rem;
+            line-height: 1.45;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.30);
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+            transition: opacity 0.18s ease, transform 0.18s ease;
+            z-index: 9999;
+        }
+        .qgp-tech-tooltip-box::before {
+            content: "";
+            position: absolute;
+            left: -6px;
+            top: 50%;
+            width: 10px;
+            height: 10px;
+            background: #0f172a;
+            border-left: 1px solid rgba(148, 163, 184, 0.28);
+            border-bottom: 1px solid rgba(148, 163, 184, 0.28);
+            transform: translateY(-50%) rotate(45deg);
+        }
+        .qgp-tech-tooltip:hover .qgp-tech-tooltip-box {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(-50%) translateX(2px);
+        }
+        @media (max-width: 640px) {
+            .qgp-tech-tooltip-box {
+                left: 50%;
+                top: calc(100% + 10px);
+                transform: translateX(-50%);
+                width: min(280px, 80vw);
+            }
+            .qgp-tech-tooltip-box::before {
+                left: 50%;
+                top: -6px;
+                transform: translateX(-50%) rotate(45deg);
+                border-left: 1px solid rgba(148, 163, 184, 0.28);
+                border-top: 1px solid rgba(148, 163, 184, 0.28);
+                border-bottom: none;
+            }
+            .qgp-tech-tooltip:hover .qgp-tech-tooltip-box {
+                transform: translateX(-50%);
+            }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_label_flutuante(label: str, tooltip: str) -> None:
+    st.markdown(
+        f"""
+        <div class="qgp-tech-label">
+            <span class="qgp-tech-label-text">{label}</span>
+            <span class="qgp-tech-tooltip">?
+                <span class="qgp-tech-tooltip-box">{tooltip}</span>
+            </span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
+    config_atual = st.session_state.get(
+        "todos_indicadores_config_tecnica",
+        TodosIndicadoresConfigTecnica(),
+    )
+
+    with st.expander("Configuração técnica", expanded=False):
+        colcfg1, colcfg2 = st.columns(2, gap="large")
+
+        with colcfg1:
+            render_label_flutuante(
+                "Usar ArcGIS como fallback",
+                "Quando ativado, o sistema complementa a busca local com geocodificação externa ArcGIS nos módulos que suportam esse recurso.",
+            )
+            usar_externo = st.toggle(
+                "Usar ArcGIS como fallback",
+                value=bool(config_atual.usar_externo),
+                label_visibility="collapsed",
+                key="todos_cfg_usar_externo",
+            )
+
+            render_label_flutuante(
+                "Base geográfica (.parquet)",
+                "Arquivo parquet auxiliar com logradouros e coordenadas utilizado como base principal da geocodificação local.",
+            )
+            caminho_base_enxuta = st.text_input(
+                "Base geográfica (.parquet)",
+                value=str(config_atual.caminho_base_enxuta),
+                label_visibility="collapsed",
+                key="todos_cfg_caminho_base_enxuta",
+            )
+
+            render_label_flutuante(
+                "Arquivo cache de municípios",
+                "Arquivo JSON local usado para armazenar o mapeamento IBGE dos municípios do Ceará e evitar consultas repetidas.",
+            )
+            arq_cache_municipios = st.text_input(
+                "Arquivo cache de municípios",
+                value=str(config_atual.arq_cache_municipios),
+                label_visibility="collapsed",
+                key="todos_cfg_arq_cache_municipios",
+            )
+
+            render_label_flutuante(
+                "Filtro de Natureza",
+                "Parâmetro informativo para módulos compatíveis com filtragem textual por natureza da ocorrência.",
+            )
+            valor_filtro_natureza = st.text_input(
+                "Filtro de Natureza",
+                value=str(config_atual.valor_filtro_natureza),
+                label_visibility="collapsed",
+                key="todos_cfg_valor_filtro_natureza",
+            )
+
+        with colcfg2:
+            render_label_flutuante(
+                "Limiar de similaridade",
+                "Percentual mínimo de similaridade entre o logradouro informado e o logradouro da base para aceitar o casamento textual.",
+            )
+            limiar_nome = st.slider(
+                "Limiar de similaridade",
+                min_value=70,
+                max_value=100,
+                value=int(config_atual.limiar_nome),
+                label_visibility="collapsed",
+                key="todos_cfg_limiar_nome",
+            )
+
+            render_label_flutuante(
+                "Raio de confirmação (m)",
+                "Distância máxima, em metros, para validar se o ponto retornado externamente é coerente com a base espacial local.",
+            )
+            raio_confirma_m = st.number_input(
+                "Raio de confirmação (m)",
+                min_value=10.0,
+                value=float(config_atual.raio_confirma_m),
+                step=10.0,
+                label_visibility="collapsed",
+                key="todos_cfg_raio_confirma_m",
+            )
+
+            render_label_flutuante(
+                "Raio do município (km)",
+                "Raio usado para restringir a busca espacial quando o município não é localizado diretamente por código.",
+            )
+            raio_municipio_km = st.number_input(
+                "Raio do município (km)",
+                min_value=1.0,
+                value=float(config_atual.raio_municipio_km),
+                step=1.0,
+                label_visibility="collapsed",
+                key="todos_cfg_raio_municipio_km",
+            )
+
+            render_label_flutuante(
+                "Limiar de ponto suspeito",
+                "Quantidade mínima de ocorrências no mesmo ponto para marcar localização aproximada em registros sem número.",
+            )
+            limiar_suspeito = st.number_input(
+                "Limiar de ponto suspeito",
+                min_value=2,
+                value=int(config_atual.limiar_suspeito),
+                step=1,
+                label_visibility="collapsed",
+                key="todos_cfg_limiar_suspeito",
+            )
+
+    config = TodosIndicadoresConfigTecnica(
+        usar_externo=bool(usar_externo),
+        caminho_base_enxuta=caminho_base_enxuta.strip() or "CVP_SIP_GEOCODIFICAR.parquet",
+        arq_cache_municipios=arq_cache_municipios.strip() or "municipios_ce.json",
+        limiar_nome=int(limiar_nome),
+        raio_confirma_m=float(raio_confirma_m),
+        raio_municipio_km=float(raio_municipio_km),
+        limiar_suspeito=int(limiar_suspeito),
+        valor_filtro_natureza=valor_filtro_natureza.strip() or "ROUBO DE VEICULO",
+    )
+
+    st.session_state.todos_indicadores_config_tecnica = config
+    return config
+
+
 def render() -> None:
     init_state()
+    aplicar_estilo_configuracao_tecnica()
 
     st.title("Todos os Indicadores")
     st.caption(
@@ -740,9 +1038,6 @@ def render() -> None:
             font-size: 0.65rem;
             font-weight: 800;
         }
-
-        /* Destaque alaranjado exclusivo para o botão ZIP.
-           A técnica usa um span com id e seleciona o botão logo após esse span. [web:41][web:45] */
         .element-container:has(#qgp-zip-marker) + div button[kind="primary"] {
             background: linear-gradient(135deg, #ea580c, #f97316) !important;
             border-color: rgba(248, 250, 252, 0.15) !important;
@@ -770,6 +1065,8 @@ def render() -> None:
         """,
         unsafe_allow_html=True,
     )
+
+    config_tecnica = obter_configuracao_tecnica_ui()
 
     col_upload_mestre, col_upload_consolidados = st.columns([1.1, 1.9])
 
@@ -976,6 +1273,7 @@ def render() -> None:
             uploads_identificados=uploads_identificados,
             arquivo_mestre=arquivo_mestre,
             total_indicadores=total_indicadores,
+            config_tecnica=config_tecnica,
         )
         st.rerun()
 
@@ -986,6 +1284,7 @@ def render() -> None:
             uploads_identificados=uploads_identificados,
             arquivo_mestre=arquivo_mestre,
             total_indicadores=total_indicadores,
+            config_tecnica=config_tecnica,
         )
         st.rerun()
 
@@ -1081,7 +1380,6 @@ def render() -> None:
             unsafe_allow_html=True,
         )
 
-        # span marcador para CSS selecionar somente este botão
         st.markdown('<span id="qgp-zip-marker"></span>', unsafe_allow_html=True)
 
         st.download_button(
