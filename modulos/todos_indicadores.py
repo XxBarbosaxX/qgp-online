@@ -1,6 +1,4 @@
-"""
-Módulo Todos os Indicadores - Orquestrador principal do QGP Online.
-
+"""Módulo Todos os Indicadores - Orquestrador principal do QGP Online.
 Estratégia de estabilidade:
 - evita armazenar bytes grandes em st.session_state;
 - usa apenas objetos de upload do ciclo atual;
@@ -11,7 +9,6 @@ Estratégia de estabilidade:
 - aplica equivalências de colunas específicas por indicador;
 - evita duplicidade de colunas após compatibilização.
 """
-
 from __future__ import annotations
 
 import importlib
@@ -269,6 +266,7 @@ def init_state() -> None:
     defaults = {
         "todos_indicadores_fila_indice_atual": 0,
         "todos_indicadores_resultados": [],
+        "todos_indicadores_auto_run": False,
     }
     for chave, valor in defaults.items():
         if chave not in st.session_state:
@@ -281,6 +279,7 @@ def limpar_estado() -> None:
         "todos_indicadores_resultados",
         "todos_indicadores_upload_mestre_widget",
         "todos_indicadores_upload_widget",
+        "todos_indicadores_auto_run",
     ]
     for chave in chaves:
         if chave in st.session_state:
@@ -576,13 +575,65 @@ def executar_modulo(
     }
 
 
+def _executar_indicador_atual(
+    indice_atual: int,
+    uploads_identificados: dict[str, object],
+    arquivo_mestre,
+    total_indicadores: int,
+) -> None:
+    indicador = INDICADORES[indice_atual]
+    arquivo_consolidado = uploads_identificados.get(indicador.chave)
+
+    if arquivo_mestre is None or arquivo_consolidado is None:
+        st.error(f"Arquivos ausentes para o indicador {indicador.titulo}.")
+        return
+
+    try:
+        with st.spinner(f"Executando {indicador.titulo}..."):
+            resultado = executar_modulo(
+                indicador=indicador,
+                arquivo_mestre_upload=arquivo_mestre,
+                arquivo_consolidado_upload=arquivo_consolidado,
+            )
+
+        st.session_state.todos_indicadores_resultados.append(resultado)
+        st.success(f"Indicador {indicador.titulo} concluído com sucesso.")
+    except Exception as exc:  # noqa: BLE001
+        st.error(f"Erro no indicador {indicador.ordem} - {indicador.titulo}: {exc}")
+        with st.expander("Detalhes do erro"):
+            st.code(traceback.format_exc())
+
+        st.session_state.todos_indicadores_resultados.append(
+            {
+                "chave": indicador.chave,
+                "ordem": indicador.ordem,
+                "titulo": indicador.titulo,
+                "status": "erro",
+                "nome_entrada": arquivo_consolidado.name if arquivo_consolidado else None,
+                "nome_saida": None,
+                "arquivo_bytes": None,
+                "resumo": None,
+                "linhas_saida": None,
+                "erro": str(exc),
+            }
+        )
+
+    st.session_state.todos_indicadores_fila_indice_atual += 1
+    progresso = (
+        st.session_state.todos_indicadores_fila_indice_atual / total_indicadores
+        if total_indicadores > 0
+        else 0.0
+    )
+    st.session_state["todos_indicadores_ultimo_progresso"] = progresso  # opcional, para debug
+
+
 def render() -> None:
     init_state()
 
     st.title("Todos os Indicadores")
     st.caption(
         "Envie 1 arquivo mestre com várias abas e os 10 arquivos consolidados. "
-        "O sistema executa um indicador por vez e preserva o schema esperado do consolidado."
+        "O sistema executa um indicador por vez, podendo seguir automaticamente até o fim da fila."
     )
 
     arquivo_mestre = st.file_uploader(
@@ -664,7 +715,7 @@ def render() -> None:
 
     st.info(
         f"Arquivo mestre: {'OK' if mestre_ok else 'PENDENTE'} | "
-        f"Arquivos consolidados reconhecidos: {total_ok}/10"
+        f"Arquivos consolididados reconhecidos: {total_ok}/10"
     )
 
     total_indicadores = len(INDICADORES)
@@ -673,6 +724,7 @@ def render() -> None:
     if indice_atual >= total_indicadores:
         st.success("Fila concluída: todos os indicadores já foram processados.")
         proximo_titulo = "Nenhum (fila concluída)"
+        st.session_state.todos_indicadores_auto_run = False
     else:
         proximo_titulo = INDICADORES[indice_atual].titulo
 
@@ -693,7 +745,7 @@ def render() -> None:
 
     with col1:
         executar = st.button(
-            "Executar próximo indicador da fila",
+            "Executar",
             type="primary",
             disabled=not pode_executar,
             use_container_width=True,
@@ -709,52 +761,32 @@ def render() -> None:
         limpar_estado()
         st.rerun()
 
-    progresso_global = st.progress(
+    progresso_val = (
         indice_atual / total_indicadores if total_indicadores > 0 else 0.0
     )
+    st.progress(progresso_val)
 
-    if executar:
-        indicador = INDICADORES[indice_atual]
-        arquivo_consolidado = uploads_identificados.get(indicador.chave)
+    # Execução manual (primeiro clique) ativa auto-run
+    if executar and pode_executar:
+        st.session_state.todos_indicadores_auto_run = True
+        _executar_indicador_atual(
+            indice_atual=indice_atual,
+            uploads_identificados=uploads_identificados,
+            arquivo_mestre=arquivo_mestre,
+            total_indicadores=total_indicadores,
+        )
+        st.rerun()
 
-        if arquivo_mestre is None or arquivo_consolidado is None:
-            st.error(f"Arquivos ausentes para o indicador {indicador.titulo}.")
-        else:
-            try:
-                with st.spinner(f"Executando {indicador.titulo}..."):
-                    resultado = executar_modulo(
-                        indicador=indicador,
-                        arquivo_mestre_upload=arquivo_mestre,
-                        arquivo_consolidado_upload=arquivo_consolidado,
-                    )
-
-                st.session_state.todos_indicadores_resultados.append(resultado)
-                st.success(f"Indicador {indicador.titulo} concluído com sucesso.")
-
-            except Exception as exc:
-                st.error(f"Erro no indicador {indicador.ordem} - {indicador.titulo}: {exc}")
-                with st.expander("Detalhes do erro"):
-                    st.code(traceback.format_exc())
-
-                st.session_state.todos_indicadores_resultados.append(
-                    {
-                        "chave": indicador.chave,
-                        "ordem": indicador.ordem,
-                        "titulo": indicador.titulo,
-                        "status": "erro",
-                        "nome_entrada": arquivo_consolidado.name,
-                        "nome_saida": None,
-                        "arquivo_bytes": None,
-                        "resumo": None,
-                        "linhas_saida": None,
-                        "erro": str(exc),
-                    }
-                )
-
-            st.session_state.todos_indicadores_fila_indice_atual += 1
-            progresso_global.progress(
-                st.session_state.todos_indicadores_fila_indice_atual / total_indicadores
-            )
+    # Execução automática enquanto houver itens na fila e auto_run estiver ativo
+    auto_run = st.session_state.todos_indicadores_auto_run
+    if auto_run and pode_executar and not executar:
+        _executar_indicador_atual(
+            indice_atual=indice_atual,
+            uploads_identificados=uploads_identificados,
+            arquivo_mestre=arquivo_mestre,
+            total_indicadores=total_indicadores,
+        )
+        st.rerun()
 
     resultados = st.session_state.todos_indicadores_resultados
     if not resultados:
