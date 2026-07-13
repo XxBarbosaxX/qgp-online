@@ -7,7 +7,8 @@ Estratégia de estabilidade:
 - mantém em sessão somente estado leve;
 - executa um indicador por vez;
 - preserva exatamente a estrutura de colunas do arquivo consolidado de cada indicador;
-- não permite colunas extras no resultado final.
+- não permite colunas extras no resultado final;
+- aplica equivalências de colunas específicas por indicador.
 """
 
 from __future__ import annotations
@@ -144,27 +145,84 @@ INDICADORES: list[IndicadorDef] = [
 ]
 
 
-MAPEAMENTO_EQUIVALENCIAS_GLOBAIS: dict[str, list[str]] = {
-    "AIS": ["AISNOVA"],
-    "AISNOVA": ["AIS"],
-    "TERRITÓRIO": ["REGIÕES", "REGIOES"],
-    "TERRITORIO": ["REGIÕES", "REGIOES"],
-    "REGIÕES": ["TERRITÓRIO", "TERRITORIO"],
-    "REGIOES": ["TERRITÓRIO", "TERRITORIO"],
-    "LATITUDE": ["LAT"],
-    "LAT": ["LATITUDE"],
-    "LONGITUDE": ["LONG", "LON"],
-    "LONG": ["LONGITUDE", "LON"],
-    "LON": ["LONGITUDE", "LONG"],
-    "DATA": ["DATA "],
-    "ENDEREÇO": ["ENDERECO"],
-    "ENDERECO": ["ENDEREÇO"],
-    "NÚMERO": ["NUMERO"],
-    "NUMERO": ["NÚMERO"],
-    "COMPLEMENTO DO ENDEREÇO": ["COMPLEMENTO DO ENDERECO"],
-    "COMPLEMENTO DO ENDERECO": ["COMPLEMENTO DO ENDEREÇO"],
-    "GÊNERO": ["GENERO"],
-    "GENERO": ["GÊNERO"],
+MAPEAMENTO_EQUIVALENCIAS_POR_INDICADOR: dict[str, dict[str, list[str]]] = {
+    "cvli": {
+        "AIS": ["AISNova"],
+    },
+    "cvp_sportal": {
+        "Território": ["Regiões", "Regioes"],
+        "AIS": ["AISNova"],
+        "Lat": ["Latitude"],
+        "Long": ["Longitude", "Lon"],
+        "Data": ["data"],
+        "data": ["Data"],
+    },
+    "cvp_sip": {
+        "Território": ["Regiões", "Regioes"],
+        "AIS": ["AISNova"],
+        "Lat": ["Latitude"],
+        "Long": ["Longitude", "Lon"],
+        "Nivel_Geocodificacao": ["Nível_Geocodificação", "Nivel Geocodificacao"],
+        "Data": ["data"],
+        "data": ["Data"],
+    },
+    "perturbacao_sossego": {
+        "Território": ["Regiões", "Regioes"],
+        "AIS": ["AISNova"],
+        "Lat": ["Latitude"],
+        "Long": ["Longitude", "Lon"],
+        "Data": ["data"],
+        "data": ["Data"],
+    },
+    "deslocamento_forcado": {
+        "Território": ["Regiões", "Regioes"],
+        "AIS": ["AISNova"],
+        "Latitude": ["Lat"],
+        "Longitude": ["Long", "Lon"],
+        "Data": ["data"],
+        "data": ["Data"],
+    },
+    "roubo_veiculo_sportal": {
+        "Território": ["Regiões", "Regioes"],
+        "AIS": ["AISNova"],
+        "Lat": ["Latitude"],
+        "Long": ["Longitude", "Lon"],
+        "Data": ["data"],
+        "data": ["Data"],
+    },
+    "roubo_veiculo_sip": {
+        "Território": ["Regiões", "Regioes"],
+        "AIS": ["AISNova"],
+        "lat": ["Latitude", "Lat"],
+        "lon": ["Longitude", "Long", "Lon"],
+        "Nivel_Geocodificacao": ["Nível_Geocodificação", "Nivel Geocodificacao"],
+        "Data": ["data"],
+        "data": ["Data"],
+    },
+    "acidente_transito": {
+        "Regiões": ["Território", "Territorio", "Regioes"],
+        "AISNova": ["AIS"],
+        "Latitude": ["Lat"],
+        "Longitude": ["Long", "Lon"],
+        "Data": ["data"],
+        "data": ["Data"],
+    },
+    "furto_veiculo_sportal": {
+        "Território": ["Regiões", "Regioes"],
+        "AIS": ["AISNova"],
+        "Latitude": ["Lat"],
+        "Longitude": ["Long", "Lon"],
+        "Data": ["data"],
+        "data": ["Data"],
+    },
+    "furto_veiculo_sip": {
+        "Regiões": ["Território", "Territorio", "Regioes"],
+        "AISNova": ["AIS"],
+        "Data": ["data"],
+        "Latitude": ["Lat"],
+        "Longitude": ["Long", "Lon"],
+        "Nivel_Geocodificacao": ["Nível_Geocodificação", "Nivel Geocodificacao"],
+    },
 }
 
 
@@ -219,15 +277,6 @@ def normalizar_nome_arquivo(nome: str) -> str:
     return texto
 
 
-def normalizar_chave_coluna(nome: str) -> str:
-    texto = str(nome or "").strip()
-    texto = unicodedata.normalize("NFKD", texto)
-    texto = "".join(c for c in texto if not unicodedata.combining(c))
-    texto = texto.upper()
-    texto = re.sub(r"\s+", " ", texto).strip()
-    return texto
-
-
 def identificar_indicador_por_nome(nome_arquivo: str) -> IndicadorDef | None:
     nome_norm = normalizar_nome_arquivo(nome_arquivo)
 
@@ -273,44 +322,75 @@ def obter_colunas_do_consolidado(arquivo_consolidado_upload) -> list[str]:
     return list(df_base.columns)
 
 
-def renomear_colunas_equivalentes_para_base(
+def normalizar_rotulo_coluna(nome: str) -> str:
+    texto = str(nome or "").strip()
+    texto = unicodedata.normalize("NFKD", texto)
+    texto = "".join(c for c in texto if not unicodedata.combining(c))
+    texto = texto.casefold()
+    texto = re.sub(r"\s+", " ", texto).strip()
+    return texto
+
+
+def renomear_colunas_por_equivalencia(
     df_resultado: pd.DataFrame,
+    indicador: IndicadorDef,
     colunas_consolidado: list[str],
 ) -> pd.DataFrame:
-    df = df_resultado.copy()
+    df_ajustado = df_resultado.copy()
+    equivalencias = MAPEAMENTO_EQUIVALENCIAS_POR_INDICADOR.get(indicador.chave, {})
 
-    mapa_colunas_resultado = {
-        normalizar_chave_coluna(coluna): coluna for coluna in df.columns
+    if not equivalencias:
+        return df_ajustado
+
+    colunas_atuais_normalizadas = {
+        normalizar_rotulo_coluna(coluna): coluna for coluna in df_ajustado.columns
     }
-    mapa_colunas_consolidado = {
-        normalizar_chave_coluna(coluna): coluna for coluna in colunas_consolidado
+    colunas_base_normalizadas = {
+        normalizar_rotulo_coluna(coluna): coluna for coluna in colunas_consolidado
     }
 
     renomeacoes: dict[str, str] = {}
 
-    for chave_base_norm, coluna_base_real in mapa_colunas_consolidado.items():
-        if coluna_base_real in df.columns:
+    for destino, origens_possiveis in equivalencias.items():
+        destino_normalizado = normalizar_rotulo_coluna(destino)
+        coluna_destino_real = colunas_base_normalizadas.get(destino_normalizado)
+
+        if not coluna_destino_real:
             continue
 
-        equivalentes = MAPEAMENTO_EQUIVALENCIAS_GLOBAIS.get(chave_base_norm, [])
-        for equivalente in equivalentes:
-            coluna_origem = mapa_colunas_resultado.get(normalizar_chave_coluna(equivalente))
-            if coluna_origem and coluna_origem not in renomeacoes:
-                renomeacoes[coluna_origem] = coluna_base_real
-                break
+        if coluna_destino_real in df_ajustado.columns:
+            continue
+
+        for origem in origens_possiveis:
+            origem_normalizada = normalizar_rotulo_coluna(origem)
+            coluna_origem_real = colunas_atuais_normalizadas.get(origem_normalizada)
+
+            if not coluna_origem_real:
+                continue
+
+            if coluna_origem_real == coluna_destino_real:
+                continue
+
+            if coluna_origem_real in renomeacoes:
+                continue
+
+            renomeacoes[coluna_origem_real] = coluna_destino_real
+            break
 
     if renomeacoes:
-        df = df.rename(columns=renomeacoes)
+        df_ajustado = df_ajustado.rename(columns=renomeacoes)
 
-    return df
+    return df_ajustado
 
 
 def alinhar_resultado_ao_consolidado(
     df_resultado: pd.DataFrame,
+    indicador: IndicadorDef,
     colunas_consolidado: list[str],
 ) -> pd.DataFrame:
-    df_ajustado = renomear_colunas_equivalentes_para_base(
+    df_ajustado = renomear_colunas_por_equivalencia(
         df_resultado=df_resultado,
+        indicador=indicador,
         colunas_consolidado=colunas_consolidado,
     )
 
@@ -372,7 +452,11 @@ def executar_modulo(
         )
 
     colunas_consolidado = obter_colunas_do_consolidado(arquivo_consolidado_upload)
-    df_final = alinhar_resultado_ao_consolidado(df_final, colunas_consolidado)
+    df_final = alinhar_resultado_ao_consolidado(
+        df_resultado=df_final,
+        indicador=indicador,
+        colunas_consolidado=colunas_consolidado,
+    )
 
     arquivo_saida = gerar_excel_em_memoria(df_final, sheet_name=indicador.titulo[:31])
 
