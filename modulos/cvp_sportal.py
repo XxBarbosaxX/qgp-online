@@ -224,18 +224,27 @@ def interface_cvp_sportal() -> None:
             padding: 1rem 1.1rem;
             margin-bottom: 0.75rem;
             border: 1px solid rgba(148, 163, 184, 0.30);
-            background: #020617;
+            background: linear-gradient(180deg, rgba(2, 44, 34, 0.95), rgba(2, 26, 23, 0.95));
         }
         .cvp-sportal-card-header {
             font-weight: 700;
-            font-size: 0.98rem;
-            margin-bottom: 0.35rem;
+            font-size: 1rem;
+            margin-bottom: 0.45rem;
             color: rgba(248, 250, 252, 0.98);
         }
         .cvp-sportal-card-desc {
             font-size: 0.84rem;
-            color: rgba(226, 232, 240, 0.82);
-            margin-bottom: 0.2rem;
+            color: rgba(226, 232, 240, 0.86);
+            margin-bottom: 0.15rem;
+            line-height: 1.6;
+        }
+        .cvp-sportal-list {
+            margin: 0.7rem 0 0 0;
+            padding-left: 1.2rem;
+            color: rgba(226, 232, 240, 0.92);
+        }
+        .cvp-sportal-list li {
+            margin-bottom: 0.35rem;
         }
         .cvp-sportal-file-card {
             border-radius: 0.75rem;
@@ -273,9 +282,29 @@ def interface_cvp_sportal() -> None:
         unsafe_allow_html=True,
     )
 
-    st.markdown("## CVP Sportal")
     st.caption(
         "Atualização da base de Crimes Violentos contra o Patrimônio com dados do sistema SPORTAL."
+    )
+
+    st.markdown(
+        """
+        <div class="cvp-sportal-card">
+            <div class="cvp-sportal-card-header">Processamento de CVP SPORTAL</div>
+            <div class="cvp-sportal-card-desc">
+                Envie a base histórica e o complemento SPORTAL para atualizar a base consolidada do indicador
+                CVP no padrão do QGP Online, com validação de coordenadas, conversão geográfica automática,
+                filtro temporal por DataHora e padronização final da estrutura.
+            </div>
+            <ul class="cvp-sportal-list">
+                <li>Seleção automática da aba correta do arquivo complementar.</li>
+                <li>Validação e exclusão de coordenadas inválidas antes do processamento.</li>
+                <li>Conversão automática das coordenadas para WGS84 quando necessário.</li>
+                <li>Inclusão apenas de registros posteriores à última DataHora da base.</li>
+                <li>Geração do arquivo final consolidado para download.</li>
+            </ul>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
     st.markdown(
