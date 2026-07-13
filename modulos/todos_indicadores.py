@@ -8,7 +8,8 @@ Estratégia de estabilidade:
 - executa um indicador por vez;
 - preserva exatamente a estrutura de colunas do arquivo consolidado de cada indicador;
 - não permite colunas extras no resultado final;
-- aplica equivalências de colunas específicas por indicador.
+- aplica equivalências de colunas específicas por indicador;
+- evita duplicidade de colunas após compatibilização.
 """
 
 from __future__ import annotations
@@ -331,6 +332,32 @@ def normalizar_rotulo_coluna(nome: str) -> str:
     return texto
 
 
+def consolidar_colunas_duplicadas(df: pd.DataFrame) -> pd.DataFrame:
+    if df.columns.is_unique:
+        return df
+
+    df_resultado = pd.DataFrame(index=df.index)
+    colunas_ja_processadas: set[str] = set()
+
+    for coluna in df.columns:
+        if coluna in colunas_ja_processadas:
+            continue
+
+        posicoes = [i for i, nome in enumerate(df.columns) if nome == coluna]
+        if len(posicoes) == 1:
+            df_resultado[coluna] = df.iloc[:, posicoes[0]]
+        else:
+            serie_final = df.iloc[:, posicoes[0]].copy()
+            for posicao in posicoes[1:]:
+                serie_extra = df.iloc[:, posicao]
+                serie_final = serie_final.combine_first(serie_extra)
+            df_resultado[coluna] = serie_final
+
+        colunas_ja_processadas.add(coluna)
+
+    return df_resultado
+
+
 def renomear_colunas_por_equivalencia(
     df_resultado: pd.DataFrame,
     indicador: IndicadorDef,
@@ -340,7 +367,7 @@ def renomear_colunas_por_equivalencia(
     equivalencias = MAPEAMENTO_EQUIVALENCIAS_POR_INDICADOR.get(indicador.chave, {})
 
     if not equivalencias:
-        return df_ajustado
+        return consolidar_colunas_duplicadas(df_ajustado)
 
     colunas_atuais_normalizadas = {
         normalizar_rotulo_coluna(coluna): coluna for coluna in df_ajustado.columns
@@ -356,9 +383,6 @@ def renomear_colunas_por_equivalencia(
         coluna_destino_real = colunas_base_normalizadas.get(destino_normalizado)
 
         if not coluna_destino_real:
-            continue
-
-        if coluna_destino_real in df_ajustado.columns:
             continue
 
         for origem in origens_possiveis:
@@ -380,6 +404,7 @@ def renomear_colunas_por_equivalencia(
     if renomeacoes:
         df_ajustado = df_ajustado.rename(columns=renomeacoes)
 
+    df_ajustado = consolidar_colunas_duplicadas(df_ajustado)
     return df_ajustado
 
 
