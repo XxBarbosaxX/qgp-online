@@ -570,7 +570,7 @@ def mostrar_amostra_segura(
     if df_preview.columns.duplicated().any():
         df_preview = df_preview.loc[:, ~df_preview.columns.duplicated()]
 
-    st.dataframe(df_preview.head(n))
+    st.dataframe(df_preview.head(n), use_container_width=True)
 
 
 def gerar_excel_em_memoria(df: pd.DataFrame) -> bytes:
@@ -580,6 +580,47 @@ def gerar_excel_em_memoria(df: pd.DataFrame) -> bytes:
         df.to_excel(writer, index=False, sheet_name="DESLOCAMENTO_FORCADO")
     buffer.seek(0)
     return buffer.getvalue()
+
+
+def _render_resumo_deslocamento(resumo: dict) -> None:
+    """Renderiza o resumo do processamento."""
+    st.markdown(
+        """
+        <div class="deslocamento-card">
+            <div class="deslocamento-card-header">Resultado do processamento</div>
+            <div class="deslocamento-card-desc">
+                O processamento foi concluído com sucesso. Abaixo estão os principais indicadores da execução.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.success("Processamento finalizado com sucesso.")
+    st.caption(resumo.get("situacao", "Processamento concluído."))
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Registros adicionados", resumo.get("adicionados", 0))
+    with col2:
+        st.metric("Total final", resumo.get("total_final", 0))
+    with col3:
+        st.metric(
+            "Coordenadas inválidas removidas",
+            resumo.get("removidos_coord_invalidas", 0),
+        )
+
+    col4, col5 = st.columns(2)
+    with col4:
+        st.info(f"**Aba arquivo 01:** {resumo.get('aba_arquivo_01', '-')}")
+    with col5:
+        st.info(f"**Aba arquivo 02:** {resumo.get('aba_arquivo_02', '-')}")
+
+    st.info(
+        f"**Última Data/Hora da base:** {resumo.get('ultima_datahora_base', '-')} | "
+        f"**Removidos por filtro temporal:** {resumo.get('removidos_por_datahora', 0)}"
+    )
+    st.info(f"**Modo de tratamento das coordenadas:** {resumo.get('modo_coordenadas', '-')}")
 
 
 def processar_deslocamento_forcado(arquivo_01, arquivo_02):
@@ -873,22 +914,145 @@ def render() -> None:
     """Renderiza a interface principal do módulo."""
     _init_state()
 
-    st.subheader("Deslocamento Forcado")
-    st.write(
-        "Envie a base historica e o arquivo complementar para atualizar a base com novos registros."
+    st.markdown(
+        """
+        <style>
+        .deslocamento-card {
+            border-radius: 0.85rem;
+            padding: 1rem 1.1rem;
+            margin-bottom: 0.75rem;
+            border: 1px solid rgba(148, 163, 184, 0.30);
+            background: linear-gradient(180deg, rgba(2, 44, 34, 0.95), rgba(2, 26, 23, 0.95));
+        }
+        .deslocamento-card-header {
+            font-weight: 700;
+            font-size: 1rem;
+            margin-bottom: 0.45rem;
+            color: rgba(248, 250, 252, 0.98);
+        }
+        .deslocamento-card-desc {
+            font-size: 0.84rem;
+            color: rgba(226, 232, 240, 0.86);
+            margin-bottom: 0.15rem;
+            line-height: 1.6;
+        }
+        .deslocamento-list {
+            margin: 0.7rem 0 0 0;
+            padding-left: 1.2rem;
+            color: rgba(226, 232, 240, 0.92);
+        }
+        .deslocamento-list li {
+            margin-bottom: 0.35rem;
+        }
+        .deslocamento-file-card {
+            border-radius: 0.75rem;
+            padding: 0.75rem 0.85rem;
+            background: rgba(15, 23, 42, 0.92);
+            border: 1px solid rgba(148, 163, 184, 0.20);
+            margin-top: 0.4rem;
+            margin-bottom: 0.45rem;
+        }
+        .deslocamento-file-title {
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: rgba(248, 250, 252, 0.98);
+            margin-bottom: 0.2rem;
+        }
+        .deslocamento-file-desc {
+            font-size: 0.78rem;
+            color: rgba(148, 163, 184, 0.95);
+        }
+        .element-container:has(#deslocamento-download-marker) + div button {
+            background: linear-gradient(135deg, #ea580c, #f97316) !important;
+            border-color: rgba(248, 250, 252, 0.15) !important;
+            color: #fff7ed !important;
+            font-weight: 700 !important;
+        }
+        .element-container:has(#deslocamento-download-marker) + div button:hover {
+            background: linear-gradient(135deg, #c2410c, #ea580c) !important;
+        }
+        .element-container:has(#deslocamento-download-marker) + div button p {
+            color: #fff7ed !important;
+            font-weight: 700 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
     )
 
-    arquivo_01 = st.file_uploader(
-        "Arquivo 01 - Base historica de Deslocamento Forcado",
-        type=["xlsx", "xls"],
-        key="deslocamento_upload_01",
+    st.caption(
+        "Atualização da base de Deslocamento Forçado com validação temporal, tratamento de coordenadas e consolidação no padrão do QGP Online."
     )
 
-    arquivo_02 = st.file_uploader(
-        "Arquivo 02 - Complemento de Deslocamento Forcado",
-        type=["xlsx", "xls"],
-        key="deslocamento_upload_02",
+    st.markdown(
+        """
+        <div class="deslocamento-card">
+            <div class="deslocamento-card-header">Processamento de Deslocamento Forçado</div>
+            <div class="deslocamento-card-desc">
+                Envie a base histórica e o arquivo complementar para atualizar o indicador de Deslocamento Forçado,
+                com seleção automática da aba mais adequada, validação de coordenadas, normalização estrutural e
+                inclusão apenas de registros posteriores à referência temporal já existente na base.
+            </div>
+            <ul class="deslocamento-list">
+                <li>Seleção automática das abas mais adequadas para base e complemento.</li>
+                <li>Preenchimento de colunas equivalentes e padronização do esquema da base.</li>
+                <li>Validação de coordenadas e reprojeção automática para WGS84 quando necessário.</li>
+                <li>Filtro temporal para incluir somente registros posteriores à última Data/Hora válida.</li>
+                <li>Geração do arquivo final consolidado para download.</li>
+            </ul>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
+
+    st.markdown(
+        """
+        <div class="deslocamento-card">
+            <div class="deslocamento-card-header">Entrada de arquivos</div>
+            <div class="deslocamento-card-desc">
+                Envie a base histórica consolidada e o arquivo complementar. O sistema irá validar a estrutura,
+                preparar as coordenadas finais e consolidar apenas os registros elegíveis para atualização.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown(
+            """
+            <div class="deslocamento-file-card">
+                <div class="deslocamento-file-title">Arquivo 01</div>
+                <div class="deslocamento-file-desc">Base histórica consolidada de Deslocamento Forçado.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        arquivo_01 = st.file_uploader(
+            "Arquivo 01 - Base historica de Deslocamento Forcado",
+            type=["xlsx", "xls"],
+            key="deslocamento_upload_01",
+            label_visibility="collapsed",
+        )
+
+    with col2:
+        st.markdown(
+            """
+            <div class="deslocamento-file-card">
+                <div class="deslocamento-file-title">Arquivo 02</div>
+                <div class="deslocamento-file-desc">Arquivo complementar para atualização do indicador.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        arquivo_02 = st.file_uploader(
+            "Arquivo 02 - Complemento de Deslocamento Forcado",
+            type=["xlsx", "xls"],
+            key="deslocamento_upload_02",
+            label_visibility="collapsed",
+        )
 
     if arquivo_01 is not None:
         arquivo_01.seek(0)
@@ -905,7 +1069,15 @@ def render() -> None:
         and st.session_state.deslocamento_arquivo_02_bytes is not None
     )
 
-    if st.button("Processar Deslocamento Forcado", type="primary", disabled=not pode_processar):
+    processar = st.button(
+        "Processar Deslocamento Forcado",
+        type="primary",
+        disabled=not pode_processar,
+        use_container_width=True,
+        key="processar_deslocamento_forcado",
+    )
+
+    if processar:
         try:
             arquivo_01_buffer = BytesIO(st.session_state.deslocamento_arquivo_01_bytes)
             arquivo_02_buffer = BytesIO(st.session_state.deslocamento_arquivo_02_bytes)
@@ -924,36 +1096,29 @@ def render() -> None:
         and st.session_state.deslocamento_resumo is not None
     ):
         resumo = st.session_state.deslocamento_resumo
-
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Novos registros adicionados", resumo.get("adicionados", 0))
-        c2.metric("Total final da base", resumo.get("total_final", 0))
-        c3.metric(
-            "Coordenadas invalidas removidas",
-            resumo.get("removidos_coord_invalidas", 0),
-        )
-
-        st.info(
-            f"Aba Arquivo 01: {resumo.get('aba_arquivo_01', '-')} | "
-            f"Aba Arquivo 02: {resumo.get('aba_arquivo_02', '-')}"
-        )
-
-        st.info(
-            f"Ultima Data/Hora da base: {resumo.get('ultima_datahora_base', '-')} | "
-            f"Removidos por filtro temporal: {resumo.get('removidos_por_datahora', 0)}"
-        )
-
-        st.info(f"Modo de tratamento das coordenadas: {resumo.get('modo_coordenadas', '-')}")
-
-        st.caption(resumo.get("situacao", "Processamento concluido."))
+        _render_resumo_deslocamento(resumo)
 
         if st.session_state.deslocamento_resultado_excel is not None:
+            st.markdown(
+                """
+                <div class="deslocamento-card">
+                    <div class="deslocamento-card-header">Download</div>
+                    <div class="deslocamento-card-desc">
+                        Baixe o arquivo final processado no padrão oficial do módulo Deslocamento Forçado.
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            st.markdown('<span id="deslocamento-download-marker"></span>', unsafe_allow_html=True)
             st.download_button(
                 label="Baixar arquivo final",
                 data=st.session_state.deslocamento_resultado_excel,
                 file_name=NOME_ARQUIVO_FINAL,
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 key="deslocamento_download_final",
+                use_container_width=True,
             )
 
 
