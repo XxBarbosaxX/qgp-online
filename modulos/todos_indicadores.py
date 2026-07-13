@@ -6,8 +6,7 @@ Estratégia de estabilidade:
 - usa apenas objetos de upload do ciclo atual;
 - mantém em sessão somente estado leve;
 - executa um indicador por vez;
-- preserva o resultado original devolvido por cada módulo;
-- evita padronização destrutiva de colunas.
+- preserva a estrutura de colunas do consolidado.
 """
 
 from __future__ import annotations
@@ -173,7 +172,7 @@ def carregar_processador(indicador: IndicadorDef) -> Callable:
 
         if funcao is None or not callable(funcao):
             raise AttributeError(
-                f"Função '{indicador.funcao}' não encontrada em 'modulos.{indicador.modulo}'."
+                f"Função '{indicador.funcao}' não encontrada em '{indicador.modulo}'."
             )
 
         return funcao
@@ -188,7 +187,7 @@ def normalizar_nome_arquivo(nome: str) -> str:
     texto = unicodedata.normalize("NFKD", texto)
     texto = "".join(c for c in texto if not unicodedata.combining(c))
     texto = texto.upper()
-    texto = re.sub(r"\.(XLSX|XLS)$", "", texto)
+    texto = texto.replace(".XLSX", "").replace(".XLS", "")
     texto = texto.replace("_", " ")
     texto = texto.replace("-", " ")
     texto = re.sub(r"\s+", " ", texto).strip()
@@ -203,10 +202,7 @@ def identificar_indicador_por_nome(nome_arquivo: str) -> IndicadorDef | None:
         if all(token in nome_norm for token in indicador.tokens_obrigatorios):
             candidatos.append(indicador)
 
-    if len(candidatos) == 1:
-        return candidatos[0]
-
-    return None
+    return candidatos[0] if len(candidatos) == 1 else None
 
 
 def montar_arquivos_para_modulo(
@@ -229,11 +225,31 @@ def montar_arquivos_para_modulo(
     return arquivo_01, arquivo_02
 
 
+def obter_colunas_do_consolidado(arquivo_consolidado_upload) -> list[str]:
+    buffer = io.BytesIO(arquivo_consolidado_upload.getvalue())
+    buffer.seek(0)
+
+    with pd.ExcelFile(buffer) as excel:
+        if not excel.sheet_names:
+            raise ValueError("O arquivo consolidado não possui abas disponíveis.")
+
+        primeira_aba = excel.sheet_names[0]
+        df_base = pd.read_excel(excel, sheet_name=primeira_aba, nrows=0)
+
+    return list(df_base.columns)
+
+
+def alinhar_resultado_ao_consolidado(
+    df_resultado: pd.DataFrame,
+    colunas_consolidado: list[str],
+) -> pd.DataFrame:
+    return df_resultado.reindex(columns=colunas_consolidado)
+
+
 def gerar_excel_em_memoria(df: pd.DataFrame, sheet_name: str = "Dados") -> bytes:
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name=sheet_name[:31])
-    output.seek(0)
     return output.getvalue()
 
 
@@ -246,32 +262,6 @@ def empacotar_resultados_zip(resultados: list[dict]) -> bytes:
             zf.writestr(item["nome_saida"], item["arquivo_bytes"])
     buffer.seek(0)
     return buffer.getvalue()
-
-
-def extrair_dataframe_e_resumo(retorno, indicador: IndicadorDef) -> tuple[pd.DataFrame, dict]:
-    resumo: dict = {}
-    df_final: pd.DataFrame | None = None
-
-    if isinstance(retorno, pd.DataFrame):
-        df_final = retorno
-    elif isinstance(retorno, tuple):
-        if len(retorno) >= 1 and isinstance(retorno[0], pd.DataFrame):
-            df_final = retorno[0]
-
-        if len(retorno) > 1 and isinstance(retorno[1], dict):
-            resumo = retorno[1]
-
-    if df_final is None:
-        raise ValueError(
-            f"O módulo '{indicador.chave}' retornou tipo inválido: {type(retorno).__name__}"
-        )
-
-    if not isinstance(df_final, pd.DataFrame):
-        raise ValueError(
-            f"O módulo '{indicador.chave}' não retornou um DataFrame válido."
-        )
-
-    return df_final.copy(), resumo
 
 
 def executar_modulo(
@@ -288,7 +278,25 @@ def executar_modulo(
     )
 
     retorno = processador(arquivo_01, arquivo_02)
-    df_final, resumo = extrair_dataframe_e_resumo(retorno, indicador)
+
+    resumo: dict = {}
+    df_final: pd.DataFrame | None = None
+
+    if isinstance(retorno, pd.DataFrame):
+        df_final = retorno
+    elif isinstance(retorno, tuple):
+        if len(retorno) >= 1 and isinstance(retorno[0], pd.DataFrame):
+            df_final = retorno[0]
+            if len(retorno) > 1 and isinstance(retorno[1], dict):
+                resumo = retorno[1]
+
+    if df_final is None:
+        raise ValueError(
+            f"O módulo '{indicador.chave}' retornou tipo inválido: {type(retorno).__name__}"
+        )
+
+    colunas_consolidado = obter_colunas_do_consolidado(arquivo_consolidado_upload)
+    df_final = alinhar_resultado_ao_consolidado(df_final, colunas_consolidado)
 
     arquivo_saida = gerar_excel_em_memoria(df_final, sheet_name=indicador.titulo[:31])
 
@@ -302,41 +310,8 @@ def executar_modulo(
         "arquivo_bytes": arquivo_saida,
         "resumo": resumo,
         "linhas_saida": len(df_final),
-        "colunas_saida": list(df_final.columns),
         "erro": None,
     }
-
-
-def construir_linhas_validacao(
-    uploads_identificados: dict[str, object],
-) -> tuple[list[dict], list[str]]:
-    linhas_validacao: list[dict] = []
-    pendentes: list[str] = []
-
-    for indicador in INDICADORES:
-        arquivo = uploads_identificados.get(indicador.chave)
-
-        if arquivo:
-            linhas_validacao.append(
-                {
-                    "Ordem": indicador.ordem,
-                    "Indicador": indicador.titulo,
-                    "Status": "OK",
-                    "Arquivo consolidado": arquivo.name,
-                }
-            )
-        else:
-            pendentes.append(indicador.titulo)
-            linhas_validacao.append(
-                {
-                    "Ordem": indicador.ordem,
-                    "Indicador": indicador.titulo,
-                    "Status": "PENDENTE",
-                    "Arquivo consolidado": "-",
-                }
-            )
-
-    return linhas_validacao, pendentes
 
 
 def render() -> None:
@@ -345,7 +320,7 @@ def render() -> None:
     st.title("Todos os Indicadores")
     st.caption(
         "Envie 1 arquivo mestre com várias abas e os 10 arquivos consolidados. "
-        "O sistema executa um indicador por vez, preservando o resultado final de cada módulo."
+        "O sistema executa um indicador por vez."
     )
 
     arquivo_mestre = st.file_uploader(
@@ -382,7 +357,32 @@ def render() -> None:
 
     st.subheader("Validação dos arquivos")
 
-    linhas_validacao, pendentes = construir_linhas_validacao(uploads_identificados)
+    linhas_validacao: list[dict] = []
+    pendentes: list[str] = []
+
+    for indicador in INDICADORES:
+        arquivo = uploads_identificados.get(indicador.chave)
+
+        if arquivo:
+            linhas_validacao.append(
+                {
+                    "Ordem": indicador.ordem,
+                    "Indicador": indicador.titulo,
+                    "Status": "OK",
+                    "Arquivo consolidado": arquivo.name,
+                }
+            )
+        else:
+            pendentes.append(indicador.titulo)
+            linhas_validacao.append(
+                {
+                    "Ordem": indicador.ordem,
+                    "Indicador": indicador.titulo,
+                    "Status": "PENDENTE",
+                    "Arquivo consolidado": "-",
+                }
+            )
+
     st.dataframe(pd.DataFrame(linhas_validacao), use_container_width=True, hide_index=True)
 
     if arquivo_mestre is not None:
@@ -421,7 +421,7 @@ def render() -> None:
 
     pode_executar = (
         mestre_ok
-        and total_ok == total_indicadores
+        and total_ok == 10
         and not conflitos
         and not desconhecidos
         and indice_atual < total_indicadores
@@ -469,11 +469,6 @@ def render() -> None:
                 st.session_state.todos_indicadores_resultados.append(resultado)
                 st.success(f"Indicador {indicador.titulo} concluído com sucesso.")
 
-                resumo = resultado.get("resumo") or {}
-                if resumo:
-                    with st.expander(f"Resumo técnico - {indicador.titulo}", expanded=False):
-                        st.json(resumo)
-
             except Exception as exc:  # noqa: BLE001
                 st.error(f"Erro no indicador {indicador.ordem} - {indicador.titulo}: {exc}")
                 with st.expander("Detalhes do erro"):
@@ -490,7 +485,6 @@ def render() -> None:
                         "arquivo_bytes": None,
                         "resumo": None,
                         "linhas_saida": None,
-                        "colunas_saida": None,
                         "erro": str(exc),
                     }
                 )
@@ -499,7 +493,6 @@ def render() -> None:
             progresso_global.progress(
                 st.session_state.todos_indicadores_fila_indice_atual / total_indicadores
             )
-            st.rerun()
 
     resultados = st.session_state.todos_indicadores_resultados
     if not resultados:
@@ -526,12 +519,6 @@ def render() -> None:
     for item in sorted(resultados, key=lambda x: x["ordem"]):
         if item["status"] != "sucesso":
             continue
-
-        with st.expander(f"Detalhes do resultado - {item['titulo']}", expanded=False):
-            colunas_saida = item.get("colunas_saida") or []
-            st.write(f"Total de colunas no arquivo final: {len(colunas_saida)}")
-            if colunas_saida:
-                st.code("\n".join(colunas_saida))
 
         st.download_button(
             label=f"Baixar {item['titulo']}",
