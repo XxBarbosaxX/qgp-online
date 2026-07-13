@@ -397,7 +397,7 @@ def consolidar_colunas_duplicadas(df: pd.DataFrame) -> pd.DataFrame:
         else:
             serie_final = df.iloc[:, posicoes[0]].copy()
             for posicao in posicoes[1:]:
-                serie_extra = df.iloc[:, posicao]
+                serie_extra = df.iloc[:, posicoes[1]]
                 serie_final = serie_final.combine_first(serie_extra)
             df_resultado[coluna] = serie_final
 
@@ -644,7 +644,7 @@ def render() -> None:
             padding: 0.9rem 1.1rem;
             margin-bottom: 0.7rem;
             border: 1px solid rgba(148, 163, 184, 0.35);
-            background: linear-gradient(to bottom right, rgba(15, 23, 42, 0.92), rgba(15, 23, 42, 0.96));
+            background: #020617;
         }
         .qgp-card-header {
             font-weight: 700;
@@ -656,46 +656,80 @@ def render() -> None:
             color: rgba(226, 232, 240, 0.85);
             margin-bottom: 0.3rem;
         }
-        .qgp-pill {
+        .qgp-status-list {
+            margin-top: 0.35rem;
+        }
+        .qgp-status-row {
+            display: grid;
+            grid-template-columns: 0.5fr 2fr 0.7fr 2.4fr;
+            gap: 0.5rem;
+            padding: 0.45rem 0.65rem;
+            border-radius: 0.55rem;
+            background: rgba(15, 23, 42, 0.95);
+            align-items: center;
+            margin-bottom: 0.25rem;
+        }
+        .qgp-status-row-header {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: rgba(148, 163, 184, 0.95);
+            background: rgba(15, 23, 42, 0.4);
+        }
+        .qgp-status-cell {
+            font-size: 0.8rem;
+            color: rgba(226, 232, 240, 0.96);
+        }
+        .qgp-status-indicador {
+            font-weight: 600;
+        }
+        .qgp-status-arquivo {
+            font-size: 0.78rem;
+            color: rgba(148, 163, 184, 0.95);
+        }
+        .qgp-badge-status {
             display: inline-flex;
             align-items: center;
-            padding: 0.15rem 0.55rem;
-            border-radius: 999px;
-            font-size: 0.72rem;
+            gap: 0.35rem;
+            font-size: 0.78rem;
             font-weight: 600;
-            margin-right: 0.3rem;
-            margin-top: 0.2rem;
-            border: 1px solid rgba(148, 163, 184, 0.55);
-            color: rgba(226, 232, 240, 0.95);
-            background: rgba(15, 23, 42, 0.9);
         }
-        .qgp-pill-ok {
-            border-color: rgba(52, 211, 153, 0.8);
-            background: rgba(4, 120, 87, 0.25);
-            color: #bbf7d0;
+        .qgp-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 999px;
+            border: 2px solid transparent;
         }
-        .qgp-pill-warn {
-            border-color: rgba(245, 158, 11, 0.9);
-            background: rgba(120, 53, 15, 0.4);
-            color: #fed7aa;
+        .qgp-dot-ok {
+            background: #22c55e;
+            border-color: rgba(22, 163, 74, 0.9);
         }
-        .qgp-pill-error {
-            border-color: rgba(248, 113, 113, 0.9);
-            background: rgba(127, 29, 29, 0.45);
-            color: #fee2e2;
+        .qgp-dot-warn {
+            background: #facc15;
+            border-color: rgba(234, 179, 8, 0.9);
+        }
+        .qgp-dot-error {
+            background: #ef4444;
+            border-color: rgba(220, 38, 38, 0.9);
+        }
+        .qgp-x-status {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 14px;
+            height: 14px;
+            border-radius: 999px;
+            border: 2px solid #ef4444;
+            color: #fecaca;
+            font-size: 0.65rem;
+            font-weight: 800;
         }
         .qgp-download-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
             gap: 0.35rem;
             margin-top: 0.35rem;
-        }
-        .qgp-download-btn {
-            font-size: 0.8rem !important;
-            padding: 0.3rem 0.4rem !important;
-        }
-        .qgp-zip-container {
-            margin-top: 0.6rem;
         }
         .qgp-zip-btn button[kind="primary"] {
             background: linear-gradient(135deg, #ea580c, #f97316) !important;
@@ -716,7 +750,7 @@ def render() -> None:
         <div class="qgp-card">
             <div class="qgp-card-header">Entrada de arquivos</div>
             <div class="qgp-card-desc">
-                Envie o arquivo de Indicadores e os 10 arquivos consolidados
+                Envie o arquivo mestre com todas as abas necessárias e os 10 arquivos consolidados
                 oficiais do QGP. A fila será executada automaticamente após o primeiro clique em
                 <strong>Executar</strong>.
             </div>
@@ -729,7 +763,7 @@ def render() -> None:
 
     with col_upload_mestre:
         arquivo_mestre = st.file_uploader(
-            "Arquivo m- Indicadores Criminais (várias abas)",
+            "Arquivo mestre (várias abas)",
             type=["xlsx", "xls"],
             accept_multiple_files=False,
             key="todos_indicadores_upload_mestre_widget",
@@ -764,7 +798,12 @@ def render() -> None:
     st.markdown(
         """
         <div class="qgp-card">
-            <div class="qgp-card-header">Status dos arquivos</div>
+            <div class="qgp-card-header">Status dos indicadores</div>
+            <div class="qgp-card-desc">
+                Cada linha representa um indicador esperado pelo QGP. O círculo verde indica que o
+                consolidado correspondente foi identificado corretamente, o amarelo indica pendência
+                de envio e o X vermelho sinaliza conflito ou erro na identificação.
+            </div>
         """,
         unsafe_allow_html=True,
     )
@@ -775,68 +814,78 @@ def render() -> None:
     for indicador in INDICADORES:
         arquivo = uploads_identificados.get(indicador.chave)
 
-        if arquivo:
-            linhas_validacao.append(
-                {
-                    "Ordem": indicador.ordem,
-                    "Indicador": indicador.titulo,
-                    "Status": "OK",
-                    "Consolidado": arquivo.name,
-                }
-            )
-        else:
+        status = "OK" if arquivo else "PENDENTE"
+        linhas_validacao.append(
+            {
+                "ordem": indicador.ordem,
+                "indicador": indicador.titulo,
+                "status": status,
+                "consolidado": arquivo.name if arquivo else "-",
+            }
+        )
+        if not arquivo:
             pendentes.append(indicador.titulo)
-            linhas_validacao.append(
-                {
-                    "Ordem": indicador.ordem,
-                    "Indicador": indicador.titulo,
-                    "Status": "PENDENTE",
-                    "Consolidado": "-",
-                }
-            )
 
-    df_validacao = pd.DataFrame(linhas_validacao)
-    st.dataframe(
-        df_validacao,
-        use_container_width=True,
-        hide_index=True,
+    # Renderização customizada em forma de lista com ícones
+    st.markdown('<div class="qgp-status-list">', unsafe_allow_html=True)
+
+    # Cabeçalho
+    st.markdown(
+        """
+        <div class="qgp-status-row qgp-status-row-header">
+            <div class="qgp-status-cell">Ordem</div>
+            <div class="qgp-status-cell">Indicador</div>
+            <div class="qgp-status-cell">Status</div>
+            <div class="qgp-status-cell">Consolidado</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-    badges_html = []
+    for linha in sorted(linhas_validacao, key=lambda x: x["ordem"]):
+        ordem = linha["ordem"]
+        indicador_titulo = linha["indicador"]
+        status = linha["status"]
+        consolidado = linha["consolidado"]
 
-    if arquivo_mestre is not None:
-        badges_html.append(
-            f'<span class="qgp-pill qgp-pill-ok">Mestre: {arquivo_mestre.name}</span>'
+        if status == "OK":
+            status_html = """
+                <div class="qgp-badge-status">
+                    <span class="qgp-dot qgp-dot-ok"></span>
+                    <span>Carregado</span>
+                </div>
+            """
+        else:
+            # Pendente = amarelo; se houver conflito associado, vamos sinalizar com X vermelho
+            tem_conflito = any(indicador_titulo in msg for msg in conflitos)
+            if tem_conflito:
+                status_html = """
+                    <div class="qgp-badge-status">
+                        <span class="qgp-x-status">X</span>
+                        <span>Conflito</span>
+                    </div>
+                """
+            else:
+                status_html = """
+                    <div class="qgp-badge-status">
+                        <span class="qgp-dot qgp-dot-warn"></span>
+                        <span>Aguardando</span>
+                    </div>
+                """
+
+        st.markdown(
+            f"""
+            <div class="qgp-status-row">
+                <div class="qgp-status-cell">{ordem}</div>
+                <div class="qgp-status-cell qgp-status-indicador">{indicador_titulo}</div>
+                <div class="qgp-status-cell">{status_html}</div>
+                <div class="qgp-status-cell qgp-status-arquivo">{consolidado}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
-    else:
-        badges_html.append('<span class="qgp-pill qgp-pill-warn">Mestre não carregado</span>')
 
-    total_ok = len(uploads_identificados)
-    if total_ok == 10:
-        badges_html.append('<span class="qgp-pill qgp-pill-ok">10 consolidados identificados</span>')
-    else:
-        badges_html.append(
-            f'<span class="qgp-pill qgp-pill-warn">{total_ok}/10 consolidados identificados</span>'
-        )
-
-    if desconhecidos:
-        badges_html.append(
-            '<span class="qgp-pill qgp-pill-warn">Arquivos não reconhecidos</span>'
-        )
-    if conflitos:
-        badges_html.append(
-            '<span class="qgp-pill qgp-pill-error">Conflitos de indicadores</span>'
-        )
-
-    if pendentes:
-        badges_html.append(
-            '<span class="qgp-pill">Indicadores pendentes na fila</span>'
-        )
-
-    if badges_html:
-        st.markdown("".join(badges_html), unsafe_allow_html=True)
-
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("</div></div>", unsafe_allow_html=True)
 
     if desconhecidos:
         st.warning("Arquivos não reconhecidos: " + " | ".join(desconhecidos))
@@ -848,6 +897,7 @@ def render() -> None:
         st.info("Indicadores sem arquivo consolidado: " + " | ".join(pendentes))
 
     mestre_ok = arquivo_mestre is not None
+    total_ok = len(uploads_identificados)
     total_indicadores = len(INDICADORES)
     indice_atual = st.session_state.todos_indicadores_fila_indice_atual
 
@@ -910,7 +960,6 @@ def render() -> None:
         limpar_estado()
         st.rerun()
 
-    # Clique manual inicial ativa auto-run
     if executar and pode_executar:
         st.session_state.todos_indicadores_auto_run = True
         _executar_indicador_atual(
@@ -921,7 +970,6 @@ def render() -> None:
         )
         st.rerun()
 
-    # Execução automática enquanto houver itens na fila e auto_run estiver ativo
     auto_run = st.session_state.todos_indicadores_auto_run
     if auto_run and pode_executar and not executar:
         _executar_indicador_atual(
@@ -966,8 +1014,7 @@ def render() -> None:
         <div class="qgp-card">
             <div class="qgp-card-header">Downloads individuais</div>
             <div class="qgp-card-desc">
-                Baixe os arquivos consolidados de cada indicador processado. Os botões abaixo foram
-                compactados para facilitar a visualização em grade.
+                Baixe os arquivos consolidados de cada indicador processado.
             </div>
         """,
         unsafe_allow_html=True,
@@ -979,7 +1026,6 @@ def render() -> None:
         st.markdown('<div class="qgp-download-grid">', unsafe_allow_html=True)
 
         for item in sorted(resultados_sucesso, key=lambda x: x["ordem"]):
-            # Cada botão vai ocupar uma célula da grade; o st.download_button fica “pequeno”
             st.download_button(
                 label=f"Baixar {item['titulo']}",
                 data=item["arquivo_bytes"],
@@ -1001,7 +1047,7 @@ def render() -> None:
 
         st.markdown(
             """
-            <div class="qgp-card qgp-zip-container">
+            <div class="qgp-card">
                 <div class="qgp-card-header">Pacote consolidado (ZIP)</div>
                 <div class="qgp-card-desc">
                     Gere um pacote único com todos os indicadores concluídos. Ideal para arquivamento
@@ -1012,10 +1058,9 @@ def render() -> None:
             unsafe_allow_html=True,
         )
 
-        # Caixa de ZIP em destaque laranja
         zip_container = st.container()
         with zip_container:
-            zip_btn = st.download_button(
+            st.download_button(
                 label="Baixar ZIP com indicadores concluídos",
                 data=zip_bytes,
                 file_name=nome_zip,
@@ -1024,7 +1069,6 @@ def render() -> None:
                 use_container_width=True,
             )
 
-        # Wrap do botão de ZIP para aplicar classe de destaque
         st.markdown(
             """
             <script>
