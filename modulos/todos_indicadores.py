@@ -3,7 +3,7 @@ Estratégia de estabilidade:
 - evita armazenar bytes grandes em st.session_state;
 - usa apenas objetos de upload do ciclo atual;
 - mantém em sessão somente estado leve;
-- executa um indicador por vez;
+- executa um indicador por vez, com opção de autoexecução;
 - preserva exatamente a estrutura de colunas do arquivo consolidado de cada indicador;
 - não permite colunas extras no resultado final, exceto colunas críticas ausentes no consolidado;
 - aplica equivalências de colunas específicas por indicador;
@@ -297,7 +297,7 @@ def carregar_processador(indicador: IndicadorDef) -> Callable:
             )
 
         return funcao
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         raise ImportError(
             f"Falha ao carregar o processador do indicador '{indicador.titulo}': {exc}"
         ) from exc
@@ -624,7 +624,7 @@ def _executar_indicador_atual(
         if total_indicadores > 0
         else 0.0
     )
-    st.session_state["todos_indicadores_ultimo_progresso"] = progresso  # opcional, para debug
+    st.session_state["todos_indicadores_ultimo_progresso"] = progresso
 
 
 def render() -> None:
@@ -632,23 +632,116 @@ def render() -> None:
 
     st.title("Todos os Indicadores")
     st.caption(
-        "Envie 1 arquivo mestre com várias abas e os 10 arquivos consolidados. "
-        "O sistema executa um indicador por vez, podendo seguir automaticamente até o fim da fila."
+        "Execução integrada dos indicadores do QGP Online a partir de um arquivo mestre e dos "
+        "consolidados atuais, com alinhamento automático e fila de processamento."
     )
 
-    arquivo_mestre = st.file_uploader(
-        "Arquivo mestre com várias abas (base geral)",
-        type=["xlsx", "xls"],
-        accept_multiple_files=False,
-        key="todos_indicadores_upload_mestre_widget",
+    st.markdown(
+        """
+        <style>
+        .qgp-card {
+            border-radius: 0.8rem;
+            padding: 0.9rem 1.1rem;
+            margin-bottom: 0.7rem;
+            border: 1px solid rgba(148, 163, 184, 0.35);
+            background: linear-gradient(to bottom right, rgba(15, 23, 42, 0.92), rgba(15, 23, 42, 0.96));
+        }
+        .qgp-card-header {
+            font-weight: 700;
+            font-size: 0.95rem;
+            margin-bottom: 0.35rem;
+        }
+        .qgp-card-desc {
+            font-size: 0.84rem;
+            color: rgba(226, 232, 240, 0.85);
+            margin-bottom: 0.3rem;
+        }
+        .qgp-pill {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.15rem 0.55rem;
+            border-radius: 999px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            margin-right: 0.3rem;
+            margin-top: 0.2rem;
+            border: 1px solid rgba(148, 163, 184, 0.55);
+            color: rgba(226, 232, 240, 0.95);
+            background: rgba(15, 23, 42, 0.9);
+        }
+        .qgp-pill-ok {
+            border-color: rgba(52, 211, 153, 0.8);
+            background: rgba(4, 120, 87, 0.25);
+            color: #bbf7d0;
+        }
+        .qgp-pill-warn {
+            border-color: rgba(245, 158, 11, 0.9);
+            background: rgba(120, 53, 15, 0.4);
+            color: #fed7aa;
+        }
+        .qgp-pill-error {
+            border-color: rgba(248, 113, 113, 0.9);
+            background: rgba(127, 29, 29, 0.45);
+            color: #fee2e2;
+        }
+        .qgp-download-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+            gap: 0.35rem;
+            margin-top: 0.35rem;
+        }
+        .qgp-download-btn {
+            font-size: 0.8rem !important;
+            padding: 0.3rem 0.4rem !important;
+        }
+        .qgp-zip-container {
+            margin-top: 0.6rem;
+        }
+        .qgp-zip-btn button[kind="primary"] {
+            background: linear-gradient(135deg, #ea580c, #f97316) !important;
+            border-color: rgba(248, 250, 252, 0.06) !important;
+            color: #fefce8 !important;
+            font-weight: 700 !important;
+        }
+        .qgp-zip-btn button[kind="primary"]:hover {
+            background: linear-gradient(135deg, #c2410c, #ea580c) !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
     )
 
-    arquivos_consolidados = st.file_uploader(
-        "Selecione os 10 arquivos consolidados",
-        type=["xlsx", "xls"],
-        accept_multiple_files=True,
-        key="todos_indicadores_upload_widget",
+    st.markdown(
+        """
+        <div class="qgp-card">
+            <div class="qgp-card-header">Entrada de arquivos</div>
+            <div class="qgp-card-desc">
+                Envie o arquivo mestre com todas as abas necessárias e os 10 arquivos consolidados
+                oficiais do QGP. A fila será executada automaticamente após o primeiro clique em
+                <strong>Executar</strong>.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
+
+    col_upload_mestre, col_upload_consolidados = st.columns([1.1, 1.9])
+
+    with col_upload_mestre:
+        arquivo_mestre = st.file_uploader(
+            "Arquivo mestre (várias abas)",
+            type=["xlsx", "xls"],
+            accept_multiple_files=False,
+            key="todos_indicadores_upload_mestre_widget",
+        )
+
+    with col_upload_consolidados:
+        arquivos_consolidados = st.file_uploader(
+            "Arquivos consolidados (10 arquivos)",
+            type=["xlsx", "xls"],
+            accept_multiple_files=True,
+            key="todos_indicadores_upload_widget",
+        )
 
     uploads_identificados: dict[str, object] = {}
     conflitos: list[str] = []
@@ -668,7 +761,13 @@ def render() -> None:
 
             uploads_identificados[indicador.chave] = arquivo
 
-    st.subheader("Validação dos arquivos")
+    st.markdown(
+        """
+        <div class="qgp-card">
+            <div class="qgp-card-header">Status dos arquivos</div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     linhas_validacao: list[dict] = []
     pendentes: list[str] = []
@@ -682,7 +781,7 @@ def render() -> None:
                     "Ordem": indicador.ordem,
                     "Indicador": indicador.titulo,
                     "Status": "OK",
-                    "Arquivo consolidado": arquivo.name,
+                    "Consolidado": arquivo.name,
                 }
             )
         else:
@@ -692,14 +791,52 @@ def render() -> None:
                     "Ordem": indicador.ordem,
                     "Indicador": indicador.titulo,
                     "Status": "PENDENTE",
-                    "Arquivo consolidado": "-",
+                    "Consolidado": "-",
                 }
             )
 
-    st.dataframe(pd.DataFrame(linhas_validacao), use_container_width=True, hide_index=True)
+    df_validacao = pd.DataFrame(linhas_validacao)
+    st.dataframe(
+        df_validacao,
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    badges_html = []
 
     if arquivo_mestre is not None:
-        st.success(f"Arquivo mestre carregado: {arquivo_mestre.name}")
+        badges_html.append(
+            f'<span class="qgp-pill qgp-pill-ok">Mestre: {arquivo_mestre.name}</span>'
+        )
+    else:
+        badges_html.append('<span class="qgp-pill qgp-pill-warn">Mestre não carregado</span>')
+
+    total_ok = len(uploads_identificados)
+    if total_ok == 10:
+        badges_html.append('<span class="qgp-pill qgp-pill-ok">10 consolidados identificados</span>')
+    else:
+        badges_html.append(
+            f'<span class="qgp-pill qgp-pill-warn">{total_ok}/10 consolidados identificados</span>'
+        )
+
+    if desconhecidos:
+        badges_html.append(
+            '<span class="qgp-pill qgp-pill-warn">Arquivos não reconhecidos</span>'
+        )
+    if conflitos:
+        badges_html.append(
+            '<span class="qgp-pill qgp-pill-error">Conflitos de indicadores</span>'
+        )
+
+    if pendentes:
+        badges_html.append(
+            '<span class="qgp-pill">Indicadores pendentes na fila</span>'
+        )
+
+    if badges_html:
+        st.markdown("".join(badges_html), unsafe_allow_html=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
     if desconhecidos:
         st.warning("Arquivos não reconhecidos: " + " | ".join(desconhecidos))
@@ -710,14 +847,7 @@ def render() -> None:
     if pendentes:
         st.info("Indicadores sem arquivo consolidado: " + " | ".join(pendentes))
 
-    total_ok = len(uploads_identificados)
     mestre_ok = arquivo_mestre is not None
-
-    st.info(
-        f"Arquivo mestre: {'OK' if mestre_ok else 'PENDENTE'} | "
-        f"Arquivos consolididados reconhecidos: {total_ok}/10"
-    )
-
     total_indicadores = len(INDICADORES)
     indice_atual = st.session_state.todos_indicadores_fila_indice_atual
 
@@ -728,10 +858,27 @@ def render() -> None:
     else:
         proximo_titulo = INDICADORES[indice_atual].titulo
 
-    st.write(
-        f"Indicador atual na fila: {min(indice_atual + 1, total_indicadores)}/{total_indicadores} - "
-        f"{proximo_titulo}"
+    progresso_val = (
+        indice_atual / total_indicadores if total_indicadores > 0 else 0.0
     )
+
+    st.markdown(
+        """
+        <div class="qgp-card">
+            <div class="qgp-card-header">Fila de execução</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    col_status, col_prog = st.columns([1.6, 1.4])
+    with col_status:
+        st.write(
+            f"Indicador atual: **{min(indice_atual + 1, total_indicadores)}/{total_indicadores}**"
+        )
+        st.write(f"Próximo na fila: **{proximo_titulo}**")
+
+    with col_prog:
+        st.progress(progresso_val)
 
     pode_executar = (
         mestre_ok
@@ -741,9 +888,9 @@ def render() -> None:
         and indice_atual < total_indicadores
     )
 
-    col1, col2 = st.columns(2)
+    col_exec, col_limpar = st.columns([1.1, 1])
 
-    with col1:
+    with col_exec:
         executar = st.button(
             "Executar",
             type="primary",
@@ -751,22 +898,19 @@ def render() -> None:
             use_container_width=True,
         )
 
-    with col2:
+    with col_limpar:
         limpar = st.button(
             "Limpar seleção e reiniciar fila",
             use_container_width=True,
         )
 
+    st.markdown("</div>", unsafe_allow_html=True)
+
     if limpar:
         limpar_estado()
         st.rerun()
 
-    progresso_val = (
-        indice_atual / total_indicadores if total_indicadores > 0 else 0.0
-    )
-    st.progress(progresso_val)
-
-    # Execução manual (primeiro clique) ativa auto-run
+    # Clique manual inicial ativa auto-run
     if executar and pode_executar:
         st.session_state.todos_indicadores_auto_run = True
         _executar_indicador_atual(
@@ -792,7 +936,13 @@ def render() -> None:
     if not resultados:
         return
 
-    st.subheader("Resumo da fila e resultados")
+    st.markdown(
+        """
+        <div class="qgp-card">
+            <div class="qgp-card-header">Resumo da fila</div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     tabela_resumo: list[dict] = []
     for item in sorted(resultados, key=lambda x: x["ordem"]):
@@ -801,40 +951,92 @@ def render() -> None:
                 "Ordem": item["ordem"],
                 "Indicador": item["titulo"],
                 "Status": item["status"].upper(),
-                "Arquivo de entrada": item["nome_entrada"],
-                "Arquivo de saída": item["nome_saida"] or "-",
-                "Linhas saída": item["linhas_saida"] if item["linhas_saida"] is not None else "-",
+                "Entrada": item["nome_entrada"],
+                "Saída": item["nome_saida"] or "-",
+                "Linhas": item["linhas_saida"] if item["linhas_saida"] is not None else "-",
                 "Erro": item["erro"] or "-",
             }
         )
 
     st.dataframe(pd.DataFrame(tabela_resumo), use_container_width=True, hide_index=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    for item in sorted(resultados, key=lambda x: x["ordem"]):
-        if item["status"] != "sucesso":
-            continue
-
-        st.download_button(
-            label=f"Baixar {item['titulo']}",
-            data=item["arquivo_bytes"],
-            file_name=item["nome_saida"],
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key=f"download_{item['chave']}",
-            use_container_width=True,
-        )
+    st.markdown(
+        """
+        <div class="qgp-card">
+            <div class="qgp-card-header">Downloads individuais</div>
+            <div class="qgp-card-desc">
+                Baixe os arquivos consolidados de cada indicador processado. Os botões abaixo foram
+                compactados para facilitar a visualização em grade.
+            </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     resultados_sucesso = [item for item in resultados if item["status"] == "sucesso"]
+
+    if resultados_sucesso:
+        st.markdown('<div class="qgp-download-grid">', unsafe_allow_html=True)
+
+        for item in sorted(resultados_sucesso, key=lambda x: x["ordem"]):
+            # Cada botão vai ocupar uma célula da grade; o st.download_button fica “pequeno”
+            st.download_button(
+                label=f"Baixar {item['titulo']}",
+                data=item["arquivo_bytes"],
+                file_name=item["nome_saida"],
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key=f"download_{item['chave']}",
+                use_container_width=True,
+            )
+
+        st.markdown("</div>", unsafe_allow_html=True)
+    else:
+        st.info("Nenhum indicador concluído com sucesso para download individual.")
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
     if resultados_sucesso:
         zip_bytes = empacotar_resultados_zip(resultados_sucesso)
         nome_zip = f"todos-indicadores-qgp-{datetime.now().strftime('%Y%m%d-%H%M%S')}.zip"
 
-        st.download_button(
-            label="Baixar ZIP com indicadores já concluídos",
-            data=zip_bytes,
-            file_name=nome_zip,
-            mime="application/zip",
-            key="download_zip_todos_indicadores",
-            use_container_width=True,
+        st.markdown(
+            """
+            <div class="qgp-card qgp-zip-container">
+                <div class="qgp-card-header">Pacote consolidado (ZIP)</div>
+                <div class="qgp-card-desc">
+                    Gere um pacote único com todos os indicadores concluídos. Ideal para arquivamento
+                    e envio por e-mail.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        # Caixa de ZIP em destaque laranja
+        zip_container = st.container()
+        with zip_container:
+            zip_btn = st.download_button(
+                label="Baixar ZIP com indicadores concluídos",
+                data=zip_bytes,
+                file_name=nome_zip,
+                mime="application/zip",
+                key="download_zip_todos_indicadores",
+                use_container_width=True,
+            )
+
+        # Wrap do botão de ZIP para aplicar classe de destaque
+        st.markdown(
+            """
+            <script>
+            const btns = window.parent.document.querySelectorAll('button[kind="primary"]');
+            btns.forEach((btn) => {
+                if (btn.innerText.includes('ZIP com indicadores concluídos')) {
+                    btn.parentElement.classList.add('qgp-zip-btn');
+                }
+            });
+            </script>
+            """,
+            unsafe_allow_html=True,
         )
 
 
