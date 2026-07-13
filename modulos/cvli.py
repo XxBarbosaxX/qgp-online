@@ -241,18 +241,27 @@ def interface_cvli() -> None:
             padding: 1rem 1.1rem;
             margin-bottom: 0.75rem;
             border: 1px solid rgba(148, 163, 184, 0.30);
-            background: #020617;
+            background: linear-gradient(180deg, rgba(2, 44, 34, 0.95), rgba(2, 26, 23, 0.95));
         }
         .cvli-card-header {
             font-weight: 700;
-            font-size: 0.98rem;
-            margin-bottom: 0.35rem;
+            font-size: 1rem;
+            margin-bottom: 0.45rem;
             color: rgba(248, 250, 252, 0.98);
         }
         .cvli-card-desc {
             font-size: 0.84rem;
-            color: rgba(226, 232, 240, 0.82);
-            margin-bottom: 0.2rem;
+            color: rgba(226, 232, 240, 0.86);
+            margin-bottom: 0.15rem;
+            line-height: 1.6;
+        }
+        .cvli-list {
+            margin: 0.7rem 0 0 0;
+            padding-left: 1.2rem;
+            color: rgba(226, 232, 240, 0.92);
+        }
+        .cvli-list li {
+            margin-bottom: 0.35rem;
         }
         .cvli-file-card {
             border-radius: 0.75rem;
@@ -290,9 +299,29 @@ def interface_cvli() -> None:
         unsafe_allow_html=True,
     )
 
-    st.markdown("## CVLI")
     st.caption(
         "Atualização da base de Crimes Violentos Letais Intencionais com padronização visual do QGP Online."
+    )
+
+    st.markdown(
+        """
+        <div class="cvli-card">
+            <div class="cvli-card-header">Processamento de CVLI</div>
+            <div class="cvli-card-desc">
+                Envie a base histórica e o arquivo de atualização para consolidar o indicador CVLI no padrão do
+                QGP Online, com identificação automática da aba correta, alinhamento estrutural das colunas e
+                substituição dos períodos já existentes quando necessário.
+            </div>
+            <ul class="cvli-list">
+                <li>Seleção automática da aba correta do arquivo de atualização.</li>
+                <li>Padronização e alinhamento das colunas com a base histórica.</li>
+                <li>Conversão e validação da coluna de data para processamento seguro.</li>
+                <li>Substituição automática de meses já existentes na base quando houver sobreposição.</li>
+                <li>Geração do arquivo final consolidado para download.</li>
+            </ul>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
     st.markdown(
