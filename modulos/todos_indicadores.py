@@ -656,12 +656,13 @@ def render() -> None:
             color: rgba(226, 232, 240, 0.85);
             margin-bottom: 0.3rem;
         }
-        .qgp-status-list {
+        .qgp-status-list,
+        .qgp-summary-list {
             margin-top: 0.35rem;
         }
-        .qgp-status-row {
+        .qgp-status-row,
+        .qgp-summary-row {
             display: grid;
-            grid-template-columns: 0.5fr 2fr 0.9fr 2.4fr;
             gap: 0.5rem;
             padding: 0.45rem 0.65rem;
             border-radius: 0.55rem;
@@ -669,7 +670,14 @@ def render() -> None:
             align-items: center;
             margin-bottom: 0.25rem;
         }
-        .qgp-status-row-header {
+        .qgp-status-row {
+            grid-template-columns: 0.5fr 2fr 0.9fr 2.4fr;
+        }
+        .qgp-summary-row {
+            grid-template-columns: 0.5fr 2fr 1.1fr 2fr 2fr 0.7fr 1.6fr;
+        }
+        .qgp-status-row-header,
+        .qgp-summary-row-header {
             font-size: 0.75rem;
             font-weight: 600;
             text-transform: uppercase;
@@ -677,16 +685,23 @@ def render() -> None:
             color: rgba(148, 163, 184, 0.95);
             background: rgba(15, 23, 42, 0.4);
         }
-        .qgp-status-cell {
+        .qgp-status-cell,
+        .qgp-summary-cell {
             font-size: 0.8rem;
             color: rgba(226, 232, 240, 0.96);
         }
-        .qgp-status-indicador {
+        .qgp-status-indicador,
+        .qgp-summary-indicador {
             font-weight: 600;
         }
-        .qgp-status-arquivo {
+        .qgp-status-arquivo,
+        .qgp-summary-arquivo {
             font-size: 0.78rem;
             color: rgba(148, 163, 184, 0.95);
+        }
+        .qgp-summary-erro {
+            font-size: 0.75rem;
+            color: rgba(248, 113, 113, 0.9);
         }
         .qgp-badge-status {
             display: inline-flex;
@@ -725,12 +740,6 @@ def render() -> None:
             font-size: 0.65rem;
             font-weight: 800;
         }
-        .qgp-download-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-            gap: 0.35rem;
-            margin-top: 0.35rem;
-        }
         .qgp-zip-btn button[kind="primary"] {
             background: linear-gradient(135deg, #ea580c, #f97316) !important;
             border-color: rgba(248, 250, 252, 0.06) !important;
@@ -739,42 +748,6 @@ def render() -> None:
         }
         .qgp-zip-btn button[kind="primary"]:hover {
             background: linear-gradient(135deg, #c2410c, #ea580c) !important;
-        }
-        .qgp-summary-list {
-            margin-top: 0.35rem;
-        }
-        .qgp-summary-row {
-            display: grid;
-            grid-template-columns: 0.5fr 2fr 1.1fr 2fr 2fr 0.7fr 1.6fr;
-            gap: 0.5rem;
-            padding: 0.45rem 0.65rem;
-            border-radius: 0.55rem;
-            background: rgba(15, 23, 42, 0.95);
-            align-items: center;
-            margin-bottom: 0.25rem;
-        }
-        .qgp-summary-row-header {
-            font-size: 0.75rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            color: rgba(148, 163, 184, 0.95);
-            background: rgba(15, 23, 42, 0.4);
-        }
-        .qgp-summary-cell {
-            font-size: 0.8rem;
-            color: rgba(226, 232, 240, 0.96);
-        }
-        .qgp-summary-indicador {
-            font-weight: 600;
-        }
-        .qgp-summary-arquivo {
-            font-size: 0.78rem;
-            color: rgba(148, 163, 184, 0.95);
-        }
-        .qgp-summary-erro {
-            font-size: 0.75rem;
-            color: rgba(248, 113, 113, 0.9);
         }
         </style>
         """,
@@ -1017,7 +990,6 @@ def render() -> None:
     if not resultados:
         return
 
-    # RESUMO EM VISUAL PROFISSIONAL (tira aparência de planilha)
     st.markdown(
         """
         <div class="qgp-card">
@@ -1088,40 +1060,8 @@ def render() -> None:
 
     st.markdown("</div></div>", unsafe_allow_html=True)
 
-    # DOWNLOADS INDIVIDUAIS
-    st.markdown(
-        """
-        <div class="qgp-card">
-            <div class="qgp-card-header">Downloads individuais</div>
-            <div class="qgp-card-desc">
-                Baixe os arquivos consolidados de cada indicador processado.
-            </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
+    # BOTÃO ÚNICO DE ZIP EM DESTAQUE (removidos downloads individuais)
     resultados_sucesso = [item for item in resultados if item["status"] == "sucesso"]
-
-    if resultados_sucesso:
-        st.markdown('<div class="qgp-download-grid">', unsafe_allow_html=True)
-
-        for item in sorted(resultados_sucesso, key=lambda x: x["ordem"]):
-            st.download_button(
-                label=f"Baixar {item['titulo']}",
-                data=item["arquivo_bytes"],
-                file_name=item["nome_saida"],
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key=f"download_{item['chave']}",
-                use_container_width=True,
-            )
-
-        st.markdown("</div>", unsafe_allow_html=True)
-    else:
-        st.info("Nenhum indicador concluído com sucesso para download individual.")
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    # ZIP consolidado em destaque
     if resultados_sucesso:
         zip_bytes = empacotar_resultados_zip(resultados_sucesso)
         nome_zip = f"todos-indicadores-qgp-{datetime.now().strftime('%Y%m%d-%H%M%S')}.zip"
@@ -1132,7 +1072,7 @@ def render() -> None:
                 <div class="qgp-card-header">Pacote consolidado (ZIP)</div>
                 <div class="qgp-card-desc">
                     Gere um pacote único com todos os indicadores concluídos. Ideal para arquivamento
-                    e envio por e-mail.
+                    e envio por e-mail. Este é o único ponto de download para esta execução.
                 </div>
             </div>
             """,
@@ -1163,6 +1103,8 @@ def render() -> None:
             """,
             unsafe_allow_html=True,
         )
+    else:
+        st.info("Nenhum indicador concluído com sucesso para gerar o pacote ZIP.")
 
 
 interface_todos_indicadores = render
