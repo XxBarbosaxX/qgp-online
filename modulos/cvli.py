@@ -193,63 +193,278 @@ def processar_cvli(arquivo_01, arquivo_02):
 
 def interface_cvli() -> None:
     """Interface Streamlit para processamento CVLI."""
-    st.markdown("### Processamento CVLI")
-    st.markdown("Atualize a base de Crimes Violentos Letais Intencionais")
+    st.markdown(
+        """
+        <style>
+        .cvli-card {
+            border-radius: 0.85rem;
+            padding: 1rem 1.1rem;
+            margin-bottom: 0.75rem;
+            border: 1px solid rgba(148, 163, 184, 0.30);
+            background: #020617;
+        }
+        .cvli-card-header {
+            font-weight: 700;
+            font-size: 0.98rem;
+            margin-bottom: 0.35rem;
+            color: rgba(248, 250, 252, 0.98);
+        }
+        .cvli-card-desc {
+            font-size: 0.84rem;
+            color: rgba(226, 232, 240, 0.82);
+            margin-bottom: 0.2rem;
+        }
+        .cvli-summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 0.55rem;
+            margin-top: 0.55rem;
+        }
+        .cvli-summary-item {
+            border-radius: 0.7rem;
+            padding: 0.75rem 0.8rem;
+            background: rgba(15, 23, 42, 0.92);
+            border: 1px solid rgba(148, 163, 184, 0.20);
+        }
+        .cvli-summary-label {
+            font-size: 0.74rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: rgba(148, 163, 184, 0.95);
+            margin-bottom: 0.2rem;
+        }
+        .cvli-summary-value {
+            font-size: 1rem;
+            font-weight: 700;
+            color: rgba(248, 250, 252, 0.98);
+        }
+        .cvli-inline-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: rgba(226, 232, 240, 0.96);
+        }
+        .cvli-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 999px;
+            border: 2px solid transparent;
+        }
+        .cvli-dot-ok {
+            background: #22c55e;
+            border-color: rgba(22, 163, 74, 0.9);
+        }
+        .cvli-dot-warn {
+            background: #facc15;
+            border-color: rgba(234, 179, 8, 0.9);
+        }
+        .cvli-file-card {
+            border-radius: 0.75rem;
+            padding: 0.75rem 0.85rem;
+            background: rgba(15, 23, 42, 0.92);
+            border: 1px solid rgba(148, 163, 184, 0.20);
+            margin-top: 0.4rem;
+        }
+        .cvli-file-title {
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: rgba(248, 250, 252, 0.98);
+            margin-bottom: 0.2rem;
+        }
+        .cvli-file-desc {
+            font-size: 0.78rem;
+            color: rgba(148, 163, 184, 0.95);
+        }
+
+        /* Destaque laranja exclusivo do botão de download */
+        .element-container:has(#cvli-download-marker) + div button {
+            background: linear-gradient(135deg, #ea580c, #f97316) !important;
+            border-color: rgba(248, 250, 252, 0.15) !important;
+            color: #fff7ed !important;
+            font-weight: 700 !important;
+        }
+        .element-container:has(#cvli-download-marker) + div button:hover {
+            background: linear-gradient(135deg, #c2410c, #ea580c) !important;
+        }
+        .element-container:has(#cvli-download-marker) + div button p {
+            color: #fff7ed !important;
+            font-weight: 700 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("## CVLI")
+    st.caption("Atualização da base de Crimes Violentos Letais Intencionais com padronização visual do QGP Online.")
+
+    st.markdown(
+        """
+        <div class="cvli-card">
+            <div class="cvli-card-header">Entrada de arquivos</div>
+            <div class="cvli-card-desc">
+                Envie a base atual do CVLI e o arquivo de atualização. O sistema irá identificar a aba correta,
+                alinhar as colunas e substituir automaticamente os meses já existentes quando necessário.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     col1, col2 = st.columns(2)
 
     with col1:
+        st.markdown(
+            """
+            <div class="cvli-file-card">
+                <div class="cvli-file-title">Arquivo 01</div>
+                <div class="cvli-file-desc">Base consolidada atual do CVLI.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
         arquivo01 = st.file_uploader(
-            "📁 Arquivo 01 - Base de dados CVLI",
+            "Arquivo 01 - Base de dados CVLI",
             type=["xlsx", "xls"],
             key="cvli_arquivo01",
+            label_visibility="collapsed",
         )
 
     with col2:
+        st.markdown(
+            """
+            <div class="cvli-file-card">
+                <div class="cvli-file-title">Arquivo 02</div>
+                <div class="cvli-file-desc">Arquivo complementar para atualização do indicador.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
         arquivo02 = st.file_uploader(
-            "📁 Arquivo 02 - Dados complementares",
+            "Arquivo 02 - Dados complementares",
             type=["xlsx", "xls"],
             key="cvli_arquivo02",
+            label_visibility="collapsed",
         )
 
-    salvar_drive = st.checkbox("💾 Salvar no Google Drive", key="cvli_drive")
+    st.markdown(
+        """
+        <div class="cvli-card">
+            <div class="cvli-card-header">Opções</div>
+            <div class="cvli-card-desc">
+                Configure ações adicionais para a saída do processamento.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    if st.button("▶️ Processar CVLI", key="processar_cvli"):
-        if not arquivo01:
-            st.error("⚠️ Envie o Arquivo 01 (Base de dados)")
-            return
+    salvar_drive = st.checkbox("Salvar no Google Drive", key="cvli_drive")
 
-        if not arquivo02:
-            st.error("⚠️ Envie o Arquivo 02 (Dados complementares)")
-            return
+    pode_processar = arquivo01 is not None and arquivo02 is not None
+    processar = st.button(
+        "Processar CVLI",
+        key="processar_cvli",
+        type="primary",
+        use_container_width=True,
+        disabled=not pode_processar,
+    )
 
-        with st.spinner("Processando dados CVLI..."):
-            processador = ProcessadorCVLI()
-            resultado = processador.processar(arquivo01, arquivo02)
+    if not processar:
+        return
 
-        if resultado["sucesso"]:
-            acao = "atualizado" if resultado["houve_substituicao"] else "complementado"
+    if not arquivo01:
+        st.error("Envie o Arquivo 01 (Base de dados).")
+        return
 
-            st.success("✅ Processo Finalizado!")
-            st.info(f"📊 **{resultado['adicionados']}** CVLIs novos adicionados")
-            st.info(f"📈 Total de **{resultado['total_final']}** CVLIs na base")
-            st.info(f"🔄 Arquivo {acao} com sucesso")
-            st.info(
-                f"📑 Aba usada no Arquivo 01: {resultado['aba_arquivo_01']} | "
-                f"Aba usada no Arquivo 02: {resultado['aba_arquivo_02']}"
-            )
+    if not arquivo02:
+        st.error("Envie o Arquivo 02 (Dados complementares).")
+        return
 
-            output = gerar_arquivo_excel(resultado["df_final"], sheet_name="CVLI")
+    with st.spinner("Processando dados CVLI..."):
+        processador = ProcessadorCVLI()
+        resultado = processador.processar(arquivo01, arquivo02)
 
-            st.download_button(
-                label="💾 Download do arquivo processado",
-                data=output,
-                file_name=resultado["nome_arquivo"],
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="download_cvli",
-            )
+    if not resultado["sucesso"]:
+        st.error(f"Erro no processamento: {resultado['erro']}")
+        return
 
-            if salvar_drive:
-                st.warning("🔄 Integração com Google Drive em desenvolvimento")
-        else:
-            st.error(f"❌ Erro no processamento: {resultado['erro']}")
+    acao = "Atualização com substituição de período" if resultado["houve_substituicao"] else "Complementação sem substituição"
+
+    st.markdown(
+        """
+        <div class="cvli-card">
+            <div class="cvli-card-header">Resultado do processamento</div>
+            <div class="cvli-card-desc">
+                O processamento foi concluído com sucesso. Abaixo estão os principais indicadores da execução.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.success("Processo finalizado com sucesso.")
+
+    st.markdown(
+        f"""
+        <div class="cvli-card">
+            <div class="cvli-inline-status">
+                <span class="cvli-dot cvli-dot-ok"></span>
+                <span>{acao}</span>
+            </div>
+
+            <div class="cvli-summary-grid">
+                <div class="cvli-summary-item">
+                    <div class="cvli-summary-label">Registros adicionados</div>
+                    <div class="cvli-summary-value">{resultado['adicionados']}</div>
+                </div>
+                <div class="cvli-summary-item">
+                    <div class="cvli-summary-label">Total final</div>
+                    <div class="cvli-summary-value">{resultado['total_final']}</div>
+                </div>
+                <div class="cvli-summary-item">
+                    <div class="cvli-summary-label">Total inicial</div>
+                    <div class="cvli-summary-value">{resultado['total_inicial']}</div>
+                </div>
+                <div class="cvli-summary-item">
+                    <div class="cvli-summary-label">Aba arquivo 01</div>
+                    <div class="cvli-summary-value">{resultado['aba_arquivo_01']}</div>
+                </div>
+                <div class="cvli-summary-item">
+                    <div class="cvli-summary-label">Aba arquivo 02</div>
+                    <div class="cvli-summary-value">{resultado['aba_arquivo_02']}</div>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    output = gerar_arquivo_excel(resultado["df_final"], sheet_name="CVLI")
+
+    st.markdown(
+        """
+        <div class="cvli-card">
+            <div class="cvli-card-header">Download</div>
+            <div class="cvli-card-desc">
+                Baixe o arquivo final processado no padrão oficial do módulo CVLI.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown('<span id="cvli-download-marker"></span>', unsafe_allow_html=True)
+    st.download_button(
+        label="Baixar arquivo processado",
+        data=output,
+        file_name=resultado["nome_arquivo"],
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        key="download_cvli",
+        use_container_width=True,
+    )
+
+    if salvar_drive:
+        st.warning("Integração com Google Drive em desenvolvimento.")
