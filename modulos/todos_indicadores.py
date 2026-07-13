@@ -740,13 +740,16 @@ def render() -> None:
             font-size: 0.65rem;
             font-weight: 800;
         }
-        .qgp-zip-btn button[kind="primary"] {
+
+        /* Destaque alaranjado exclusivo para o botão ZIP.
+           A técnica usa um span com id e seleciona o botão logo após esse span. [web:41][web:45] */
+        .element-container:has(#qgp-zip-marker) + div button[kind="primary"] {
             background: linear-gradient(135deg, #ea580c, #f97316) !important;
-            border-color: rgba(248, 250, 252, 0.06) !important;
+            border-color: rgba(248, 250, 252, 0.15) !important;
             color: #fefce8 !important;
             font-weight: 700 !important;
         }
-        .qgp-zip-btn button[kind="primary"]:hover {
+        .element-container:has(#qgp-zip-marker) + div button[kind="primary"]:hover {
             background: linear-gradient(135deg, #c2410c, #ea580c) !important;
         }
         </style>
@@ -1060,7 +1063,6 @@ def render() -> None:
 
     st.markdown("</div></div>", unsafe_allow_html=True)
 
-    # BOTÃO ÚNICO DE ZIP EM DESTAQUE (removidos downloads individuais)
     resultados_sucesso = [item for item in resultados if item["status"] == "sucesso"]
     if resultados_sucesso:
         zip_bytes = empacotar_resultados_zip(resultados_sucesso)
@@ -1079,29 +1081,17 @@ def render() -> None:
             unsafe_allow_html=True,
         )
 
-        zip_container = st.container()
-        with zip_container:
-            st.download_button(
-                label="Baixar ZIP com indicadores concluídos",
-                data=zip_bytes,
-                file_name=nome_zip,
-                mime="application/zip",
-                key="download_zip_todos_indicadores",
-                use_container_width=True,
-            )
+        # span marcador para CSS selecionar somente este botão
+        st.markdown('<span id="qgp-zip-marker"></span>', unsafe_allow_html=True)
 
-        st.markdown(
-            """
-            <script>
-            const btns = window.parent.document.querySelectorAll('button[kind="primary"]');
-            btns.forEach((btn) => {
-                if (btn.innerText.includes('ZIP com indicadores concluídos')) {
-                    btn.parentElement.classList.add('qgp-zip-btn');
-                }
-            });
-            </script>
-            """,
-            unsafe_allow_html=True,
+        st.download_button(
+            label="Baixar ZIP com indicadores concluídos",
+            data=zip_bytes,
+            file_name=nome_zip,
+            mime="application/zip",
+            key="download_zip_todos_indicadores",
+            use_container_width=True,
+            type="primary",
         )
     else:
         st.info("Nenhum indicador concluído com sucesso para gerar o pacote ZIP.")
