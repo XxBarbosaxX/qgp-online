@@ -237,6 +237,7 @@ def interface_cvli() -> None:
             font-size: 1rem;
             font-weight: 700;
             color: rgba(248, 250, 252, 0.98);
+            word-break: break-word;
         }
         .cvli-inline-status {
             display: inline-flex;
@@ -256,16 +257,13 @@ def interface_cvli() -> None:
             background: #22c55e;
             border-color: rgba(22, 163, 74, 0.9);
         }
-        .cvli-dot-warn {
-            background: #facc15;
-            border-color: rgba(234, 179, 8, 0.9);
-        }
         .cvli-file-card {
             border-radius: 0.75rem;
             padding: 0.75rem 0.85rem;
             background: rgba(15, 23, 42, 0.92);
             border: 1px solid rgba(148, 163, 184, 0.20);
             margin-top: 0.4rem;
+            margin-bottom: 0.45rem;
         }
         .cvli-file-title {
             font-size: 0.8rem;
@@ -277,8 +275,6 @@ def interface_cvli() -> None:
             font-size: 0.78rem;
             color: rgba(148, 163, 184, 0.95);
         }
-
-        /* Destaque laranja exclusivo do botão de download */
         .element-container:has(#cvli-download-marker) + div button {
             background: linear-gradient(135deg, #ea580c, #f97316) !important;
             border-color: rgba(248, 250, 252, 0.15) !important;
@@ -298,7 +294,9 @@ def interface_cvli() -> None:
     )
 
     st.markdown("## CVLI")
-    st.caption("Atualização da base de Crimes Violentos Letais Intencionais com padronização visual do QGP Online.")
+    st.caption(
+        "Atualização da base de Crimes Violentos Letais Intencionais com padronização visual do QGP Online."
+    )
 
     st.markdown(
         """
@@ -349,20 +347,6 @@ def interface_cvli() -> None:
             label_visibility="collapsed",
         )
 
-    st.markdown(
-        """
-        <div class="cvli-card">
-            <div class="cvli-card-header">Opções</div>
-            <div class="cvli-card-desc">
-                Configure ações adicionais para a saída do processamento.
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    salvar_drive = st.checkbox("Salvar no Google Drive", key="cvli_drive")
-
     pode_processar = arquivo01 is not None and arquivo02 is not None
     processar = st.button(
         "Processar CVLI",
@@ -391,7 +375,11 @@ def interface_cvli() -> None:
         st.error(f"Erro no processamento: {resultado['erro']}")
         return
 
-    acao = "Atualização com substituição de período" if resultado["houve_substituicao"] else "Complementação sem substituição"
+    acao = (
+        "Atualização com substituição de período"
+        if resultado["houve_substituicao"]
+        else "Complementação sem substituição"
+    )
 
     st.markdown(
         """
@@ -465,6 +453,3 @@ def interface_cvli() -> None:
         key="download_cvli",
         use_container_width=True,
     )
-
-    if salvar_drive:
-        st.warning("Integração com Google Drive em desenvolvimento.")
