@@ -633,6 +633,7 @@ def geocodificar_linhas_novas(
         & (df["numero_busca"].fillna("").astype(str).str.strip() == "")
     )
 
+    progresso.empty()
     status.success(f"Geocodificacao concluida. Registros geocodificados: {geocodificados}")
     return df, geocodificados
 
@@ -863,16 +864,156 @@ def _init_state() -> None:
             st.session_state[chave] = valor
 
 
+def _render_resumo_cvp_sip(resumo: dict, df_final: pd.DataFrame) -> None:
+    """Renderiza o resumo do processamento."""
+    st.markdown(
+        """
+        <div class="cvp-sip-card">
+            <div class="cvp-sip-card-header">Resultado do processamento</div>
+            <div class="cvp-sip-card-desc">
+                O processamento foi concluído com sucesso. Abaixo estão os principais indicadores da execução.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.success("Processamento concluído com sucesso.")
+    st.caption(resumo["situacao"])
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Novos registros adicionados", resumo["adicionados"])
+    c2.metric("Total final da base", resumo["total_final"])
+    c3.metric("Registros geocodificados", resumo["geocodificados"])
+
+    c4, c5, c6 = st.columns(3)
+    c4.info(f"**Última Data/Hora base:** {resumo['ultima_datahora_base']}")
+    c5.info(f"**Removidos por filtro temporal:** {resumo['removidos_por_datahora']}")
+    c6.info(f"**Removidos sem geocodificação:** {resumo['removidos_sem_geocodificacao']}")
+
+    c7, c8 = st.columns(2)
+    c7.info(f"**Aba arquivo 01:** {resumo['aba_arquivo_01']}")
+    c8.info(f"**Aba arquivo 02:** {resumo['aba_arquivo_02']}")
+
+    contagens_nivel = resumo.get("contagens_nivel", {})
+    if contagens_nivel:
+        st.markdown(
+            """
+            <div class="cvp-sip-card">
+                <div class="cvp-sip-card-header">Níveis de geocodificação</div>
+                <div class="cvp-sip-card-desc">
+                    Distribuição dos registros conforme o nível de precisão obtido no processo de geocodificação.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        exato_numero = contagens_nivel.get("Exato (Numero)", 0)
+        centroide_rua = contagens_nivel.get("Centroide de Rua", 0)
+        centroide_bairro = contagens_nivel.get("Centroide de Bairro", 0)
+        centroide_cidade = contagens_nivel.get("Centroide de Cidade", 0)
+        nao_encontrado = contagens_nivel.get("Nao Encontrado", 0)
+
+        n1, n2, n3 = st.columns(3)
+        n1.metric("Exato (Número)", exato_numero)
+        n2.metric("Centroide de Rua", centroide_rua)
+        n3.metric("Centroide de Bairro", centroide_bairro)
+
+        n4, n5 = st.columns(2)
+        n4.metric("Centroide de Cidade", centroide_cidade)
+        n5.metric("Não encontrado", nao_encontrado)
+
+    st.markdown(
+        """
+        <div class="cvp-sip-card">
+            <div class="cvp-sip-card-header">Pré-visualização</div>
+            <div class="cvp-sip-card-desc">
+                Visualização inicial dos primeiros registros do arquivo final processado.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.dataframe(df_final.head(50), use_container_width=True)
+
+
 def render() -> None:
     """Renderiza a interface principal do módulo."""
     _init_state()
 
-    st.subheader("CVP (SIP) - Geocodificacao por Endereco")
-    st.write(
-        "Envie a base historica e o complemento SIP para atualizar a base com geocodificacao."
+    st.markdown(
+        """
+        <style>
+        .cvp-sip-card {
+            border-radius: 0.85rem;
+            padding: 1rem 1.1rem;
+            margin-bottom: 0.75rem;
+            border: 1px solid rgba(148, 163, 184, 0.30);
+            background: #020617;
+        }
+        .cvp-sip-card-header {
+            font-weight: 700;
+            font-size: 0.98rem;
+            margin-bottom: 0.35rem;
+            color: rgba(248, 250, 252, 0.98);
+        }
+        .cvp-sip-card-desc {
+            font-size: 0.84rem;
+            color: rgba(226, 232, 240, 0.82);
+            margin-bottom: 0.2rem;
+        }
+        .cvp-sip-file-card {
+            border-radius: 0.75rem;
+            padding: 0.75rem 0.85rem;
+            background: rgba(15, 23, 42, 0.92);
+            border: 1px solid rgba(148, 163, 184, 0.20);
+            margin-top: 0.4rem;
+            margin-bottom: 0.45rem;
+        }
+        .cvp-sip-file-title {
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: rgba(248, 250, 252, 0.98);
+            margin-bottom: 0.2rem;
+        }
+        .cvp-sip-file-desc {
+            font-size: 0.78rem;
+            color: rgba(148, 163, 184, 0.95);
+        }
+        .element-container:has(#cvp-sip-download-marker) + div button {
+            background: linear-gradient(135deg, #ea580c, #f97316) !important;
+            border-color: rgba(248, 250, 252, 0.15) !important;
+            color: #fff7ed !important;
+            font-weight: 700 !important;
+        }
+        .element-container:has(#cvp-sip-download-marker) + div button:hover {
+            background: linear-gradient(135deg, #c2410c, #ea580c) !important;
+        }
+        .element-container:has(#cvp-sip-download-marker) + div button p {
+            color: #fff7ed !important;
+            font-weight: 700 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
     )
 
-    st.caption(f"Base geográfica utilizada na raiz do projeto: {CAMINHO_BASE_ENXUTA}")
+    st.markdown("## CVP SIP")
+    st.caption("Atualização da base CVP com geocodificação por endereço a partir do complemento SIP.")
+
+    st.markdown(
+        f"""
+        <div class="cvp-sip-card">
+            <div class="cvp-sip-card-header">Base geográfica de apoio</div>
+            <div class="cvp-sip-card-desc">
+                Este módulo utiliza a base geográfica auxiliar localizada em <strong>{CAMINHO_BASE_ENXUTA}</strong>
+                para validação e apoio à geocodificação dos registros.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     try:
         base_geo = carregar_base_geografica()
@@ -882,22 +1023,58 @@ def render() -> None:
             )
         else:
             st.warning(
-                f"A base geográfica nao foi carregada. Verifique o arquivo {CAMINHO_BASE_ENXUTA}."
+                f"A base geográfica não foi carregada. Verifique o arquivo {CAMINHO_BASE_ENXUTA}."
             )
     except Exception as exc:
         st.error(f"Erro ao carregar base geográfica: {exc}")
 
-    arquivo_01 = st.file_uploader(
-        "Arquivo 01 - Base historica CVP",
-        type=["xlsx", "xls"],
-        key="cvp_sip_upload_01",
+    st.markdown(
+        """
+        <div class="cvp-sip-card">
+            <div class="cvp-sip-card-header">Entrada de arquivos</div>
+            <div class="cvp-sip-card-desc">
+                Envie a base histórica e o arquivo complementar do SIP para processamento e geocodificação.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-    arquivo_02 = st.file_uploader(
-        "Arquivo 02 - Complemento SIP",
-        type=["xlsx", "xls"],
-        key="cvp_sip_upload_02",
-    )
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown(
+            """
+            <div class="cvp-sip-file-card">
+                <div class="cvp-sip-file-title">Arquivo 01</div>
+                <div class="cvp-sip-file-desc">Base histórica consolidada do CVP.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        arquivo_01 = st.file_uploader(
+            "Arquivo 01 - Base historica CVP",
+            type=["xlsx", "xls"],
+            key="cvp_sip_upload_01",
+            label_visibility="collapsed",
+        )
+
+    with col2:
+        st.markdown(
+            """
+            <div class="cvp-sip-file-card">
+                <div class="cvp-sip-file-title">Arquivo 02</div>
+                <div class="cvp-sip-file-desc">Complemento SIP para atualização e geocodificação.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        arquivo_02 = st.file_uploader(
+            "Arquivo 02 - Complemento SIP",
+            type=["xlsx", "xls"],
+            key="cvp_sip_upload_02",
+            label_visibility="collapsed",
+        )
 
     if arquivo_01 is not None:
         arquivo_01.seek(0)
@@ -909,18 +1086,26 @@ def render() -> None:
         st.session_state.cvp_sip_arquivo_02_bytes = arquivo_02.read()
         st.session_state.cvp_sip_arquivo_02_nome = arquivo_02.name
 
-    if st.session_state.cvp_sip_arquivo_01_nome:
-        st.info(f"Arquivo 01 carregado: {st.session_state.cvp_sip_arquivo_01_nome}")
-
-    if st.session_state.cvp_sip_arquivo_02_nome:
-        st.info(f"Arquivo 02 carregado: {st.session_state.cvp_sip_arquivo_02_nome}")
+    col_status_1, col_status_2 = st.columns(2)
+    with col_status_1:
+        if st.session_state.cvp_sip_arquivo_01_nome:
+            st.info(f"Arquivo 01 carregado: {st.session_state.cvp_sip_arquivo_01_nome}")
+    with col_status_2:
+        if st.session_state.cvp_sip_arquivo_02_nome:
+            st.info(f"Arquivo 02 carregado: {st.session_state.cvp_sip_arquivo_02_nome}")
 
     pode_processar = (
         st.session_state.cvp_sip_arquivo_01_bytes is not None
         and st.session_state.cvp_sip_arquivo_02_bytes is not None
     )
 
-    if st.button("Processar CVP (SIP)", type="primary", disabled=not pode_processar):
+    if st.button(
+        "Processar CVP SIP",
+        type="primary",
+        disabled=not pode_processar,
+        use_container_width=True,
+        key="cvp_sip_processar",
+    ):
         try:
             arquivo_01_buffer = BytesIO(st.session_state.cvp_sip_arquivo_01_bytes)
             arquivo_02_buffer = BytesIO(st.session_state.cvp_sip_arquivo_02_bytes)
@@ -933,8 +1118,6 @@ def render() -> None:
             st.session_state.cvp_sip_resumo = resumo
             st.session_state.cvp_sip_resultado_excel = arquivo_excel_bytes
 
-            st.success("Processamento concluido com sucesso.")
-
         except Exception as exc:
             st.exception(exc)
 
@@ -945,55 +1128,29 @@ def render() -> None:
         df_final = st.session_state.cvp_sip_resultado_df
         resumo = st.session_state.cvp_sip_resumo
 
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Novos registros adicionados", resumo["adicionados"])
-        c2.metric("Total final da base", resumo["total_final"])
-        c3.metric("Registros geocodificados", resumo["geocodificados"])
-
-        contagens_nivel = resumo.get("contagens_nivel", {})
-        if contagens_nivel:
-            st.subheader("Resumo dos niveis de geocodificacao")
-
-            exato_numero = contagens_nivel.get("Exato (Numero)", 0)
-            centroide_rua = contagens_nivel.get("Centroide de Rua", 0)
-            centroide_bairro = contagens_nivel.get("Centroide de Bairro", 0)
-            centroide_cidade = contagens_nivel.get("Centroide de Cidade", 0)
-            nao_encontrado = contagens_nivel.get("Nao Encontrado", 0)
-
-            n1, n2, n3 = st.columns(3)
-            n1.metric("Exato (Numero)", exato_numero)
-            n2.metric("Centroide de Rua", centroide_rua)
-            n3.metric("Centroide de Bairro", centroide_bairro)
-
-            n4, n5 = st.columns(2)
-            n4.metric("Centroide de Cidade", centroide_cidade)
-            n5.metric("Nao Encontrado", nao_encontrado)
-
-            st.caption(
-                "Os valores acima mostram quantos registros cairam em cada nivel de geocodificacao."
-            )
-
-        st.info(
-            f"Aba usada no Arquivo 01: {resumo['aba_arquivo_01']} | "
-            f"Aba usada no Arquivo 02: {resumo['aba_arquivo_02']}"
-        )
-
-        st.info(
-            f"Ultima Data/Hora da base: {resumo['ultima_datahora_base']} | "
-            f"Removidos por filtro temporal: {resumo['removidos_por_datahora']} | "
-            f"Removidos sem geocodificacao: {resumo['removidos_sem_geocodificacao']}"
-        )
-
-        st.caption(resumo["situacao"])
-        st.dataframe(df_final.head(50), use_container_width=True)
+        _render_resumo_cvp_sip(resumo, df_final)
 
         if st.session_state.cvp_sip_resultado_excel is not None:
+            st.markdown(
+                """
+                <div class="cvp-sip-card">
+                    <div class="cvp-sip-card-header">Download</div>
+                    <div class="cvp-sip-card-desc">
+                        Baixe o arquivo final processado no padrão oficial do módulo CVP SIP.
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            st.markdown('<span id="cvp-sip-download-marker"></span>', unsafe_allow_html=True)
             st.download_button(
                 label="Baixar arquivo final",
                 data=st.session_state.cvp_sip_resultado_excel,
                 file_name=NOME_ARQUIVO_FINAL,
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 key="cvp_sip_download_final",
+                use_container_width=True,
             )
 
 
