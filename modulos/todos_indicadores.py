@@ -7,7 +7,7 @@ Estratégia de estabilidade:
 - mantém em sessão somente estado leve;
 - executa um indicador por vez;
 - preserva exatamente a estrutura de colunas do arquivo consolidado de cada indicador;
-- não permite colunas extras no resultado final;
+- não permite colunas extras no resultado final, exceto colunas críticas ausentes no consolidado;
 - aplica equivalências de colunas específicas por indicador;
 - evita duplicidade de colunas após compatibilização.
 """
@@ -91,7 +91,7 @@ INDICADORES: list[IndicadorDef] = [
         modulo="deslocamento_forcado",
         funcao="processar_deslocamento_forcado",
         nome_saida=nome_arquivo_padrao(5, "DESLOCAMENTO-FORCADO"),
-        ordem_arquivos="mestre_primeiro",
+        ordem_arquivos="consolidado_primeiro",
     ),
     IndicadorDef(
         chave="roubo_veiculo_sportal",
@@ -121,7 +121,7 @@ INDICADORES: list[IndicadorDef] = [
         modulo="acidente_transito",
         funcao="processar_acidente_transito",
         nome_saida=nome_arquivo_padrao(8, "ACIDENTE-DE-TRANSITO-SPORTAL-QGP"),
-        ordem_arquivos="mestre_primeiro",
+        ordem_arquivos="consolidado_primeiro",
     ),
     IndicadorDef(
         chave="furto_veiculo_sportal",
@@ -182,8 +182,15 @@ MAPEAMENTO_EQUIVALENCIAS_POR_INDICADOR: dict[str, dict[str, list[str]]] = {
         "Longitude": ["Long", "Lon"],
         "Data": ["data"],
         "data": ["Data"],
-        "Nome da Ocorrência": ["Nome Ocorrência", "Nome Ocorrencia", "Ocorrência", "Ocorrencia"],
-        "Subnome da ocorrência": [
+        "Nome da Ocorrência": [
+            "Nome Ocorrência",
+            "Nome Ocorrencia",
+            "Ocorrência",
+            "Ocorrencia",
+            "Nome da ocorrencia",
+        ],
+        "Subnome da Ocorrência": [
+            "Subnome da ocorrência",
             "Subnome da Ocorrência",
             "Subnome Ocorrência",
             "Subnome Ocorrencia",
@@ -216,8 +223,15 @@ MAPEAMENTO_EQUIVALENCIAS_POR_INDICADOR: dict[str, dict[str, list[str]]] = {
         "Longitude": ["Long", "Lon"],
         "Data": ["data"],
         "data": ["Data"],
-        "Nome da Ocorrência": ["Nome Ocorrência", "Nome Ocorrencia", "Ocorrência", "Ocorrencia"],
-        "Subnome da ocorrência": [
+        "Nome da Ocorrência": [
+            "Nome Ocorrência",
+            "Nome Ocorrencia",
+            "Ocorrência",
+            "Ocorrencia",
+            "Nome da ocorrencia",
+        ],
+        "Subnome da Ocorrência": [
+            "Subnome da ocorrência",
             "Subnome da Ocorrência",
             "Subnome Ocorrência",
             "Subnome Ocorrencia",
@@ -242,6 +256,12 @@ MAPEAMENTO_EQUIVALENCIAS_POR_INDICADOR: dict[str, dict[str, list[str]]] = {
         "Longitude": ["Long", "Lon"],
         "Nivel_Geocodificacao": ["Nível_Geocodificação", "Nivel Geocodificacao"],
     },
+}
+
+
+COLUNAS_CRITICAS_POR_INDICADOR: dict[str, list[str]] = {
+    "acidente_transito": ["Nome da Ocorrência", "Subnome da Ocorrência"],
+    "deslocamento_forcado": ["Nome da Ocorrência", "Subnome da Ocorrência"],
 }
 
 
@@ -278,7 +298,7 @@ def carregar_processador(indicador: IndicadorDef) -> Callable:
             )
 
         return funcao
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise ImportError(
             f"Falha ao carregar o processador do indicador '{indicador.titulo}': {exc}"
         ) from exc
@@ -350,6 +370,17 @@ def normalizar_rotulo_coluna(nome: str) -> str:
     return texto
 
 
+def obter_coluna_real_por_nome_normalizado(
+    colunas: list[str],
+    nome_procurado: str,
+) -> str | None:
+    nome_norm = normalizar_rotulo_coluna(nome_procurado)
+    for coluna in colunas:
+        if normalizar_rotulo_coluna(coluna) == nome_norm:
+            return coluna
+    return None
+
+
 def consolidar_colunas_duplicadas(df: pd.DataFrame) -> pd.DataFrame:
     if df.columns.is_unique:
         return df
@@ -402,10 +433,7 @@ def renomear_colunas_por_equivalencia(
 
     for destino, origens_possiveis in equivalencias.items():
         destino_normalizado = normalizar_rotulo_coluna(destino)
-        coluna_destino_real = colunas_base_normalizadas.get(destino_normalizado)
-
-        if not coluna_destino_real:
-            continue
+        coluna_destino_real = colunas_base_normalizadas.get(destino_normalizado, destino)
 
         for origem in origens_possiveis:
             origem_normalizada = normalizar_rotulo_coluna(origem)
@@ -427,6 +455,30 @@ def renomear_colunas_por_equivalencia(
     return df_ajustado
 
 
+def expandir_schema_com_colunas_criticas(
+    indicador: IndicadorDef,
+    colunas_consolidado: list[str],
+    df_resultado: pd.DataFrame,
+) -> list[str]:
+    schema_final = list(colunas_consolidado)
+    colunas_criticas = COLUNAS_CRITICAS_POR_INDICADOR.get(indicador.chave, [])
+
+    for coluna_critica in colunas_criticas:
+        coluna_no_resultado = obter_coluna_real_por_nome_normalizado(
+            list(df_resultado.columns),
+            coluna_critica,
+        )
+        coluna_no_schema = obter_coluna_real_por_nome_normalizado(
+            schema_final,
+            coluna_critica,
+        )
+
+        if coluna_no_resultado and not coluna_no_schema:
+            schema_final.append(coluna_critica)
+
+    return schema_final
+
+
 def alinhar_resultado_ao_consolidado(
     df_resultado: pd.DataFrame,
     indicador: IndicadorDef,
@@ -438,11 +490,17 @@ def alinhar_resultado_ao_consolidado(
         colunas_consolidado=colunas_consolidado,
     )
 
-    for coluna in colunas_consolidado:
+    schema_final = expandir_schema_com_colunas_criticas(
+        indicador=indicador,
+        colunas_consolidado=colunas_consolidado,
+        df_resultado=df_ajustado,
+    )
+
+    for coluna in schema_final:
         if coluna not in df_ajustado.columns:
             df_ajustado[coluna] = pd.NA
 
-    df_ajustado = df_ajustado.reindex(columns=colunas_consolidado)
+    df_ajustado = df_ajustado.reindex(columns=schema_final)
     return df_ajustado
 
 
@@ -524,7 +582,7 @@ def render() -> None:
     st.title("Todos os Indicadores")
     st.caption(
         "Envie 1 arquivo mestre com várias abas e os 10 arquivos consolidados. "
-        "O sistema executa um indicador por vez e preserva exatamente as colunas do consolidado."
+        "O sistema executa um indicador por vez e preserva o schema esperado do consolidado."
     )
 
     arquivo_mestre = st.file_uploader(
@@ -673,7 +731,7 @@ def render() -> None:
                 st.session_state.todos_indicadores_resultados.append(resultado)
                 st.success(f"Indicador {indicador.titulo} concluído com sucesso.")
 
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 st.error(f"Erro no indicador {indicador.ordem} - {indicador.titulo}: {exc}")
                 with st.expander("Detalhes do erro"):
                     st.code(traceback.format_exc())
