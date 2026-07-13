@@ -182,6 +182,15 @@ MAPEAMENTO_EQUIVALENCIAS_POR_INDICADOR: dict[str, dict[str, list[str]]] = {
         "Longitude": ["Long", "Lon"],
         "Data": ["data"],
         "data": ["Data"],
+        "Nome da Ocorrência": ["Nome Ocorrência", "Nome Ocorrencia", "Ocorrência", "Ocorrencia"],
+        "Subnome da ocorrência": [
+            "Subnome da Ocorrência",
+            "Subnome Ocorrência",
+            "Subnome Ocorrencia",
+            "Subnome da ocorrencia",
+            "Subocorrência",
+            "Subocorrencia",
+        ],
     },
     "roubo_veiculo_sportal": {
         "Território": ["Regiões", "Regioes"],
@@ -207,6 +216,15 @@ MAPEAMENTO_EQUIVALENCIAS_POR_INDICADOR: dict[str, dict[str, list[str]]] = {
         "Longitude": ["Long", "Lon"],
         "Data": ["data"],
         "data": ["Data"],
+        "Nome da Ocorrência": ["Nome Ocorrência", "Nome Ocorrencia", "Ocorrência", "Ocorrencia"],
+        "Subnome da ocorrência": [
+            "Subnome da Ocorrência",
+            "Subnome Ocorrência",
+            "Subnome Ocorrencia",
+            "Subnome da ocorrencia",
+            "Subocorrência",
+            "Subocorrencia",
+        ],
     },
     "furto_veiculo_sportal": {
         "Território": ["Regiões", "Regioes"],
@@ -366,9 +384,6 @@ def renomear_colunas_por_equivalencia(
     df_ajustado = df_resultado.copy()
     equivalencias = MAPEAMENTO_EQUIVALENCIAS_POR_INDICADOR.get(indicador.chave, {})
 
-    if not equivalencias:
-        return consolidar_colunas_duplicadas(df_ajustado)
-
     colunas_atuais_normalizadas = {
         normalizar_rotulo_coluna(coluna): coluna for coluna in df_ajustado.columns
     }
@@ -377,6 +392,13 @@ def renomear_colunas_por_equivalencia(
     }
 
     renomeacoes: dict[str, str] = {}
+
+    for coluna_base in colunas_consolidado:
+        coluna_base_norm = normalizar_rotulo_coluna(coluna_base)
+        coluna_atual_equivalente = colunas_atuais_normalizadas.get(coluna_base_norm)
+
+        if coluna_atual_equivalente and coluna_atual_equivalente != coluna_base:
+            renomeacoes[coluna_atual_equivalente] = coluna_base
 
     for destino, origens_possiveis in equivalencias.items():
         destino_normalizado = normalizar_rotulo_coluna(destino)
@@ -393,9 +415,6 @@ def renomear_colunas_por_equivalencia(
                 continue
 
             if coluna_origem_real == coluna_destino_real:
-                continue
-
-            if coluna_origem_real in renomeacoes:
                 continue
 
             renomeacoes[coluna_origem_real] = coluna_destino_real
