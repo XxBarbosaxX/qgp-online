@@ -661,7 +661,7 @@ def render() -> None:
         }
         .qgp-status-row {
             display: grid;
-            grid-template-columns: 0.5fr 2fr 0.7fr 2.4fr;
+            grid-template-columns: 0.5fr 2fr 0.9fr 2.4fr;
             gap: 0.5rem;
             padding: 0.45rem 0.65rem;
             border-radius: 0.55rem;
@@ -740,6 +740,42 @@ def render() -> None:
         .qgp-zip-btn button[kind="primary"]:hover {
             background: linear-gradient(135deg, #c2410c, #ea580c) !important;
         }
+        .qgp-summary-list {
+            margin-top: 0.35rem;
+        }
+        .qgp-summary-row {
+            display: grid;
+            grid-template-columns: 0.5fr 2fr 1.1fr 2fr 2fr 0.7fr 1.6fr;
+            gap: 0.5rem;
+            padding: 0.45rem 0.65rem;
+            border-radius: 0.55rem;
+            background: rgba(15, 23, 42, 0.95);
+            align-items: center;
+            margin-bottom: 0.25rem;
+        }
+        .qgp-summary-row-header {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: rgba(148, 163, 184, 0.95);
+            background: rgba(15, 23, 42, 0.4);
+        }
+        .qgp-summary-cell {
+            font-size: 0.8rem;
+            color: rgba(226, 232, 240, 0.96);
+        }
+        .qgp-summary-indicador {
+            font-weight: 600;
+        }
+        .qgp-summary-arquivo {
+            font-size: 0.78rem;
+            color: rgba(148, 163, 184, 0.95);
+        }
+        .qgp-summary-erro {
+            font-size: 0.75rem;
+            color: rgba(248, 113, 113, 0.9);
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -802,7 +838,7 @@ def render() -> None:
             <div class="qgp-card-desc">
                 Cada linha representa um indicador esperado pelo QGP. O círculo verde indica que o
                 consolidado correspondente foi identificado corretamente, o amarelo indica pendência
-                de envio e o X vermelho sinaliza conflito ou erro na identificação.
+                de envio e o X vermelho sinaliza conflito na identificação.
             </div>
         """,
         unsafe_allow_html=True,
@@ -826,10 +862,8 @@ def render() -> None:
         if not arquivo:
             pendentes.append(indicador.titulo)
 
-    # Renderização customizada em forma de lista com ícones
     st.markdown('<div class="qgp-status-list">', unsafe_allow_html=True)
 
-    # Cabeçalho
     st.markdown(
         """
         <div class="qgp-status-row qgp-status-row-header">
@@ -856,7 +890,6 @@ def render() -> None:
                 </div>
             """
         else:
-            # Pendente = amarelo; se houver conflito associado, vamos sinalizar com X vermelho
             tem_conflito = any(indicador_titulo in msg for msg in conflitos)
             if tem_conflito:
                 status_html = """
@@ -984,31 +1017,78 @@ def render() -> None:
     if not resultados:
         return
 
+    # RESUMO EM VISUAL PROFISSIONAL (tira aparência de planilha)
     st.markdown(
         """
         <div class="qgp-card">
             <div class="qgp-card-header">Resumo da fila</div>
+            <div class="qgp-card-desc">
+                Visualização consolidada da execução dos indicadores, com status, arquivos de
+                entrada/saída, quantidade de linhas e erro, quando houver.
+            </div>
         """,
         unsafe_allow_html=True,
     )
 
-    tabela_resumo: list[dict] = []
+    st.markdown('<div class="qgp-summary-list">', unsafe_allow_html=True)
+
+    st.markdown(
+        """
+        <div class="qgp-summary-row qgp-summary-row-header">
+            <div class="qgp-summary-cell">Ordem</div>
+            <div class="qgp-summary-cell">Indicador</div>
+            <div class="qgp-summary-cell">Status</div>
+            <div class="qgp-summary-cell">Entrada</div>
+            <div class="qgp-summary-cell">Saída</div>
+            <div class="qgp-summary-cell">Linhas</div>
+            <div class="qgp-summary-cell">Erro</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
     for item in sorted(resultados, key=lambda x: x["ordem"]):
-        tabela_resumo.append(
-            {
-                "Ordem": item["ordem"],
-                "Indicador": item["titulo"],
-                "Status": item["status"].upper(),
-                "Entrada": item["nome_entrada"],
-                "Saída": item["nome_saida"] or "-",
-                "Linhas": item["linhas_saida"] if item["linhas_saida"] is not None else "-",
-                "Erro": item["erro"] or "-",
-            }
+        ordem = item["ordem"]
+        indicador_titulo = item["titulo"]
+        status = item["status"]
+        entrada = item["nome_entrada"]
+        saida = item["nome_saida"] or "-"
+        linhas = item["linhas_saida"] if item["linhas_saida"] is not None else "-"
+        erro = item["erro"] or "-"
+
+        if status == "sucesso":
+            status_html = """
+                <div class="qgp-badge-status">
+                    <span class="qgp-dot qgp-dot-ok"></span>
+                    <span>Sucesso</span>
+                </div>
+            """
+        else:
+            status_html = """
+                <div class="qgp-badge-status">
+                    <span class="qgp-dot qgp-dot-error"></span>
+                    <span>Erro</span>
+                </div>
+            """
+
+        st.markdown(
+            f"""
+            <div class="qgp-summary-row">
+                <div class="qgp-summary-cell">{ordem}</div>
+                <div class="qgp-summary-cell qgp-summary-indicador">{indicador_titulo}</div>
+                <div class="qgp-summary-cell">{status_html}</div>
+                <div class="qgp-summary-cell qgp-summary-arquivo">{entrada}</div>
+                <div class="qgp-summary-cell qgp-summary-arquivo">{saida}</div>
+                <div class="qgp-summary-cell">{linhas}</div>
+                <div class="qgp-summary-cell qgp-summary-erro">{erro}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
 
-    st.dataframe(pd.DataFrame(tabela_resumo), use_container_width=True, hide_index=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("</div></div>", unsafe_allow_html=True)
 
+    # DOWNLOADS INDIVIDUAIS
     st.markdown(
         """
         <div class="qgp-card">
@@ -1041,6 +1121,7 @@ def render() -> None:
 
     st.markdown("</div>", unsafe_allow_html=True)
 
+    # ZIP consolidado em destaque
     if resultados_sucesso:
         zip_bytes = empacotar_resultados_zip(resultados_sucesso)
         nome_zip = f"todos-indicadores-qgp-{datetime.now().strftime('%Y%m%d-%H%M%S')}.zip"
