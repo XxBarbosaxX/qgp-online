@@ -6,7 +6,8 @@ Estratégia de estabilidade:
 - usa apenas objetos de upload do ciclo atual;
 - mantém em sessão somente estado leve;
 - executa um indicador por vez;
-- preserva a estrutura de colunas do consolidado.
+- preserva exatamente a estrutura de colunas do arquivo consolidado de cada indicador;
+- não permite colunas extras no resultado final.
 """
 
 from __future__ import annotations
@@ -143,6 +144,30 @@ INDICADORES: list[IndicadorDef] = [
 ]
 
 
+MAPEAMENTO_EQUIVALENCIAS_GLOBAIS: dict[str, list[str]] = {
+    "AIS": ["AISNOVA"],
+    "AISNOVA": ["AIS"],
+    "TERRITÓRIO": ["REGIÕES", "REGIOES"],
+    "TERRITORIO": ["REGIÕES", "REGIOES"],
+    "REGIÕES": ["TERRITÓRIO", "TERRITORIO"],
+    "REGIOES": ["TERRITÓRIO", "TERRITORIO"],
+    "LATITUDE": ["LAT"],
+    "LAT": ["LATITUDE"],
+    "LONGITUDE": ["LONG", "LON"],
+    "LONG": ["LONGITUDE", "LON"],
+    "LON": ["LONGITUDE", "LONG"],
+    "DATA": ["DATA "],
+    "ENDEREÇO": ["ENDERECO"],
+    "ENDERECO": ["ENDEREÇO"],
+    "NÚMERO": ["NUMERO"],
+    "NUMERO": ["NÚMERO"],
+    "COMPLEMENTO DO ENDEREÇO": ["COMPLEMENTO DO ENDERECO"],
+    "COMPLEMENTO DO ENDERECO": ["COMPLEMENTO DO ENDEREÇO"],
+    "GÊNERO": ["GENERO"],
+    "GENERO": ["GÊNERO"],
+}
+
+
 def init_state() -> None:
     defaults = {
         "todos_indicadores_fila_indice_atual": 0,
@@ -194,6 +219,15 @@ def normalizar_nome_arquivo(nome: str) -> str:
     return texto
 
 
+def normalizar_chave_coluna(nome: str) -> str:
+    texto = str(nome or "").strip()
+    texto = unicodedata.normalize("NFKD", texto)
+    texto = "".join(c for c in texto if not unicodedata.combining(c))
+    texto = texto.upper()
+    texto = re.sub(r"\s+", " ", texto).strip()
+    return texto
+
+
 def identificar_indicador_por_nome(nome_arquivo: str) -> IndicadorDef | None:
     nome_norm = normalizar_nome_arquivo(nome_arquivo)
 
@@ -239,11 +273,53 @@ def obter_colunas_do_consolidado(arquivo_consolidado_upload) -> list[str]:
     return list(df_base.columns)
 
 
+def renomear_colunas_equivalentes_para_base(
+    df_resultado: pd.DataFrame,
+    colunas_consolidado: list[str],
+) -> pd.DataFrame:
+    df = df_resultado.copy()
+
+    mapa_colunas_resultado = {
+        normalizar_chave_coluna(coluna): coluna for coluna in df.columns
+    }
+    mapa_colunas_consolidado = {
+        normalizar_chave_coluna(coluna): coluna for coluna in colunas_consolidado
+    }
+
+    renomeacoes: dict[str, str] = {}
+
+    for chave_base_norm, coluna_base_real in mapa_colunas_consolidado.items():
+        if coluna_base_real in df.columns:
+            continue
+
+        equivalentes = MAPEAMENTO_EQUIVALENCIAS_GLOBAIS.get(chave_base_norm, [])
+        for equivalente in equivalentes:
+            coluna_origem = mapa_colunas_resultado.get(normalizar_chave_coluna(equivalente))
+            if coluna_origem and coluna_origem not in renomeacoes:
+                renomeacoes[coluna_origem] = coluna_base_real
+                break
+
+    if renomeacoes:
+        df = df.rename(columns=renomeacoes)
+
+    return df
+
+
 def alinhar_resultado_ao_consolidado(
     df_resultado: pd.DataFrame,
     colunas_consolidado: list[str],
 ) -> pd.DataFrame:
-    return df_resultado.reindex(columns=colunas_consolidado)
+    df_ajustado = renomear_colunas_equivalentes_para_base(
+        df_resultado=df_resultado,
+        colunas_consolidado=colunas_consolidado,
+    )
+
+    for coluna in colunas_consolidado:
+        if coluna not in df_ajustado.columns:
+            df_ajustado[coluna] = pd.NA
+
+    df_ajustado = df_ajustado.reindex(columns=colunas_consolidado)
+    return df_ajustado
 
 
 def gerar_excel_em_memoria(df: pd.DataFrame, sheet_name: str = "Dados") -> bytes:
@@ -320,7 +396,7 @@ def render() -> None:
     st.title("Todos os Indicadores")
     st.caption(
         "Envie 1 arquivo mestre com várias abas e os 10 arquivos consolidados. "
-        "O sistema executa um indicador por vez."
+        "O sistema executa um indicador por vez e preserva exatamente as colunas do consolidado."
     )
 
     arquivo_mestre = st.file_uploader(
