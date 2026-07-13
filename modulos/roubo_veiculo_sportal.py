@@ -1,4 +1,7 @@
-"""<br>Módulo Roubo de Veículo SPORTAL<br>Versão Streamlit adaptada para o QGP Online, com logs de auditoria seguros.<br>"""
+"""
+Modulo Roubo de Veiculo SPORTAL
+Versao Streamlit adaptada para o QGP Online, com logs de auditoria seguros.
+"""
 
 from __future__ import annotations
 
@@ -21,6 +24,7 @@ VALOR_EXCLUSAO_SUBNOME = "BICICLETA"
 
 
 def _normalizar_nome_aba(nome: str) -> str:
+    """Normaliza nome da aba para comparação."""
     return (
         str(nome or "")
         .strip()
@@ -32,6 +36,7 @@ def _normalizar_nome_aba(nome: str) -> str:
 
 
 def _normalizar_texto(valor: str) -> str:
+    """Normaliza texto para comparação textual segura."""
     valor = str(valor or "").strip()
     valor = unicodedata.normalize("NFKD", valor)
     valor = "".join(ch for ch in valor if not unicodedata.combining(ch))
@@ -41,6 +46,7 @@ def _normalizar_texto(valor: str) -> str:
 
 
 def _selecionar_aba_arquivo_01(sheet_names: list[str]) -> str:
+    """Seleciona a aba do arquivo base."""
     prioridades = [
         "ROUBODEVEICULO",
         "ROUBOVEICULO",
@@ -62,6 +68,7 @@ def _selecionar_aba_arquivo_01(sheet_names: list[str]) -> str:
 
 
 def _selecionar_aba_arquivo_02(sheet_names: list[str]) -> str:
+    """Seleciona a aba do arquivo complementar."""
     normalizadas = {aba: _normalizar_nome_aba(aba) for aba in sheet_names}
 
     prioridades_exatas = [
@@ -89,6 +96,7 @@ def _selecionar_aba_arquivo_02(sheet_names: list[str]) -> str:
 
 
 def _normalizar_chave_coluna(nome: str) -> str:
+    """Normaliza chave de coluna para busca flexível."""
     nome = str(nome or "").strip()
     nome = re.sub(r"\.\d+$", "", nome)
     nome = unicodedata.normalize("NFKD", nome)
@@ -100,12 +108,14 @@ def _normalizar_chave_coluna(nome: str) -> str:
 
 
 def normalizar_colunas(df: pd.DataFrame) -> pd.DataFrame:
+    """Normaliza nomes de colunas."""
     df = df.copy()
     df.columns = [str(c).strip() for c in df.columns]
     return df
 
 
 def encontrar_coluna_data(df: pd.DataFrame) -> str:
+    """Localiza a coluna de data."""
     exatos = [c for c in df.columns if _normalizar_chave_coluna(c) == "data"]
     if exatos:
         return exatos[0]
@@ -118,6 +128,7 @@ def encontrar_coluna_data(df: pd.DataFrame) -> str:
 
 
 def encontrar_coluna_hora(df: pd.DataFrame) -> str:
+    """Localiza a coluna de hora."""
     exatos = [c for c in df.columns if _normalizar_chave_coluna(c) == "hora"]
     if exatos:
         return exatos[0]
@@ -134,6 +145,7 @@ def encontrar_coluna_por_nomes(
     nomes_possiveis: list[str],
     obrigatoria: bool = True,
 ):
+    """Busca coluna por múltiplos nomes possíveis."""
     cols_map = {_normalizar_chave_coluna(c): c for c in df.columns}
 
     for nome in nomes_possiveis:
@@ -155,6 +167,7 @@ def encontrar_coluna_por_nomes(
 
 
 def renomear_colunas_equivalentes(df_base: pd.DataFrame, df_novo: pd.DataFrame) -> pd.DataFrame:
+    """Renomeia colunas equivalentes do arquivo novo para o padrão da base."""
     mapa_equivalencias = {
         "AIS": [
             "AISNova",
@@ -209,6 +222,7 @@ def filtrar_por_nome_ocorrencia(
     coluna_nome_ocorrencia: str,
     valor_filtro: str = VALOR_FILTRO_OCORRENCIA,
 ) -> pd.DataFrame:
+    """Filtra somente ocorrências com o nome informado."""
     serie = df[coluna_nome_ocorrencia].astype(str).apply(_normalizar_texto)
     valor_norm = _normalizar_texto(valor_filtro)
     return df.loc[serie == valor_norm].copy()
@@ -219,6 +233,7 @@ def excluir_por_subnome_ocorrencia(
     coluna_subnome_ocorrencia: str,
     valor_exclusao: str = VALOR_EXCLUSAO_SUBNOME,
 ) -> tuple[pd.DataFrame, int]:
+    """Exclui ocorrências cujo subnome contenha o valor informado."""
     serie = df[coluna_subnome_ocorrencia].astype(str).apply(_normalizar_texto)
     valor_norm = _normalizar_texto(valor_exclusao)
 
@@ -228,6 +243,7 @@ def excluir_por_subnome_ocorrencia(
 
 
 def valor_numerico_exato(v):
+    """Converte valor para float com tolerância a formatos textuais."""
     if pd.isna(v):
         return None
 
@@ -248,6 +264,7 @@ def valor_numerico_exato(v):
 
 
 def normalizar_data_para_texto(v):
+    """Normaliza valor de data para texto dd/mm/aaaa."""
     if pd.isna(v):
         return None
 
@@ -264,6 +281,7 @@ def normalizar_data_para_texto(v):
 
 
 def normalizar_hora_para_texto(v):
+    """Normaliza valor de hora para HH:MM:SS."""
     if pd.isna(v):
         return None
 
@@ -295,6 +313,7 @@ def criar_coluna_datahora(
     coluna_hora: str,
     nome_coluna="__datahora__",
 ):
+    """Cria coluna auxiliar de data/hora consolidada."""
     df = df.copy()
     datas = df[coluna_data].apply(normalizar_data_para_texto)
     horas = df[coluna_hora].apply(normalizar_hora_para_texto)
@@ -311,6 +330,7 @@ def criar_coluna_datahora(
 
 
 def excluir_coordenadas_invalidas(df: pd.DataFrame, col_lat: str, col_lon: str):
+    """Remove registros com coordenadas nulas ou zeradas."""
     manter = []
 
     for lat_raw, lon_raw in zip(df[col_lat], df[col_lon]):
@@ -329,7 +349,13 @@ def excluir_coordenadas_invalidas(df: pd.DataFrame, col_lat: str, col_lon: str):
     return df_filtrado, removidos
 
 
-def coordenadas_parecem_wgs84(df: pd.DataFrame, col_lat: str, col_lon: str, amostra: int = 30) -> bool:
+def coordenadas_parecem_wgs84(
+    df: pd.DataFrame,
+    col_lat: str,
+    col_lon: str,
+    amostra: int = 30,
+) -> bool:
+    """Verifica se coordenadas parecem já estar em WGS84 decimal."""
     coords_validas = []
 
     for lat_raw, lon_raw in zip(df[col_lat], df[col_lon]):
@@ -352,7 +378,13 @@ def coordenadas_parecem_wgs84(df: pd.DataFrame, col_lat: str, col_lon: str, amos
     return proporcao >= 0.8
 
 
-def coordenadas_parecem_utm(df: pd.DataFrame, col_y: str, col_x: str, amostra: int = 30) -> bool:
+def coordenadas_parecem_utm(
+    df: pd.DataFrame,
+    col_y: str,
+    col_x: str,
+    amostra: int = 30,
+) -> bool:
+    """Verifica se coordenadas parecem estar em UTM."""
     coords_validas = []
 
     for y_raw, x_raw in zip(df[col_y], df[col_x]):
@@ -382,6 +414,7 @@ def preparar_coordenadas_finais(
     col_lat_destino: str,
     col_lon_destino: str,
 ):
+    """Prepara coordenadas finais em WGS84."""
     df = df.copy()
 
     colunas_para_remover = []
@@ -430,6 +463,7 @@ def preparar_coordenadas_finais(
 
 
 def alinhar_colunas_arquivo_02_com_base(df_base: pd.DataFrame, df_novo: pd.DataFrame) -> pd.DataFrame:
+    """Alinha arquivo complementar exatamente ao schema da base."""
     colunas_base = list(df_base.columns)
 
     df_novo = renomear_colunas_equivalentes(df_base, df_novo)
@@ -453,6 +487,7 @@ def alinhar_colunas_arquivo_02_com_base(df_base: pd.DataFrame, df_novo: pd.DataF
 
 
 def obter_ultimo_datahora(df: pd.DataFrame, coluna_datahora: str):
+    """Retorna a última data/hora válida."""
     df_valid = df[df[coluna_datahora].notna()].copy()
     if df_valid.empty:
         return None
@@ -464,12 +499,14 @@ def filtrar_apenas_registros_posteriores(
     coluna_datahora: str,
     limite_datahora,
 ):
+    """Filtra somente registros posteriores ao limite informado."""
     if limite_datahora is None:
         return df.copy()
     return df[df[coluna_datahora] > limite_datahora].copy()
 
 
 def colunas_existentes(df: pd.DataFrame, colunas_desejadas: list[str]) -> list[str]:
+    """Retorna apenas colunas existentes e sem duplicidade."""
     cols = []
     vistos = set()
 
@@ -487,6 +524,7 @@ def mostrar_amostra_segura(
     colunas_desejadas: list[str],
     n: int = 10,
 ):
+    """Exibe amostra segura somente com colunas existentes."""
     st.write(titulo)
 
     cols = colunas_existentes(df, colunas_desejadas)
@@ -502,10 +540,11 @@ def mostrar_amostra_segura(
     if df_preview.columns.duplicated().any():
         df_preview = df_preview.loc[:, ~df_preview.columns.duplicated()]
 
-    st.dataframe(df_preview.head(n))
+    st.dataframe(df_preview.head(n), use_container_width=True)
 
 
 def gerar_excel_em_memoria(df: pd.DataFrame) -> bytes:
+    """Gera arquivo Excel em memória."""
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name="ROUBO_VEICULOS")
@@ -513,7 +552,50 @@ def gerar_excel_em_memoria(df: pd.DataFrame) -> bytes:
     return buffer.getvalue()
 
 
+def _render_resumo_roubo_veiculo_sportal(resumo: dict) -> None:
+    """Renderiza o resumo do processamento."""
+    st.markdown(
+        """
+        <div class="roubo-veiculo-card">
+            <div class="roubo-veiculo-card-header">Resultado do processamento</div>
+            <div class="roubo-veiculo-card-desc">
+                O processamento foi concluído com sucesso. Abaixo estão os principais indicadores da execução.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.success("Processamento finalizado com sucesso.")
+    st.caption(resumo.get("situacao", "Processamento concluído."))
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Registros adicionados", resumo.get("adicionados", 0))
+    with col2:
+        st.metric("Total final", resumo.get("total_final", 0))
+    with col3:
+        st.metric("Removidos por tipo", resumo.get("removidos_por_tipo", 0))
+
+    col4, col5 = st.columns(2)
+    with col4:
+        st.info(f"**Aba arquivo 01:** {resumo.get('aba_arquivo_01', '-')}")
+    with col5:
+        st.info(f"**Aba arquivo 02:** {resumo.get('aba_arquivo_02', '-')}")
+
+    st.info(
+        f"**Última Data/Hora da base:** {resumo.get('ultima_datahora_base', '-')} | "
+        f"**Removidos por subnome (BICICLETA):** {resumo.get('removidos_por_subnome', 0)}"
+    )
+    st.info(
+        f"**Removidos por coordenadas inválidas:** {resumo.get('removidos_coord_invalidas', 0)} | "
+        f"**Removidos por filtro temporal:** {resumo.get('removidos_por_datahora', 0)}"
+    )
+    st.info(f"**Modo de tratamento das coordenadas:** {resumo.get('modo_coordenadas', '-')}")
+
+
 def processar_roubo_veiculo_sportal(arquivo_01, arquivo_02):
+    """Processa roubo de veículo SPORTAL e retorna (df_final, resumo)."""
     progresso = st.progress(0)
     status = st.empty()
 
@@ -615,7 +697,11 @@ def processar_roubo_veiculo_sportal(arquivo_01, arquivo_02):
     df_novo = renomear_colunas_equivalentes(df_base, df_novo)
 
     col_lat_base = encontrar_coluna_por_nomes(df_base, ["lat", "latitude"], obrigatoria=True)
-    col_lon_base = encontrar_coluna_por_nomes(df_base, ["long", "longitude", "lon"], obrigatoria=True)
+    col_lon_base = encontrar_coluna_por_nomes(
+        df_base,
+        ["long", "longitude", "lon"],
+        obrigatoria=True,
+    )
 
     col_lat_novo = encontrar_coluna_por_nomes(
         df_novo,
@@ -629,7 +715,6 @@ def processar_roubo_veiculo_sportal(arquivo_01, arquivo_02):
     )
 
     status.info("Excluindo registros com coordenadas inválidas...")
-    total_apos_filtro_tipo = len(df_novo)
     df_novo, removidos_invalidos = excluir_coordenadas_invalidas(df_novo, col_lat_novo, col_lon_novo)
 
     mostrar_amostra_segura(
@@ -653,7 +738,11 @@ def processar_roubo_veiculo_sportal(arquivo_01, arquivo_02):
 
     status.info("Filtrando apenas registros posteriores...")
     total_antes_filtro = len(df_novo)
-    df_novo_filtrado = filtrar_apenas_registros_posteriores(df_novo, "__datahora__", ultimo_datahora_base)
+    df_novo_filtrado = filtrar_apenas_registros_posteriores(
+        df_novo,
+        "__datahora__",
+        ultimo_datahora_base,
+    )
     removidos_por_datahora = total_antes_filtro - len(df_novo_filtrado)
 
     mostrar_amostra_segura(
@@ -793,6 +882,7 @@ def processar_roubo_veiculo_sportal(arquivo_01, arquivo_02):
 
 
 def _init_state():
+    """Inicializa chaves do session_state."""
     defaults = {
         "roubo_veiculo_sportal_arquivo_01_bytes": None,
         "roubo_veiculo_sportal_arquivo_01_nome": None,
@@ -809,22 +899,148 @@ def _init_state():
 
 
 def render():
+    """Renderiza a interface principal do módulo."""
     _init_state()
 
-    st.subheader("Roubo de Veículo SPORTAL")
-    st.write("Envie a base histórica e o arquivo complementar SPORTAL para atualizar a base com novos registros.")
-
-    arquivo_01 = st.file_uploader(
-        "Arquivo 01 - Base histórica de Roubo de Veículo",
-        type=["xlsx", "xls"],
-        key="roubo_veiculo_sportal_upload_01",
+    st.markdown(
+        """
+        <style>
+        .roubo-veiculo-card {
+            border-radius: 0.85rem;
+            padding: 1rem 1.1rem;
+            margin-bottom: 0.75rem;
+            border: 1px solid rgba(148, 163, 184, 0.30);
+            background: linear-gradient(180deg, rgba(2, 44, 34, 0.95), rgba(2, 26, 23, 0.95));
+        }
+        .roubo-veiculo-card-header {
+            font-weight: 700;
+            font-size: 1rem;
+            margin-bottom: 0.45rem;
+            color: rgba(248, 250, 252, 0.98);
+        }
+        .roubo-veiculo-card-desc {
+            font-size: 0.84rem;
+            color: rgba(226, 232, 240, 0.86);
+            margin-bottom: 0.15rem;
+            line-height: 1.6;
+        }
+        .roubo-veiculo-list {
+            margin: 0.7rem 0 0 0;
+            padding-left: 1.2rem;
+            color: rgba(226, 232, 240, 0.92);
+        }
+        .roubo-veiculo-list li {
+            margin-bottom: 0.35rem;
+        }
+        .roubo-veiculo-file-card {
+            border-radius: 0.75rem;
+            padding: 0.75rem 0.85rem;
+            background: rgba(15, 23, 42, 0.92);
+            border: 1px solid rgba(148, 163, 184, 0.20);
+            margin-top: 0.4rem;
+            margin-bottom: 0.45rem;
+        }
+        .roubo-veiculo-file-title {
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: rgba(248, 250, 252, 0.98);
+            margin-bottom: 0.2rem;
+        }
+        .roubo-veiculo-file-desc {
+            font-size: 0.78rem;
+            color: rgba(148, 163, 184, 0.95);
+        }
+        .element-container:has(#roubo-veiculo-download-marker) + div button {
+            background: linear-gradient(135deg, #ea580c, #f97316) !important;
+            border-color: rgba(248, 250, 252, 0.15) !important;
+            color: #fff7ed !important;
+            font-weight: 700 !important;
+        }
+        .element-container:has(#roubo-veiculo-download-marker) + div button:hover {
+            background: linear-gradient(135deg, #c2410c, #ea580c) !important;
+        }
+        .element-container:has(#roubo-veiculo-download-marker) + div button p {
+            color: #fff7ed !important;
+            font-weight: 700 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
     )
 
-    arquivo_02 = st.file_uploader(
-        "Arquivo 02 - Complemento SPORTAL",
-        type=["xlsx", "xls"],
-        key="roubo_veiculo_sportal_upload_02",
+    st.caption(
+        "Atualização da base de Roubo de Veículo com dados SPORTAL, filtragem específica de ocorrências e consolidação no padrão do QGP Online."
     )
+
+    st.markdown(
+        """
+        <div class="roubo-veiculo-card">
+            <div class="roubo-veiculo-card-header">Processamento de Roubo de Veículo SPORTAL</div>
+            <div class="roubo-veiculo-card-desc">
+                Envie a base histórica e o arquivo complementar SPORTAL para atualizar o indicador de Roubo de Veículo,
+                com filtragem específica por tipo de ocorrência, exclusão de registros indevidos por subnome,
+                validação de coordenadas, tratamento geográfico automático e filtro temporal antes da consolidação final.
+            </div>
+            <ul class="roubo-veiculo-list">
+                <li>Seleção automática das abas mais adequadas para base e complemento.</li>
+                <li>Filtro apenas para ocorrências com Nome da Ocorrência igual a ROUBO DE VEÍCULO.</li>
+                <li>Exclusão de registros com Subnome da Ocorrência contendo BICICLETA.</li>
+                <li>Validação de coordenadas e reprojeção automática para WGS84 quando necessário.</li>
+                <li>Inclusão apenas de registros posteriores à última Data/Hora válida da base.</li>
+            </ul>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        """
+        <div class="roubo-veiculo-card">
+            <div class="roubo-veiculo-card-header">Entrada de arquivos</div>
+            <div class="roubo-veiculo-card-desc">
+                Envie a base histórica consolidada e o complemento SPORTAL. O sistema irá filtrar os registros válidos,
+                tratar as coordenadas e gerar o arquivo final consolidado para download.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown(
+            """
+            <div class="roubo-veiculo-file-card">
+                <div class="roubo-veiculo-file-title">Arquivo 01</div>
+                <div class="roubo-veiculo-file-desc">Base histórica consolidada de Roubo de Veículo.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        arquivo_01 = st.file_uploader(
+            "Arquivo 01 - Base histórica de Roubo de Veículo",
+            type=["xlsx", "xls"],
+            key="roubo_veiculo_sportal_upload_01",
+            label_visibility="collapsed",
+        )
+
+    with col2:
+        st.markdown(
+            """
+            <div class="roubo-veiculo-file-card">
+                <div class="roubo-veiculo-file-title">Arquivo 02</div>
+                <div class="roubo-veiculo-file-desc">Arquivo complementar SPORTAL para atualização.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        arquivo_02 = st.file_uploader(
+            "Arquivo 02 - Complemento SPORTAL",
+            type=["xlsx", "xls"],
+            key="roubo_veiculo_sportal_upload_02",
+            label_visibility="collapsed",
+        )
 
     if arquivo_01 is not None:
         arquivo_01.seek(0)
@@ -841,7 +1057,15 @@ def render():
         and st.session_state.roubo_veiculo_sportal_arquivo_02_bytes is not None
     )
 
-    if st.button("Processar Roubo de Veículo SPORTAL", type="primary", disabled=not pode_processar):
+    processar = st.button(
+        "Processar Roubo de Veículo SPORTAL",
+        type="primary",
+        disabled=not pode_processar,
+        use_container_width=True,
+        key="processar_roubo_veiculo_sportal",
+    )
+
+    if processar:
         try:
             arquivo_01_buffer = BytesIO(st.session_state.roubo_veiculo_sportal_arquivo_01_bytes)
             arquivo_02_buffer = BytesIO(st.session_state.roubo_veiculo_sportal_arquivo_02_bytes)
@@ -860,34 +1084,29 @@ def render():
         and st.session_state.roubo_veiculo_sportal_resumo is not None
     ):
         resumo = st.session_state.roubo_veiculo_sportal_resumo
-
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Novos registros adicionados", resumo.get("adicionados", 0))
-        c2.metric("Total final da base", resumo.get("total_final", 0))
-        c3.metric("Ocorrências removidas por tipo", resumo.get("removidos_por_tipo", 0))
-
-        st.info(
-            f"Aba Arquivo 01: {resumo.get('aba_arquivo_01', '-')} | "
-            f"Aba Arquivo 02: {resumo.get('aba_arquivo_02', '-')}"
-        )
-
-        st.info(
-            f"Última Data/Hora da base: {resumo.get('ultima_datahora_base', '-')} | "
-            f"Removidos por subnome (BICICLETA): {resumo.get('removidos_por_subnome', 0)} | "
-            f"Removidos por coordenadas inválidas: {resumo.get('removidos_coord_invalidas', 0)} | "
-            f"Removidos por filtro temporal: {resumo.get('removidos_por_datahora', 0)}"
-        )
-
-        st.info(f"Modo de tratamento das coordenadas: {resumo.get('modo_coordenadas', '-')}")
-        st.caption(resumo.get("situacao", "Processamento concluído."))
+        _render_resumo_roubo_veiculo_sportal(resumo)
 
         if st.session_state.roubo_veiculo_sportal_resultado_excel is not None:
+            st.markdown(
+                """
+                <div class="roubo-veiculo-card">
+                    <div class="roubo-veiculo-card-header">Download</div>
+                    <div class="roubo-veiculo-card-desc">
+                        Baixe o arquivo final processado no padrão oficial do módulo Roubo de Veículo SPORTAL.
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            st.markdown('<span id="roubo-veiculo-download-marker"></span>', unsafe_allow_html=True)
             st.download_button(
                 label="Baixar arquivo final",
                 data=st.session_state.roubo_veiculo_sportal_resultado_excel,
                 file_name=NOME_ARQUIVO_FINAL,
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 key="roubo_veiculo_sportal_download_final",
+                use_container_width=True,
             )
 
 
