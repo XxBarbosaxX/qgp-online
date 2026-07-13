@@ -1101,7 +1101,6 @@ def render() -> None:
         unsafe_allow_html=True,
     )
 
-    st.markdown("## CVP SIP")
     st.caption("Atualização da base CVP com geocodificação por endereço a partir do complemento SIP.")
 
     st.markdown(
