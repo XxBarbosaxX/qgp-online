@@ -88,6 +88,28 @@ TIPOS = ("Rua", "Avenida", "Travessa", "Praca", "Rodovia", "Alameda", "Passeio")
 ROOFTOP = ("pointaddress", "streetaddress", "subaddress", "pointaddressvd")
 
 
+def obter_configuracao_tecnica() -> dict:
+    """Obtém a configuração técnica atual do módulo a partir do session_state."""
+    return {
+        "usar_externo": st.session_state.get("cvp_sip_cfg_usar_externo", USAR_EXTERNO),
+        "caminho_base_enxuta": st.session_state.get(
+            "cvp_sip_cfg_caminho_base_enxuta",
+            CAMINHO_BASE_ENXUTA,
+        ),
+        "arq_cache_mun": st.session_state.get("cvp_sip_cfg_arq_cache_mun", ARQ_CACHE_MUN),
+        "limiar_nome": int(st.session_state.get("cvp_sip_cfg_limiar_nome", LIMIAR_NOME)),
+        "raio_confirma_m": float(
+            st.session_state.get("cvp_sip_cfg_raio_confirma_m", RAIO_CONFIRMA_M)
+        ),
+        "raio_municipio_km": float(
+            st.session_state.get("cvp_sip_cfg_raio_municipio_km", RAIO_MUNICIPIO_KM)
+        ),
+        "limiar_suspeito": int(
+            st.session_state.get("cvp_sip_cfg_limiar_suspeito", LIMIAR_SUSPEITO)
+        ),
+    }
+
+
 def sem_acento(texto: str) -> str:
     """Remove acentos, normaliza e converte para caixa alta."""
     normalizado = unicodedata.normalize("NFKD", str(texto or ""))
@@ -129,7 +151,8 @@ def gerar_excel_em_memoria(df: pd.DataFrame) -> bytes:
 @st.cache_data(show_spinner=False)
 def carregar_municipios() -> dict:
     """Carrega municipios do Ceará a partir de cache local ou API do IBGE."""
-    caminho = Path(ARQ_CACHE_MUN)
+    config = obter_configuracao_tecnica()
+    caminho = Path(config["arq_cache_mun"])
 
     if caminho.exists():
         try:
@@ -178,7 +201,8 @@ def _montar_nome_logradouro(tipo: str, nome: str) -> str:
 @st.cache_data(show_spinner=False)
 def carregar_base_geografica() -> Optional[pd.DataFrame]:
     """Carrega a base geografica enxuta usada na validacao e geocodificacao."""
-    caminho_parquet = Path(CAMINHO_BASE_ENXUTA)
+    config = obter_configuracao_tecnica()
+    caminho_parquet = Path(config["caminho_base_enxuta"])
     if not caminho_parquet.exists():
         return None
 
@@ -199,7 +223,7 @@ def carregar_base_geografica() -> Optional[pd.DataFrame]:
 
     if faltantes:
         raise ValueError(
-            f"O arquivo {CAMINHO_BASE_ENXUTA} nao possui as colunas esperadas: {sorted(faltantes)}"
+            f"O arquivo {config['caminho_base_enxuta']} nao possui as colunas esperadas: {sorted(faltantes)}"
         )
 
     base = base.copy()
@@ -234,8 +258,10 @@ def carregar_base_geografica() -> Optional[pd.DataFrame]:
 @st.cache_resource(show_spinner=False)
 def obter_geocoder_arcgis():
     """Instancia geocoder ArcGIS com rate limit."""
-    if not USAR_EXTERNO:
+    config = obter_configuracao_tecnica()
+    if not config["usar_externo"]:
         return None
+
     arc = ArcGIS(timeout=15)
     return RateLimiter(
         arc.geocode,
@@ -317,6 +343,7 @@ class MotorGeocodificacaoSoberana:
     """Motor de geocodificacao com base local e ArcGIS."""
 
     def __init__(self):
+        self.config = obter_configuracao_tecnica()
         self.base = carregar_base_geografica()
         self.municipios = carregar_municipios()
         self.tree = None
@@ -351,7 +378,7 @@ class MotorGeocodificacaoSoberana:
         if ancora is not None and self.tree is not None:
             indices = self.tree.query_ball_point(
                 [ancora[0], ancora[1]],
-                r=RAIO_MUNICIPIO_KM / 111.0,
+                r=self.config["raio_municipio_km"] / 111.0,
             )
             return np.array(indices, dtype=int)
 
@@ -372,7 +399,7 @@ class MotorGeocodificacaoSoberana:
                 melhor_score = score
                 melhor_indice = indice
 
-        if melhor_indice is not None and melhor_score >= LIMIAR_NOME:
+        if melhor_indice is not None and melhor_score >= self.config["limiar_nome"]:
             return (
                 float(self.glat[melhor_indice]),
                 float(self.glon[melhor_indice]),
@@ -389,7 +416,10 @@ class MotorGeocodificacaoSoberana:
 
         nomes = self.gnome[indices]
         mascara = np.array(
-            [fuzz.token_set_ratio(rua_norm, nome) >= LIMIAR_NOME for nome in nomes]
+            [
+                fuzz.token_set_ratio(rua_norm, nome) >= self.config["limiar_nome"]
+                for nome in nomes
+            ]
         )
 
         if not mascara.any():
@@ -399,7 +429,7 @@ class MotorGeocodificacaoSoberana:
         distancias = _hav(lat, lon, self.glat[indices_filtrados], self.glon[indices_filtrados])
         melhor = float(distancias.min())
 
-        return melhor <= RAIO_CONFIRMA_M, melhor
+        return melhor <= self.config["raio_confirma_m"], melhor
 
     def geocodificar(self, rua: str, numero: str, bairro: str, municipio: str):
         """Executa estrategia hierarquica de geocodificacao."""
@@ -577,6 +607,7 @@ def geocodificar_linhas_novas(
     col_lon_destino: str,
 ) -> tuple[pd.DataFrame, int]:
     """Geocodifica linhas novas e retorna DataFrame atualizado."""
+    config = obter_configuracao_tecnica()
     motor = MotorGeocodificacaoSoberana()
 
     lats = []
@@ -629,7 +660,7 @@ def geocodificar_linhas_novas(
     contagem = chave.value_counts()
     df["Ocorrencias_Mesmo_Ponto"] = chave.map(contagem).fillna(1).astype(int)
     df["_loc_aproximada"] = (
-        (df["Ocorrencias_Mesmo_Ponto"] >= LIMIAR_SUSPEITO)
+        (df["Ocorrencias_Mesmo_Ponto"] >= config["limiar_suspeito"])
         & (df["numero_busca"].fillna("").astype(str).str.strip() == "")
     )
 
@@ -858,10 +889,72 @@ def _init_state() -> None:
         "cvp_sip_resultado_excel": None,
         "cvp_sip_resultado_df": None,
         "cvp_sip_resumo": None,
+        "cvp_sip_cfg_usar_externo": USAR_EXTERNO,
+        "cvp_sip_cfg_caminho_base_enxuta": CAMINHO_BASE_ENXUTA,
+        "cvp_sip_cfg_arq_cache_mun": ARQ_CACHE_MUN,
+        "cvp_sip_cfg_limiar_nome": LIMIAR_NOME,
+        "cvp_sip_cfg_raio_confirma_m": RAIO_CONFIRMA_M,
+        "cvp_sip_cfg_raio_municipio_km": RAIO_MUNICIPIO_KM,
+        "cvp_sip_cfg_limiar_suspeito": LIMIAR_SUSPEITO,
     }
     for chave, valor in defaults.items():
         if chave not in st.session_state:
             st.session_state[chave] = valor
+
+
+def _render_configuracao_tecnica() -> None:
+    """Renderiza a seção de configuração técnica do módulo."""
+    with st.expander("Configuração técnica", expanded=True):
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.toggle(
+                "Usar ArcGIS como fallback",
+                key="cvp_sip_cfg_usar_externo",
+                help="Quando ativado, usa ArcGIS como apoio à geocodificação além da base parquet local.",
+            )
+            st.text_input(
+                "Base geográfica (.parquet)",
+                key="cvp_sip_cfg_caminho_base_enxuta",
+                help="Arquivo parquet enxuto utilizado para validação e apoio na geocodificação.",
+            )
+            st.text_input(
+                "Arquivo cache de municípios",
+                key="cvp_sip_cfg_arq_cache_mun",
+                help="Arquivo JSON local usado para cache dos municípios do Ceará.",
+            )
+
+        with col2:
+            st.slider(
+                "Limiar de similaridade",
+                min_value=70,
+                max_value=100,
+                key="cvp_sip_cfg_limiar_nome",
+                help="Percentual mínimo de similaridade entre logradouro informado e base local.",
+            )
+            st.number_input(
+                "Raio de confirmação (m)",
+                min_value=1.0,
+                step=1.0,
+                format="%.2f",
+                key="cvp_sip_cfg_raio_confirma_m",
+                help="Distância máxima em metros para considerar uma coordenada validada.",
+            )
+            st.number_input(
+                "Raio do município (km)",
+                min_value=1.0,
+                step=1.0,
+                format="%.2f",
+                key="cvp_sip_cfg_raio_municipio_km",
+                help="Raio usado para busca aproximada quando não há código municipal válido.",
+            )
+            st.number_input(
+                "Limiar de ponto suspeito",
+                min_value=1,
+                step=1,
+                key="cvp_sip_cfg_limiar_suspeito",
+                help="Quantidade mínima de ocorrências no mesmo ponto para sinalização de localização aproximada.",
+            )
 
 
 def _render_resumo_cvp_sip(resumo: dict, df_final: pd.DataFrame) -> None:
@@ -950,18 +1043,27 @@ def render() -> None:
             padding: 1rem 1.1rem;
             margin-bottom: 0.75rem;
             border: 1px solid rgba(148, 163, 184, 0.30);
-            background: #020617;
+            background: linear-gradient(180deg, rgba(2, 44, 34, 0.95), rgba(2, 26, 23, 0.95));
         }
         .cvp-sip-card-header {
             font-weight: 700;
-            font-size: 0.98rem;
-            margin-bottom: 0.35rem;
+            font-size: 1rem;
+            margin-bottom: 0.45rem;
             color: rgba(248, 250, 252, 0.98);
         }
         .cvp-sip-card-desc {
             font-size: 0.84rem;
-            color: rgba(226, 232, 240, 0.82);
-            margin-bottom: 0.2rem;
+            color: rgba(226, 232, 240, 0.86);
+            margin-bottom: 0.15rem;
+            line-height: 1.6;
+        }
+        .cvp-sip-list {
+            margin: 0.7rem 0 0 0;
+            padding-left: 1.2rem;
+            color: rgba(226, 232, 240, 0.92);
+        }
+        .cvp-sip-list li {
+            margin-bottom: 0.35rem;
         }
         .cvp-sip-file-card {
             border-radius: 0.75rem;
@@ -1003,11 +1105,35 @@ def render() -> None:
     st.caption("Atualização da base CVP com geocodificação por endereço a partir do complemento SIP.")
 
     st.markdown(
+        """
+        <div class="cvp-sip-card">
+            <div class="cvp-sip-card-header">Processamento de CVP SIP</div>
+            <div class="cvp-sip-card-desc">
+                Envie a base histórica e o complemento SIP para atualizar a base consolidada com
+                geocodificação por endereço, validação temporal, classificação do nível de precisão
+                e padronização final no formato do QGP Online.
+            </div>
+            <ul class="cvp-sip-list">
+                <li>Filtro automático de registros posteriores à última Data/Hora da base.</li>
+                <li>Geocodificação híbrida com ArcGIS e base parquet enxuta.</li>
+                <li>Validação por similaridade de logradouro e contexto municipal.</li>
+                <li>Classificação por nível de geocodificação.</li>
+                <li>Geração do arquivo final consolidado para download.</li>
+            </ul>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    _render_configuracao_tecnica()
+
+    st.markdown(
         f"""
         <div class="cvp-sip-card">
             <div class="cvp-sip-card-header">Base geográfica de apoio</div>
             <div class="cvp-sip-card-desc">
-                Este módulo utiliza a base geográfica auxiliar localizada em <strong>{CAMINHO_BASE_ENXUTA}</strong>
+                Este módulo utiliza a base geográfica auxiliar localizada em
+                <strong>{st.session_state.get("cvp_sip_cfg_caminho_base_enxuta", CAMINHO_BASE_ENXUTA)}</strong>
                 para validação e apoio à geocodificação dos registros.
             </div>
         </div>
@@ -1017,13 +1143,14 @@ def render() -> None:
 
     try:
         base_geo = carregar_base_geografica()
+        caminho_base = st.session_state.get("cvp_sip_cfg_caminho_base_enxuta", CAMINHO_BASE_ENXUTA)
         if base_geo is not None and not base_geo.empty:
             st.success(
-                f"Base geográfica carregada com sucesso: {len(base_geo):,} registros em {CAMINHO_BASE_ENXUTA}"
+                f"Base geográfica carregada com sucesso: {len(base_geo):,} registros em {caminho_base}"
             )
         else:
             st.warning(
-                f"A base geográfica não foi carregada. Verifique o arquivo {CAMINHO_BASE_ENXUTA}."
+                f"A base geográfica não foi carregada. Verifique o arquivo {caminho_base}."
             )
     except Exception as exc:
         st.error(f"Erro ao carregar base geográfica: {exc}")
@@ -1107,6 +1234,10 @@ def render() -> None:
         key="cvp_sip_processar",
     ):
         try:
+            carregar_base_geografica.clear()
+            carregar_municipios.clear()
+            obter_geocoder_arcgis.clear()
+
             arquivo_01_buffer = BytesIO(st.session_state.cvp_sip_arquivo_01_bytes)
             arquivo_02_buffer = BytesIO(st.session_state.cvp_sip_arquivo_02_bytes)
 
