@@ -19,9 +19,9 @@ import re
 import traceback
 import unicodedata
 import zipfile
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime
-from typing import Callable
+from typing import Any, Callable
 
 import pandas as pd
 import streamlit as st
@@ -51,6 +51,10 @@ class TodosIndicadoresConfigTecnica:
     raio_municipio_km: float = 8.0
     limiar_suspeito: int = 5
     valor_filtro_natureza: str = "ROUBO DE VEICULO"
+    uf_codigo: str = "23"
+    arcgis_timeout: int = 15
+    arcgis_delay_s: float = 0.4
+    arcgis_retries: int = 2
 
 
 INDICADORES: list[IndicadorDef] = [
@@ -304,6 +308,10 @@ def limpar_estado() -> None:
         "todos_cfg_raio_municipio_km",
         "todos_cfg_limiar_suspeito",
         "todos_cfg_valor_filtro_natureza",
+        "todos_cfg_uf_codigo",
+        "todos_cfg_arcgis_timeout",
+        "todos_cfg_arcgis_delay_s",
+        "todos_cfg_arcgis_retries",
     ]
     for chave in chaves:
         if chave in st.session_state:
@@ -551,33 +559,63 @@ def _processador_aceita_config(processador: Callable) -> bool:
     except (TypeError, ValueError):
         return False
 
+    return "config" in assinatura.parameters
+
+
+def _instanciar_dataclass_com_aliases(classe_config, dados_base: dict[str, Any]):
+    assinatura = inspect.signature(classe_config)
     parametros = assinatura.parameters
-    return "config" in parametros
+
+    aliases_por_campo: dict[str, list[str]] = {
+        "usar_externo": ["usar_externo", "usarexterno"],
+        "caminho_base_enxuta": ["caminho_base_enxuta", "caminhobaseenxuta"],
+        "valor_filtro_natureza": ["valor_filtro_natureza", "valorfiltronatureza"],
+        "limiar_nome": ["limiar_nome", "limiarnome"],
+        "raio_confirma_m": ["raio_confirma_m", "raioconfirmam"],
+        "raio_municipio_km": ["raio_municipio_km", "raiomunicipiokm"],
+        "limiar_suspeito": ["limiar_suspeito", "limiarsuspeito"],
+        "uf_codigo": ["uf_codigo", "ufcodigo"],
+        "arq_cache_municipios": ["arq_cache_municipios", "arqcachemun", "arq_cache_mun"],
+        "arcgis_timeout": ["arcgis_timeout", "arcgistimeout"],
+        "arcgis_delay_s": ["arcgis_delay_s", "arcgisdelays", "arcgis_delay"],
+        "arcgis_retries": ["arcgis_retries", "arcgisretries"],
+    }
+
+    kwargs: dict[str, Any] = {}
+
+    for nome_parametro in parametros:
+        for chave_base, aliases in aliases_por_campo.items():
+            if nome_parametro in aliases and chave_base in dados_base:
+                kwargs[nome_parametro] = dados_base[chave_base]
+                break
+
+    return classe_config(**kwargs)
 
 
-def _montar_config_para_modulo(indicador: IndicadorDef, config_ui: TodosIndicadoresConfigTecnica):
-    if indicador.chave != "roubo_veiculo_sip":
-        return config_ui
-
+def _montar_config_para_modulo(
+    indicador: IndicadorDef,
+    config_ui: TodosIndicadoresConfigTecnica,
+):
     try:
         modulo = importlib.import_module(f"modulos.{indicador.modulo}")
-        classe_config = getattr(modulo, "RouboVeiculoSipConfig", None)
-
-        if classe_config is None:
-            return config_ui
-
-        return classe_config(
-            usar_externo=config_ui.usar_externo,
-            caminho_base_enxuta=config_ui.caminho_base_enxuta,
-            valor_filtro_natureza=config_ui.valor_filtro_natureza,
-            limiar_nome=int(config_ui.limiar_nome),
-            raio_confirma_m=float(config_ui.raio_confirma_m),
-            raio_municipio_km=float(config_ui.raio_municipio_km),
-            limiar_suspeito=int(config_ui.limiar_suspeito),
-            arq_cache_mun=config_ui.arq_cache_municipios,
-        )
     except Exception:
         return config_ui
+
+    nome_classe_por_indicador = {
+        "roubo_veiculo_sip": "RouboVeiculoSipConfig",
+        "furto_veiculo_sip": "FurtoVeiculoSipConfig",
+    }
+
+    nome_classe = nome_classe_por_indicador.get(indicador.chave)
+    if not nome_classe:
+        return config_ui
+
+    classe_config = getattr(modulo, nome_classe, None)
+    if classe_config is None:
+        return config_ui
+
+    dados_base = asdict(config_ui)
+    return _instanciar_dataclass_com_aliases(classe_config, dados_base)
 
 
 def executar_modulo(
@@ -847,13 +885,24 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Filtro de Natureza",
-                "Parâmetro informativo para módulos compatíveis com filtragem textual por natureza da ocorrência.",
+                "Parâmetro textual usado por módulos compatíveis para filtrar a natureza da ocorrência durante o processamento.",
             )
             valor_filtro_natureza = st.text_input(
                 "Filtro de Natureza",
                 value=str(config_atual.valor_filtro_natureza),
                 label_visibility="collapsed",
                 key="todos_cfg_valor_filtro_natureza",
+            )
+
+            render_label_flutuante(
+                "Código da UF",
+                "Código IBGE da UF usado nas consultas auxiliares de municípios. Para o Ceará, o padrão é 23.",
+            )
+            uf_codigo = st.text_input(
+                "Código da UF",
+                value=str(config_atual.uf_codigo),
+                label_visibility="collapsed",
+                key="todos_cfg_uf_codigo",
             )
 
         with colcfg2:
@@ -909,6 +958,46 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
                 key="todos_cfg_limiar_suspeito",
             )
 
+            render_label_flutuante(
+                "ArcGIS timeout (s)",
+                "Tempo máximo de espera por requisição externa de geocodificação.",
+            )
+            arcgis_timeout = st.number_input(
+                "ArcGIS timeout (s)",
+                min_value=1,
+                value=int(config_atual.arcgis_timeout),
+                step=1,
+                label_visibility="collapsed",
+                key="todos_cfg_arcgis_timeout",
+            )
+
+            render_label_flutuante(
+                "ArcGIS delay (s)",
+                "Intervalo entre tentativas/requisições para reduzir bloqueios e excesso de chamadas.",
+            )
+            arcgis_delay_s = st.number_input(
+                "ArcGIS delay (s)",
+                min_value=0.0,
+                value=float(config_atual.arcgis_delay_s),
+                step=0.1,
+                format="%.2f",
+                label_visibility="collapsed",
+                key="todos_cfg_arcgis_delay_s",
+            )
+
+            render_label_flutuante(
+                "ArcGIS retries",
+                "Quantidade de novas tentativas em caso de falha na consulta externa.",
+            )
+            arcgis_retries = st.number_input(
+                "ArcGIS retries",
+                min_value=0,
+                value=int(config_atual.arcgis_retries),
+                step=1,
+                label_visibility="collapsed",
+                key="todos_cfg_arcgis_retries",
+            )
+
     config = TodosIndicadoresConfigTecnica(
         usar_externo=bool(usar_externo),
         caminho_base_enxuta=caminho_base_enxuta.strip() or "CVP_SIP_GEOCODIFICAR.parquet",
@@ -918,6 +1007,10 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
         raio_municipio_km=float(raio_municipio_km),
         limiar_suspeito=int(limiar_suspeito),
         valor_filtro_natureza=valor_filtro_natureza.strip() or "ROUBO DE VEICULO",
+        uf_codigo=uf_codigo.strip() or "23",
+        arcgis_timeout=int(arcgis_timeout),
+        arcgis_delay_s=float(arcgis_delay_s),
+        arcgis_retries=int(arcgis_retries),
     )
 
     st.session_state.todos_indicadores_config_tecnica = config
