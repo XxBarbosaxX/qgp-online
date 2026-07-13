@@ -141,7 +141,7 @@ INDICADORES: list[IndicadorDef] = [
         modulo="furto_veiculo_sip",
         funcao="processar_furto_veiculo_sip",
         nome_saida=nome_arquivo_padrao(10, "FURTO-DE-VEICULO-SIP"),
-        ordem_arquivos="mestre_primeiro",
+        ordem_arquivos="consolidado_primeiro",
     ),
 ]
 
