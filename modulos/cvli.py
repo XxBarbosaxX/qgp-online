@@ -5,8 +5,6 @@ Processamento e atualização de dados CVLI para QGP Online
 
 from __future__ import annotations
 
-import io
-
 import pandas as pd
 import streamlit as st
 
@@ -191,6 +189,48 @@ def processar_cvli(arquivo_01, arquivo_02):
     return resultado["df_final"], resumo
 
 
+def _render_resumo_cvli(resultado: dict) -> None:
+    """Renderiza o resumo do processamento com componentes nativos do Streamlit."""
+    acao = (
+        "Atualização com substituição de período"
+        if resultado["houve_substituicao"]
+        else "Complementação sem substituição"
+    )
+
+    st.markdown(
+        """
+        <div class="cvli-card">
+            <div class="cvli-card-header">Resultado do processamento</div>
+            <div class="cvli-card-desc">
+                O processamento foi concluído com sucesso. Abaixo estão os principais indicadores da execução.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.success("Processo finalizado com sucesso.")
+    st.caption(acao)
+
+    col1, col2, col3 = st.columns(3)
+    col4, col5 = st.columns(2)
+
+    with col1:
+        st.metric("Registros adicionados", resultado["adicionados"])
+
+    with col2:
+        st.metric("Total final", resultado["total_final"])
+
+    with col3:
+        st.metric("Total inicial", resultado["total_inicial"])
+
+    with col4:
+        st.info(f"**Aba arquivo 01:** {resultado['aba_arquivo_01']}")
+
+    with col5:
+        st.info(f"**Aba arquivo 02:** {resultado['aba_arquivo_02']}")
+
+
 def interface_cvli() -> None:
     """Interface Streamlit para processamento CVLI."""
     st.markdown(
@@ -213,49 +253,6 @@ def interface_cvli() -> None:
             font-size: 0.84rem;
             color: rgba(226, 232, 240, 0.82);
             margin-bottom: 0.2rem;
-        }
-        .cvli-summary-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 0.55rem;
-            margin-top: 0.55rem;
-        }
-        .cvli-summary-item {
-            border-radius: 0.7rem;
-            padding: 0.75rem 0.8rem;
-            background: rgba(15, 23, 42, 0.92);
-            border: 1px solid rgba(148, 163, 184, 0.20);
-        }
-        .cvli-summary-label {
-            font-size: 0.74rem;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            color: rgba(148, 163, 184, 0.95);
-            margin-bottom: 0.2rem;
-        }
-        .cvli-summary-value {
-            font-size: 1rem;
-            font-weight: 700;
-            color: rgba(248, 250, 252, 0.98);
-            word-break: break-word;
-        }
-        .cvli-inline-status {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.4rem;
-            font-size: 0.82rem;
-            font-weight: 600;
-            color: rgba(226, 232, 240, 0.96);
-        }
-        .cvli-dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 999px;
-            border: 2px solid transparent;
-        }
-        .cvli-dot-ok {
-            background: #22c55e;
-            border-color: rgba(22, 163, 74, 0.9);
         }
         .cvli-file-card {
             border-radius: 0.75rem;
@@ -375,60 +372,7 @@ def interface_cvli() -> None:
         st.error(f"Erro no processamento: {resultado['erro']}")
         return
 
-    acao = (
-        "Atualização com substituição de período"
-        if resultado["houve_substituicao"]
-        else "Complementação sem substituição"
-    )
-
-    st.markdown(
-        """
-        <div class="cvli-card">
-            <div class="cvli-card-header">Resultado do processamento</div>
-            <div class="cvli-card-desc">
-                O processamento foi concluído com sucesso. Abaixo estão os principais indicadores da execução.
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.success("Processo finalizado com sucesso.")
-
-    st.markdown(
-        f"""
-        <div class="cvli-card">
-            <div class="cvli-inline-status">
-                <span class="cvli-dot cvli-dot-ok"></span>
-                <span>{acao}</span>
-            </div>
-
-            <div class="cvli-summary-grid">
-                <div class="cvli-summary-item">
-                    <div class="cvli-summary-label">Registros adicionados</div>
-                    <div class="cvli-summary-value">{resultado['adicionados']}</div>
-                </div>
-                <div class="cvli-summary-item">
-                    <div class="cvli-summary-label">Total final</div>
-                    <div class="cvli-summary-value">{resultado['total_final']}</div>
-                </div>
-                <div class="cvli-summary-item">
-                    <div class="cvli-summary-label">Total inicial</div>
-                    <div class="cvli-summary-value">{resultado['total_inicial']}</div>
-                </div>
-                <div class="cvli-summary-item">
-                    <div class="cvli-summary-label">Aba arquivo 01</div>
-                    <div class="cvli-summary-value">{resultado['aba_arquivo_01']}</div>
-                </div>
-                <div class="cvli-summary-item">
-                    <div class="cvli-summary-label">Aba arquivo 02</div>
-                    <div class="cvli-summary-value">{resultado['aba_arquivo_02']}</div>
-                </div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    _render_resumo_cvli(resultado)
 
     output = gerar_arquivo_excel(resultado["df_final"], sheet_name="CVLI")
 
