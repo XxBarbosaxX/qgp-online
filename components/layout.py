@@ -75,18 +75,21 @@ def render_topbar() -> None:
     if logo_base64:
         logo_html = f"""
         <div class="app-header-logo-wrap">
-            <a
-                href="?home=1"
+            <div
                 class="app-header-logo-link"
+                role="button"
+                tabindex="0"
                 aria-label="Voltar para a tela inicial"
                 title="Voltar para a tela inicial"
+                onclick="window.location.search='?home=1';"
+                onkeydown="if(event.key==='Enter' || event.key===' '){{ event.preventDefault(); window.location.search='?home=1'; }}"
             >
                 <img
                     src="data:image/png;base64,{logo_base64}"
                     alt="Logo DIESP"
                     class="app-header-logo"
                 >
-            </a>
+            </div>
         </div>
         """
     else:
