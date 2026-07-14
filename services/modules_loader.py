@@ -21,7 +21,10 @@ MAPEAMENTO: dict[str, tuple[str, str]] = {
     "FURTO DE VEÍCULO (SIP)": ("furto_veiculo_sip", "interface_furto_veiculo_sip"),
     "GEOCODIFICAÇÃO": ("geocodificar", "interface_geocodificar"),
     "CONVERSÃO": ("conversor_coordenadas", "interface_conversor_coordenadas"),
-    "CONSOLIDAR INDICADORES": ("consolidar_indicadores", "interface_consolidar_indicadores"),
+    "CONSOLIDAR INDICADORES": (
+        "consolidar_indicadores_criminais",
+        "interface_consolidar_indicadores_criminais",
+    ),
 }
 
 
