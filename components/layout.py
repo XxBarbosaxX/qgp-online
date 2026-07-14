@@ -22,26 +22,11 @@ INDICADORES_ATUALIZACAO: list[str] = [
 def selecionar_indicador(nome: str) -> None:
     """Seleciona o módulo ativo."""
     st.session_state.indicador_selecionado = nome
-    if nome in INDICADORES_ATUALIZACAO:
-        st.session_state.indicador_dropdown = nome
 
 
 def voltar_inicio() -> None:
     """Retorna para a tela inicial."""
     st.session_state.indicador_selecionado = "Selecione um indicador..."
-    st.session_state.indicador_dropdown = "CVLI"
-
-
-def tratar_retorno_home_por_query_params() -> None:
-    """Processa o retorno para a home via query params ao clicar na logo."""
-    try:
-        query_params = st.query_params
-        if query_params.get("home") == "1":
-            voltar_inicio()
-            st.query_params.clear()
-            st.rerun()
-    except Exception:
-        pass
 
 
 @st.cache_data(show_spinner=False)
@@ -68,28 +53,16 @@ def _obter_logo_base64() -> str | None:
 
 def render_topbar() -> None:
     """Renderiza o cabeçalho superior da aplicação."""
-    tratar_retorno_home_por_query_params()
-
     logo_base64 = _obter_logo_base64()
 
     if logo_base64:
         logo_html = f"""
         <div class="app-header-logo-wrap">
-            <div
-                class="app-header-logo-link"
-                role="button"
-                tabindex="0"
-                aria-label="Voltar para a tela inicial"
-                title="Voltar para a tela inicial"
-                onclick="window.location.search='?home=1';"
-                onkeydown="if(event.key==='Enter' || event.key===' '){{ event.preventDefault(); window.location.search='?home=1'; }}"
+            <img
+                src="data:image/png;base64,{logo_base64}"
+                alt="Logo DIESP"
+                class="app-header-logo"
             >
-                <img
-                    src="data:image/png;base64,{logo_base64}"
-                    alt="Logo DIESP"
-                    class="app-header-logo"
-                >
-            </div>
         </div>
         """
     else:
