@@ -29,8 +29,19 @@ def selecionar_indicador(nome: str) -> None:
 def voltar_inicio() -> None:
     """Retorna para a tela inicial."""
     st.session_state.indicador_selecionado = "Selecione um indicador..."
-    if "indicador_dropdown" not in st.session_state:
-        st.session_state.indicador_dropdown = "CVLI"
+    st.session_state.indicador_dropdown = "CVLI"
+
+
+def tratar_retorno_home_por_query_params() -> None:
+    """Processa o retorno para a home via query params ao clicar na logo."""
+    try:
+        query_params = st.query_params
+        if query_params.get("home") == "1":
+            voltar_inicio()
+            st.query_params.clear()
+            st.rerun()
+    except Exception:
+        pass
 
 
 @st.cache_data(show_spinner=False)
@@ -57,55 +68,42 @@ def _obter_logo_base64() -> str | None:
 
 def render_topbar() -> None:
     """Renderiza o cabeçalho superior da aplicação."""
+    tratar_retorno_home_por_query_params()
+
     logo_base64 = _obter_logo_base64()
 
-    col_titulo, col_logo = st.columns([10, 2], gap="medium")
+    if logo_base64:
+        logo_html = f"""
+        <div class="app-header-logo-wrap">
+            <a
+                href="?home=1"
+                class="app-header-logo-link"
+                aria-label="Voltar para a tela inicial"
+                title="Voltar para a tela inicial"
+            >
+                <img
+                    src="data:image/png;base64,{logo_base64}"
+                    alt="Logo DIESP"
+                    class="app-header-logo"
+                >
+            </a>
+        </div>
+        """
+    else:
+        logo_html = ""
 
-    with col_titulo:
-        st.markdown(
-            """
-            <div class="app-header app-header-main-only">
-                <div class="app-header-main">
-                    <div class="app-title">QGP Online</div>
-                    <div class="app-subtitle">SUPESP / CE · Atualizador de Indicadores</div>
-                </div>
+    st.markdown(
+        f"""
+        <div class="app-header app-header-with-logo">
+            <div class="app-header-main">
+                <div class="app-title">QGP Online</div>
+                <div class="app-subtitle">SUPESP / CE · Atualizador de Indicadores</div>
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    with col_logo:
-        if logo_base64:
-            st.markdown(
-                f"""
-                <div class="app-header app-header-logo-side">
-                    <div class="app-header-logo-wrap">
-                        <img
-                            src="data:image/png;base64,{logo_base64}"
-                            alt="Logo DIESP"
-                            class="app-header-logo"
-                        >
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            if st.button(
-                " ",
-                key="btn_logo_inicio",
-                help="Voltar para a tela Inicial",
-                use_container_width=True,
-            ):
-                voltar_inicio()
-                st.rerun()
-        else:
-            st.markdown(
-                """
-                <div class="app-header app-header-logo-side"></div>
-                """,
-                unsafe_allow_html=True,
-            )
+            {logo_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def render_home_hero() -> None:
