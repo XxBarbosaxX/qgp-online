@@ -6,15 +6,11 @@ import re
 import unicodedata
 import zipfile
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import pandas as pd
 import streamlit as st
 
-
-# =========================================================
-# CONFIGURAÇÃO
-# =========================================================
 
 INDICADORES_DISPONIVEIS = [
     "CVLI",
@@ -46,10 +42,6 @@ COLUNAS_HORA_CANDIDATAS = ["Hora", "HORA", "hora"]
 PREENCHIMENTO_COLUNA_AUSENTE = "NÃO LOCALIZADO"
 
 
-# =========================================================
-# MODELOS
-# =========================================================
-
 @dataclass
 class ArquivoAbaLida:
     nome_arquivo: str
@@ -78,10 +70,6 @@ class ResultadoIndicador:
     total_meses_incompletos: int = 0
     erros: List[str] = field(default_factory=list)
 
-
-# =========================================================
-# UTILITÁRIOS
-# =========================================================
 
 def normalizar_texto(valor: str) -> str:
     if valor is None:
@@ -258,10 +246,6 @@ def criar_zip_resultados(resultados_validos: List[ResultadoIndicador]) -> bytes:
     return buffer.getvalue()
 
 
-# =========================================================
-# LEITURA
-# =========================================================
-
 def ler_aba_indicador(uploaded_file, indicador: str) -> Tuple[Optional[ArquivoAbaLida], Optional[str]]:
     try:
         uploaded_file.seek(0)
@@ -322,35 +306,35 @@ def ler_aba_indicador(uploaded_file, indicador: str) -> Tuple[Optional[ArquivoAb
     )
 
 
-# =========================================================
-# COMPLETUDE / AUDITORIA
-# =========================================================
-
 def montar_resumo_completude(df: pd.DataFrame, coluna_data_real: str) -> pd.DataFrame:
     col_data = coluna_data_real if coluna_data_real in df.columns else None
     if df.empty or not col_data:
-        return pd.DataFrame(columns=[
-            "Mes",
-            "Dias no Mês",
-            "Dias com Registro",
-            "Dias faltantes do mês",
-            "Quantidade de Dias Faltantes",
-            "Quantidade de ocorrências no mês",
-        ])
+        return pd.DataFrame(
+            columns=[
+                "Mes",
+                "Dias no Mês",
+                "Dias com Registro",
+                "Dias faltantes do mês",
+                "Quantidade de Dias Faltantes",
+                "Quantidade de ocorrências no mês",
+            ]
+        )
 
     temp = df.copy()
     temp["_data_ref"] = pd.to_datetime(temp[col_data], errors="coerce")
     temp = temp[temp["_data_ref"].notna()].copy()
 
     if temp.empty:
-        return pd.DataFrame(columns=[
-            "Mes",
-            "Dias no Mês",
-            "Dias com Registro",
-            "Dias faltantes do mês",
-            "Quantidade de Dias Faltantes",
-            "Quantidade de ocorrências no mês",
-        ])
+        return pd.DataFrame(
+            columns=[
+                "Mes",
+                "Dias no Mês",
+                "Dias com Registro",
+                "Dias faltantes do mês",
+                "Quantidade de Dias Faltantes",
+                "Quantidade de ocorrências no mês",
+            ]
+        )
 
     temp["_mes"] = temp["_data_ref"].dt.to_period("M")
     linhas = []
@@ -364,14 +348,16 @@ def montar_resumo_completude(df: pd.DataFrame, coluna_data_real: str) -> pd.Data
         qtd_faltantes = max(dias_mes - qtd_dias_registro, 0)
         faltantes = "SIM" if qtd_faltantes > 0 else "NÃO"
 
-        linhas.append({
-            "Mes": f"{ano:04d}-{mes:02d}",
-            "Dias no Mês": dias_mes,
-            "Dias com Registro": qtd_dias_registro,
-            "Dias faltantes do mês": faltantes,
-            "Quantidade de Dias Faltantes": qtd_faltantes,
-            "Quantidade de ocorrências no mês": int(len(grupo)),
-        })
+        linhas.append(
+            {
+                "Mes": f"{ano:04d}-{mes:02d}",
+                "Dias no Mês": dias_mes,
+                "Dias com Registro": qtd_dias_registro,
+                "Dias faltantes do mês": faltantes,
+                "Quantidade de Dias Faltantes": qtd_faltantes,
+                "Quantidade de ocorrências no mês": int(len(grupo)),
+            }
+        )
 
     return pd.DataFrame(linhas)
 
@@ -379,25 +365,29 @@ def montar_resumo_completude(df: pd.DataFrame, coluna_data_real: str) -> pd.Data
 def montar_auditoria(indicador: str, abas_lidas: List[ArquivoAbaLida], consolidado: pd.DataFrame) -> pd.DataFrame:
     linhas = []
     for item in abas_lidas:
-        linhas.append({
-            "Indicador": indicador,
-            "Arquivo": item.nome_arquivo,
-            "Coluna de Data": item.coluna_data_real,
-            "Coluna de Hora": item.coluna_hora_real or "",
-            "Data Inicial": "" if item.dt_min is None or pd.isna(item.dt_min) else item.dt_min.strftime("%Y-%m-%d %H:%M:%S"),
-            "Data Final": "" if item.dt_max is None or pd.isna(item.dt_max) else item.dt_max.strftime("%Y-%m-%d %H:%M:%S"),
-            "Registros Lidos": len(item.df_processado),
-        })
+        linhas.append(
+            {
+                "Indicador": indicador,
+                "Arquivo": item.nome_arquivo,
+                "Coluna de Data": item.coluna_data_real,
+                "Coluna de Hora": item.coluna_hora_real or "",
+                "Data Inicial": "" if item.dt_min is None or pd.isna(item.dt_min) else item.dt_min.strftime("%Y-%m-%d %H:%M:%S"),
+                "Data Final": "" if item.dt_max is None or pd.isna(item.dt_max) else item.dt_max.strftime("%Y-%m-%d %H:%M:%S"),
+                "Registros Lidos": len(item.df_processado),
+            }
+        )
 
-    linhas.append({
-        "Indicador": indicador,
-        "Arquivo": "TOTAL",
-        "Coluna de Data": "",
-        "Coluna de Hora": "",
-        "Data Inicial": "",
-        "Data Final": "",
-        "Registros Lidos": len(consolidado),
-    })
+    linhas.append(
+        {
+            "Indicador": indicador,
+            "Arquivo": "TOTAL",
+            "Coluna de Data": "",
+            "Coluna de Hora": "",
+            "Data Inicial": "",
+            "Data Final": "",
+            "Registros Lidos": len(consolidado),
+        }
+    )
 
     return pd.DataFrame(linhas)
 
@@ -420,10 +410,6 @@ def exportar_excel_indicador(
     return output.getvalue(), nome_saida
 
 
-# =========================================================
-# REGRAS DE CONSOLIDAÇÃO
-# =========================================================
-
 def consolidar_cvli(abas_lidas: List[ArquivoAbaLida]) -> Tuple[pd.DataFrame, str]:
     if not abas_lidas:
         return pd.DataFrame(), "Nenhum arquivo válido para CVLI."
@@ -441,8 +427,8 @@ def consolidar_cvli(abas_lidas: List[ArquivoAbaLida]) -> Tuple[pd.DataFrame, str
         col_vitima = identificar_coluna_vitima_cvli(df)
         if not col_tombo or not col_vitima:
             return pd.DataFrame(), (
-                f"No arquivo {item.nome_arquivo}, a aba CVLI não contém as colunas "
-                f"obrigatórias para deduplicação por Tombo + Data + Nome da Vítima."
+                f"No arquivo {item.nome_arquivo}, a aba CVLI não contém as colunas obrigatórias "
+                f"para deduplicação por Tombo + Data + Nome da Vítima."
             )
 
         df["_chave_cvli"] = gerar_chave_cvli(df, col_tombo, item.coluna_data_real, col_vitima)
@@ -569,10 +555,6 @@ def processar_indicador(indicador: str, arquivos_excel) -> ResultadoIndicador:
         erros=erros,
     )
 
-
-# =========================================================
-# UI
-# =========================================================
 
 def aplicar_estilo_local():
     st.markdown(
@@ -785,5 +767,4 @@ def interface_consolidar_indicadores_criminais():
                 st.dataframe(r.df_auditoria, use_container_width=True, hide_index=True)
 
 
-# Compatibilidade com o restante do projeto
 render = interface_consolidar_indicadores_criminais
