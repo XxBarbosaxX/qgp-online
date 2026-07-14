@@ -22,11 +22,15 @@ INDICADORES_ATUALIZACAO: list[str] = [
 def selecionar_indicador(nome: str) -> None:
     """Seleciona o módulo ativo."""
     st.session_state.indicador_selecionado = nome
+    if nome in INDICADORES_ATUALIZACAO:
+        st.session_state.indicador_dropdown = nome
 
 
 def voltar_inicio() -> None:
     """Retorna para a tela inicial."""
     st.session_state.indicador_selecionado = "Selecione um indicador..."
+    if "indicador_dropdown" not in st.session_state:
+        st.session_state.indicador_dropdown = "CVLI"
 
 
 @st.cache_data(show_spinner=False)
@@ -55,31 +59,53 @@ def render_topbar() -> None:
     """Renderiza o cabeçalho superior da aplicação."""
     logo_base64 = _obter_logo_base64()
 
-    if logo_base64:
-        logo_html = f"""
-        <div class="app-header-logo-wrap">
-            <img
-                src="data:image/png;base64,{logo_base64}"
-                alt="Logo DIESP"
-                class="app-header-logo"
-            >
-        </div>
-        """
-    else:
-        logo_html = ""
+    col_titulo, col_logo = st.columns([10, 2], gap="medium")
 
-    st.markdown(
-        f"""
-        <div class="app-header app-header-with-logo">
-            <div class="app-header-main">
-                <div class="app-title">QGP Online</div>
-                <div class="app-subtitle">SUPESP / CE · Atualizador de Indicadores</div>
+    with col_titulo:
+        st.markdown(
+            """
+            <div class="app-header app-header-main-only">
+                <div class="app-header-main">
+                    <div class="app-title">QGP Online</div>
+                    <div class="app-subtitle">SUPESP / CE · Atualizador de Indicadores</div>
+                </div>
             </div>
-            {logo_html}
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with col_logo:
+        if logo_base64:
+            st.markdown(
+                f"""
+                <div class="app-header app-header-logo-side">
+                    <div class="app-header-logo-wrap">
+                        <img
+                            src="data:image/png;base64,{logo_base64}"
+                            alt="Logo DIESP"
+                            class="app-header-logo"
+                        >
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            if st.button(
+                " ",
+                key="btn_logo_inicio",
+                help="Voltar para a tela Inicial",
+                use_container_width=True,
+            ):
+                voltar_inicio()
+                st.rerun()
+        else:
+            st.markdown(
+                """
+                <div class="app-header app-header-logo-side"></div>
+                """,
+                unsafe_allow_html=True,
+            )
 
 
 def render_home_hero() -> None:
