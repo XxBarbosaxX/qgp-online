@@ -621,11 +621,11 @@ def _montar_config_para_modulo(
 
 def _pos_processar_cvli(df_final: pd.DataFrame) -> pd.DataFrame:
     """
-    Pós-processamento específico para CVLI dentro do orquestrador:
+    Pós-processamento para layout CVLI:
     - remove coluna sem nome;
     - renomeia AISNova -> AIS;
     - remove colunas extras não desejadas;
-    - reordena para as colunas taxativas.
+    - mantém apenas colunas taxativas na ordem.
     """
     # Remover coluna sem nome (como 'coluna_sem_nome_1' ou cabeçalho vazio).
     colunas_filtradas = [c for c in df_final.columns if str(c).strip() != ""]
@@ -710,8 +710,20 @@ def executar_modulo(
             f"O módulo '{indicador.chave}' retornou tipo inválido: {type(retorno).__name__}"
         )
 
-    if indicador.chave == "cvli":
-        # Pós-processamento específico para CVLI.
+    # Heurística: detectar layout de CVLI pela presença de colunas típicas.
+    colunas = set(df_final.columns)
+    assinatura_cvli = {
+        "Tipo de Arma",
+        "Natureza",
+        "Antecedentes",
+        "Achado de Cadáver",
+    }
+
+    is_cvli_layout = assinatura_cvli.issubset(colunas)
+
+    if indicador.chave == "cvli" or is_cvli_layout:
+        # Pós-processamento específico para CVLI,
+        # independente da chave ou do consolidado.
         df_final = _pos_processar_cvli(df_final)
     else:
         colunas_consolidado = obter_colunas_do_consolidado(arquivo_consolidado_upload)
@@ -841,7 +853,7 @@ def aplicar_estilo_configuracao_tecnica() -> None:
             opacity: 0;
             visibility: hidden;
             pointer-events: none;
-            transition: opacity 0.18s ease, transform 0.18s ease;
+            transition: opacity 0.18s.ease, transform 0.18s.ease;
             z-index: 9999;
         }
         .qgp-tech-tooltip-box::before {
@@ -956,7 +968,7 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Código da UF",
-                "Código IBGE da UF usado nas consultas auxiliares de municípios. Para o Ceará, o padrão é 23.",
+                "Código IBGE.da UF usado nas consultas auxiliares de municípios. Para o Ceará, o padrão é 23.",
             )
             uf_codigo = st.text_input(
                 "Código da UF",
@@ -981,7 +993,7 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Raio de confirmação (m)",
-                "Distância máxima, em metros, para validar se o ponto retornado externamente é coerente com a base espacial local.",
+                "Distância máxima, em metros, para validar se o ponto retornado externamente é coerente com a.base espacial local.",
             )
             raio_confirma_m = st.number_input(
                 "Raio de confirmação (m)",
@@ -1451,8 +1463,8 @@ def render() -> None:
         <div class="qgp-card">
             <div class="qgp-card-header">Resumo da fila</div>
             <div class="qgp-card-desc">
-                Visualização consolidada da execução dos indicadores, com status, arquivos de
-                entrada/saída, quantidade de linhas e erro, quando houver.
+                Visualização consolidada da execução dos indicadores, com.status, arquivos de
+                entrada/saída, quantidade de linhas e.erro, quando houver.
             </div>
         </div>
         """,
@@ -1495,7 +1507,7 @@ def render() -> None:
         else:
             status_html = """
                 <div class="qgp-badge-status">
-                    <span class="qgp-dot qgp-dot-error"></span>
+                    <span class="qgp-dot.qgp-dot-error"></span>
                     <span>Erro</span>
                 </div>
             """
