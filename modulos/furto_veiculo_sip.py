@@ -50,6 +50,8 @@ class FurtoVeiculoSipConfig:
     arcgis_timeout: int = 15
     arcgis_delay_s: float = 0.4
     arcgis_retries: int = 2
+    # novo campo: níveis de geocodificação a manter no arquivo final
+    niveis_filtrar: Optional[list[str]] = None
 
 
 SUBST = {
@@ -114,6 +116,15 @@ ROOFTOP = (
     "pointaddressvd",
 )
 
+# níveis possíveis de geocodificação para seleção
+NIVEIS_GEOCODIFICACAO_POSSIVEIS = [
+    "Exato (Numero)",
+    "Centroide de Rua",
+    "Centroide de Bairro",
+    "Centroide de Cidade",
+    "Nao Encontrado",
+]
+
 
 def _resolver_caminho_base_enxuta(caminho_informado: str) -> str:
     """
@@ -153,6 +164,10 @@ def _normalizar_config(config: Optional[FurtoVeiculoSipConfig]) -> FurtoVeiculoS
 
     caminho_resolvido = _resolver_caminho_base_enxuta(config.caminho_base_enxuta)
 
+    # default de níveis se não informado
+    niveis_default = ["Exato (Numero)", "Centroide de Rua"]
+    niveis_filtrar = config.niveis_filtrar or niveis_default
+
     return FurtoVeiculoSipConfig(
         usar_externo=config.usar_externo,
         caminho_base_enxuta=caminho_resolvido,
@@ -165,6 +180,7 @@ def _normalizar_config(config: Optional[FurtoVeiculoSipConfig]) -> FurtoVeiculoS
         arcgis_timeout=int(config.arcgis_timeout),
         arcgis_delay_s=float(config.arcgis_delay_s),
         arcgis_retries=int(config.arcgis_retries),
+        niveis_filtrar=list(niveis_filtrar),
     )
 
 
@@ -1031,7 +1047,7 @@ def geocodificar_linhas_novas(
     contagem = chave.value_counts()
     df["Ocorrencias_Mesmo_Ponto"] = chave.map(contagem).fillna(1).astype(int)
     df["_loc_aproximada"] = (
-        (df["Ocorrencias_Mesmo_Ponto"] >= config.limiar_suspeito)
+        (df["Ocorrencias_Mesmo_Ponto"] >= motor.config.limiar_suspeito)
         & (df["numero_busca"].fillna("").astype(str).str.strip() == "")
     )
 
@@ -1296,6 +1312,13 @@ def processar_furto_veiculo_sip(
     ).reset_index(drop=True)
     df_final = df_final.drop(columns=["__datahora__"], errors="ignore")
 
+    # filtro por nível de geocodificação selecionado em config
+    niveis_filtrar = config.niveis_filtrar or []
+    if "Nivel_Geocodificacao" in df_final.columns and niveis_filtrar:
+        df_final = df_final[
+            df_final["Nivel_Geocodificacao"].isin(niveis_filtrar)
+        ].reset_index(drop=True)
+
     contagens_nivel = {}
     if "Nivel_Geocodificacao" in df_final.columns:
         contagens_nivel = (
@@ -1371,6 +1394,14 @@ def _limpar_estado_furto_veiculo_sip() -> None:
         "furto_veiculo_sip_config",
         "furto_veiculo_sip_upload_01",
         "furto_veiculo_sip_upload_02",
+        "fvsip_cfg_usar_externo",
+        "fvsip_cfg_base_parquet",
+        "fvsip_cfg_cache_municipios",
+        "fvsip_cfg_limiar_nome",
+        "fvsip_cfg_raio_confirma",
+        "fvsip_cfg_raio_municipio",
+        "fvsip_cfg_limiar_suspeito",
+        "fvsip_cfg_niveis_filtrar",
     ]
     for chave in chaves:
         if chave in st.session_state:
@@ -1489,15 +1520,35 @@ def _obter_configuracao_ui() -> FurtoVeiculoSipConfig:
                 key="fvsip_cfg_limiar_suspeito",
             )
 
+        # seleção dos níveis de geocodificação para o arquivo final
+        _render_label_flutuante(
+            "Níveis de geocodificação a manter",
+            (
+                "Selecione quais níveis de geocodificação serão mantidos na base final "
+                "de Furto de Veículo (SIP). Registros com níveis não selecionados serão descartados."
+            ),
+        )
+        niveis_filtrar = st.multiselect(
+            "Níveis de geocodificação",
+            options=NIVEIS_GEOCODIFICACAO_POSSIVEIS,
+            default=st.session_state.get(
+                "fvsip_cfg_niveis_filtrar",
+                ["Exato (Numero)", "Centroide de Rua"],
+            ),
+            key="fvsip_cfg_niveis_filtrar",
+        )
+
     return _normalizar_config(
         FurtoVeiculoSipConfig(
             usar_externo=usar_externo,
-            caminho_base_enxuta=caminho_base_enxuta.strip() or "CVP_SIP_GEOCODIFICAR.parquet",
+            caminho_base_enxuta=caminho_base_enxuta.strip()
+            or "CVP_SIP_GEOCODIFICAR.parquet",
             limiar_nome=int(limiar_nome),
             raio_confirma_m=float(raio_confirma_m),
             raio_municipio_km=float(raio_municipio_km),
             limiar_suspeito=int(limiar_suspeito),
             arq_cache_mun=arq_cache_mun.strip() or "municipios_ce.json",
+            niveis_filtrar=list(niveis_filtrar or ["Exato (Numero)", "Centroide de Rua"]),
         )
     )
 
@@ -1719,6 +1770,32 @@ def render() -> None:
         col4.metric("Removidos por tipo", resumo.get("removidos_por_tipo", 0))
 
         st.info(resumo.get("situacao", ""))
+
+        contagens_nivel = resumo.get("contagens_nivel", {})
+        if contagens_nivel:
+            st.markdown(
+                """
+                <div class="fvsip-card">
+                    <div class="fvsip-title">Níveis de geocodificação</div>
+                    <div class="fvsip-desc">
+                        Distribuição dos registros conforme o nível de precisão obtido na geocodificação.
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            exato_numero = contagens_nivel.get("Exato (Numero)", 0)
+            centroide_rua = contagens_nivel.get("Centroide de Rua", 0)
+            centroide_bairro = contagens_nivel.get("Centroide de Bairro", 0)
+            centroide_cidade = contagens_nivel.get("Centroide de Cidade", 0)
+            nao_encontrado = contagens_nivel.get("Nao Encontrado", 0)
+
+            grid = st.columns(5)
+            grid[0].metric("Exato (Número)", exato_numero)
+            grid[1].metric("Centroide de Rua", centroide_rua)
+            grid[2].metric("Centroide de Bairro", centroide_bairro)
+            grid[3].metric("Centroide de Cidade", centroide_cidade)
+            grid[4].metric("Não encontrado", nao_encontrado)
 
     if st.session_state.furto_veiculo_sip_resultado_df is not None:
         st.dataframe(
