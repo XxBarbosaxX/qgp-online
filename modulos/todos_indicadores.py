@@ -1,14 +1,10 @@
 """
 Módulo Todos os Indicadores - Orquestrador principal do QGP Online.
-Estratégia de estabilidade:
-- evita armazenar bytes grandes em st.session_state;
-- usa apenas objetos de upload do ciclo atual;
-- mantém em sessão somente estado leve;
-- executa um indicador por vez, com opção de autoexecução;
-- preserva exatamente a estrutura de colunas do arquivo consolidado de cada indicador;
-- não permite colunas extras no resultado final, exceto colunas críticas ausentes no consolidado;
-- aplica equivalências de colunas específicas por indicador;
-- evita duplicidade de colunas após compatibilização.
+Estratégia:
+- Executa cada indicador de forma isolada a partir do arquivo mestre e do consolidado correspondente.
+- Para indicadores geocodificação (CVP, Roubo, Furto, etc.), alinha o resultado ao consolidado.
+- Para CVLI, respeita integralmente a lógica temporal do módulo cvli.py (substituição de meses),
+  atuando apenas na padronização de colunas do layout final, sem reusar o consolidado para datas.
 """
 
 from __future__ import annotations
@@ -626,16 +622,16 @@ def _pos_processar_cvli(df_final: pd.DataFrame) -> pd.DataFrame:
     - renomeia AISNova -> AIS;
     - remove colunas extras não desejadas;
     - mantém apenas colunas taxativas na ordem.
+    Não altera datas nem períodos: respeita o resultado do módulo CVLI.
     """
-    # Remover coluna sem nome (como 'coluna_sem_nome_1' ou cabeçalho vazio).
-    colunas_filtradas = [c for c in df_final.columns if str(c).strip() != ""]
-    df_final = df_final.loc[:, colunas_filtradas]
+    df = df_final.copy()
 
-    # Renomear AISNova -> AIS, se existir.
-    if "AISNova" in df_final.columns:
-        df_final = df_final.rename(columns={"AISNova": "AIS"})
+    colunas_filtradas = [c for c in df.columns if str(c).strip() != ""]
+    df = df.loc[:, colunas_filtradas]
 
-    # Remover colunas extras que não devem aparecer no arquivo final.
+    if "AISNova" in df.columns and "AIS" not in df.columns:
+        df = df.rename(columns={"AISNova": "AIS"})
+
     colunas_extras = {
         "Tombo",
         "Delegacia",
@@ -644,12 +640,13 @@ def _pos_processar_cvli(df_final: pd.DataFrame) -> pd.DataFrame:
         "Mãe",
         "Idade",
         "Regiões",
+        "Regioes",
+        "coluna_sem_nome_1",
     }
-    colunas_extras_presentes = [c for c in df_final.columns if c in colunas_extras]
+    colunas_extras_presentes = [c for c in df.columns if c in colunas_extras]
     if colunas_extras_presentes:
-        df_final = df_final.drop(columns=colunas_extras_presentes)
+        df = df.drop(columns=colunas_extras_presentes)
 
-    # Definir colunas taxativas para o CVLI, na ordem desejada.
     colunas_cvli = [
         "Tipo de Arma",
         "Natureza",
@@ -667,11 +664,13 @@ def _pos_processar_cvli(df_final: pd.DataFrame) -> pd.DataFrame:
         "Achado de Cadáver",
     ]
 
-    # Manter apenas as colunas presentes na lista, respeitando a ordem.
-    colunas_presentes = [c for c in colunas_cvli if c in df_final.columns]
-    df_final = df_final.loc[:, colunas_presentes]
+    for coluna in colunas_cvli:
+        if coluna not in df.columns:
+            df[coluna] = pd.NA
 
-    return df_final
+    df = df.loc[:, colunas_cvli]
+
+    return df
 
 
 def executar_modulo(
@@ -688,44 +687,43 @@ def executar_modulo(
         arquivo_consolidado_upload=arquivo_consolidado_upload,
     )
 
-    if config_tecnica is not None and _processador_aceita_config(processador):
-        config_modulo = _montar_config_para_modulo(indicador, config_tecnica)
-        retorno = processador(arquivo_01, arquivo_02, config=config_modulo)
-    else:
-        retorno = processador(arquivo_01, arquivo_02)
-
     resumo: dict = {}
     df_final: pd.DataFrame | None = None
 
-    if isinstance(retorno, pd.DataFrame):
-        df_final = retorno
-    elif isinstance(retorno, tuple):
-        if len(retorno) >= 1 and isinstance(retorno[0], pd.DataFrame):
-            df_final = retorno[0]
-            if len(retorno) > 1 and isinstance(retorno[1], dict):
-                resumo = retorno[1]
+    if indicador.chave == "cvli":
+        # CVLI tem regra própria de substituição de meses dentro do módulo cvli.py.
+        # O orquestrador apenas consome o df_final e aplica padronização de colunas.
+        retorno = processador(arquivo_01, arquivo_02)
+        if isinstance(retorno, tuple) and len(retorno) == 2:
+            df_final, resumo = retorno
+        elif isinstance(retorno, pd.DataFrame):
+            df_final = retorno
+        else:
+            raise ValueError(
+                f"O módulo 'cvli' retornou tipo inválido: {type(retorno).__name__}"
+            )
 
-    if df_final is None:
-        raise ValueError(
-            f"O módulo '{indicador.chave}' retornou tipo inválido: {type(retorno).__name__}"
-        )
-
-    # Heurística: detectar layout de CVLI pela presença de colunas típicas.
-    colunas = set(df_final.columns)
-    assinatura_cvli = {
-        "Tipo de Arma",
-        "Natureza",
-        "Antecedentes",
-        "Achado de Cadáver",
-    }
-
-    is_cvli_layout = assinatura_cvli.issubset(colunas)
-
-    if indicador.chave == "cvli" or is_cvli_layout:
-        # Pós-processamento específico para CVLI,
-        # independente da chave ou do consolidado.
         df_final = _pos_processar_cvli(df_final)
     else:
+        if config_tecnica is not None and _processador_aceita_config(processador):
+            config_modulo = _montar_config_para_modulo(indicador, config_tecnica)
+            retorno = processador(arquivo_01, arquivo_02, config=config_modulo)
+        else:
+            retorno = processador(arquivo_01, arquivo_02)
+
+        if isinstance(retorno, pd.DataFrame):
+            df_final = retorno
+        elif isinstance(retorno, tuple):
+            if len(retorno) >= 1 and isinstance(retorno[0], pd.DataFrame):
+                df_final = retorno[0]
+                if len(retorno) > 1 and isinstance(retorno[1], dict):
+                    resumo = retorno[1]
+
+        if df_final is None:
+            raise ValueError(
+                f"O módulo '{indicador.chave}' retornou tipo inválido: {type(retorno).__name__}"
+            )
+
         colunas_consolidado = obter_colunas_do_consolidado(arquivo_consolidado_upload)
         df_final = alinhar_resultado_ao_consolidado(
             df_resultado=df_final,
@@ -968,7 +966,7 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Código da UF",
-                "Código IBGE.da UF usado nas consultas auxiliares de municípios. Para o Ceará, o padrão é 23.",
+                "Código IBGE da UF usado nas consultas auxiliares de municípios. Para o Ceará, o padrão é 23.",
             )
             uf_codigo = st.text_input(
                 "Código da UF",
@@ -993,7 +991,7 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Raio de confirmação (m)",
-                "Distância máxima, em metros, para validar se o ponto retornado externamente é coerente com a.base espacial local.",
+                "Distância máxima, em metros, para validar se o ponto retornado externamente é coerente com a base espacial local.",
             )
             raio_confirma_m = st.number_input(
                 "Raio de confirmação (m)",
@@ -1279,6 +1277,7 @@ def render() -> None:
                 consolidado correspondente foi identificado corretamente, o amarelo indica pendência
                 de envio e o X vermelho sinaliza conflito na identificação.
             </div>
+        </div>
         """,
         unsafe_allow_html=True,
     )
@@ -1357,7 +1356,7 @@ def render() -> None:
             unsafe_allow_html=True,
         )
 
-    st.markdown("</div></div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
     if desconhecidos:
         st.warning("Arquivos não reconhecidos: " + " | ".join(desconhecidos))
@@ -1388,6 +1387,7 @@ def render() -> None:
         """
         <div class="qgp-card">
             <div class="qgp-card-header">Fila de execução</div>
+        </div>
         """,
         unsafe_allow_html=True,
     )
@@ -1426,8 +1426,6 @@ def render() -> None:
             use_container_width=True,
         )
 
-    st.markdown("</div>", unsafe_allow_html=True)
-
     if limpar:
         limpar_estado()
         st.rerun()
@@ -1463,8 +1461,8 @@ def render() -> None:
         <div class="qgp-card">
             <div class="qgp-card-header">Resumo da fila</div>
             <div class="qgp-card-desc">
-                Visualização consolidada da execução dos indicadores, com.status, arquivos de
-                entrada/saída, quantidade de linhas e.erro, quando houver.
+                Visualização consolidada da execução dos indicadores, com status, arquivos de
+                entrada/saída, quantidade de linhas e erro, quando houver.
             </div>
         </div>
         """,
@@ -1507,7 +1505,7 @@ def render() -> None:
         else:
             status_html = """
                 <div class="qgp-badge-status">
-                    <span class="qgp-dot.qgp-dot-error"></span>
+                    <span class="qgp-dot qgp-dot-error"></span>
                     <span>Erro</span>
                 </div>
             """
@@ -1527,7 +1525,7 @@ def render() -> None:
             unsafe_allow_html=True,
         )
 
-    st.markdown("</div></div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
     resultados_sucesso = [item for item in resultados if item["status"] == "sucesso"]
     if resultados_sucesso:
@@ -1562,5 +1560,4 @@ def render() -> None:
         st.info("Nenhum indicador concluído com sucesso para gerar o pacote ZIP.")
 
 
-# Alias para o app principal
 interface_todos_indicadores = render
