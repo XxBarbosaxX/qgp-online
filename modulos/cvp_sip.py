@@ -87,7 +87,7 @@ RE_BNI = re.compile(
 TIPOS = ("Rua", "Avenida", "Travessa", "Praca", "Rodovia", "Alameda", "Passeio")
 ROOFTOP = ("pointaddress", "streetaddress", "subaddress", "pointaddressvd")
 
-# Níveis possíveis de geocodificação usados no filtro (agora incluindo "Nao Encontrado")
+# Níveis possíveis de geocodificacao para filtro
 NIVEIS_GEOCODIFICACAO_POSSIVEIS = [
     "Exato (Numero)",
     "Centroide de Rua",
@@ -116,7 +116,7 @@ def obter_configuracao_tecnica() -> dict:
         "limiar_suspeito": int(
             st.session_state.get("cvp_sip_cfg_limiar_suspeito", LIMIAR_SUSPEITO)
         ),
-        # novo campo: níveis de geocodificação a manter no arquivo final
+        # lista de níveis que devem permanecer no arquivo final
         "niveis_filtrar": st.session_state.get(
             "cvp_sip_cfg_niveis_filtrar",
             ["Exato (Numero)", "Centroide de Rua"],
@@ -365,5 +365,964 @@ class MotorGeocodificacaoSoberana:
 
         if self.base is not None and len(self.base):
             self.glat = self.base["lat"].values.astype(float)
-            self.glon = self.base["lon"].values.astype float)
-            # ... restante igual à versão anterior ...
+            self.glon = self.base["lon"].values.astype(float)
+            self.gnome = self.base["nome_norm"].astype(str).values
+            self.gcod = self.base["cod_mun"].astype(str).values
+            self.tree = cKDTree(np.c_[self.glat, self.glon])
+
+            centroides = self.base.groupby("cod_mun")[["lat", "lon"]].mean()
+            self.centroides_municipio = {
+                codigo: (linha["lat"], linha["lon"])
+                for codigo, linha in centroides.iterrows()
+            }
+
+        self.geocode_ext = obter_geocoder_arcgis()
+
+    def cod_municipio(self, municipio: str) -> str:
+        """Retorna codigo IBGE do municipio."""
+        return self.municipios.get(sem_acento(municipio), "")
+
+    def _idx_municipio(self, cod: str, ancora):
+        """Retorna indices do municipio ou por proximidade."""
+        if cod and self.tree is not None:
+            indices = np.where(self.gcod == cod)[0]
+            if len(indices):
+                return indices
+
+        if ancora is not None and self.tree is not None:
+            indices = self.tree.query_ball_point(
+                [ancora[0], ancora[1]],
+                r=self.config["raio_municipio_km"] / 111.0,
+            )
+            return np.array(indices, dtype=int)
+
+        return np.array([], dtype=int)
+
+    def casar_rua(self, rua_norm: str, cod: str, ancora):
+        """Busca melhor casamento de rua na base local."""
+        indices = self._idx_municipio(cod, ancora)
+        if not len(indices):
+            return None
+
+        melhor_indice = None
+        melhor_score = 0
+
+        for indice in indices:
+            score = fuzz.token_set_ratio(rua_norm, self.gnome[indice])
+            if score > melhor_score:
+                melhor_score = score
+                melhor_indice = indice
+
+        if melhor_indice is not None and melhor_score >= self.config["limiar_nome"]:
+            return (
+                float(self.glat[melhor_indice]),
+                float(self.glon[melhor_indice]),
+                melhor_score,
+            )
+
+        return None
+
+    def validar(self, lat: float, lon: float, rua_norm: str, cod: str, ancora):
+        """Valida coordenada externa com base local."""
+        indices = self._idx_municipio(cod, ancora or (lat, lon))
+        if not len(indices):
+            return False, None
+
+        nomes = self.gnome[indices]
+        mascara = np.array(
+            [
+                fuzz.token_set_ratio(rua_norm, nome) >= self.config["limiar_nome"]
+                for nome in nomes
+            ]
+        )
+
+        if not mascara.any():
+            return False, None
+
+        indices_filtrados = indices[mascara]
+        distancias = _hav(lat, lon, self.glat[indices_filtrados], self.glon[indices_filtrados])
+        melhor = float(distancias.min())
+
+        return melhor <= self.config["raio_confirma_m"], melhor
+
+    def geocodificar(self, rua: str, numero: str, bairro: str, municipio: str):
+        """Executa estrategia hierarquica de geocodificacao."""
+        rua_limpa = limpar_logradouro(rua)
+        bairro_limpo = limpar_bairro(bairro, municipio)
+        numero_limpo = limpar_numero(numero)
+        municipio_limpo = str(municipio or "").strip()
+        rua_norm = sem_acento(rua_limpa)
+        cod = self.cod_municipio(municipio_limpo)
+
+        tem_rua = rua_limpa != ""
+        tem_numero = numero_limpo != ""
+        tem_bairro = bairro_limpo != ""
+        tem_municipio = municipio_limpo != ""
+
+        if tem_rua and tem_numero and tem_bairro and tem_municipio:
+            partes = [
+                f"{rua_limpa}, {numero_limpo}",
+                bairro_limpo,
+                municipio_limpo,
+                "Ceara",
+                "Brasil",
+            ]
+            consulta = ", ".join([p for p in partes if p])
+
+            externo = None
+            if self.geocode_ext is not None:
+                loc = self.geocode_ext(consulta, out_fields="*")
+                if loc:
+                    addr_type = ((loc.raw or {}).get("attributes", {}) or {}).get(
+                        "Addr_type", ""
+                    )
+                    externo = (float(loc.latitude), float(loc.longitude), str(addr_type).lower())
+
+            ancora = (externo[0], externo[1]) if externo else None
+
+            if externo:
+                ok, distancia = self.validar(externo[0], externo[1], rua_norm, cod, ancora)
+                if ok:
+                    return (
+                        externo[0],
+                        externo[1],
+                        "Exato (Numero)",
+                        "ArcGIS+Parquet",
+                        True,
+                        distancia,
+                    )
+
+                if externo[2] in ROOFTOP:
+                    return (
+                        externo[0],
+                        externo[1],
+                        "Exato (Numero)",
+                        "ArcGIS Rooftop",
+                        False,
+                        distancia,
+                    )
+
+            geobase = self.casar_rua(rua_norm, cod, ancora)
+            if geobase:
+                return (
+                    geobase[0],
+                    geobase[1],
+                    "Centroide de Rua",
+                    "Parquet (Base Enxuta)",
+                    True,
+                    0.0,
+                )
+
+            if externo:
+                return (
+                    externo[0],
+                    externo[1],
+                    "Centroide de Rua",
+                    "ArcGIS (nao confirmado)",
+                    False,
+                    None,
+                )
+
+        if tem_rua:
+            partes = [rua_limpa]
+            if tem_bairro:
+                partes.append(bairro_limpo)
+            if tem_municipio:
+                partes.extend([municipio_limpo, "Ceara", "Brasil"])
+            consulta = ", ".join([p for p in partes if p])
+
+            externo = None
+            if self.geocode_ext is not None:
+                loc = self.geocode_ext(consulta, out_fields="*")
+                if loc:
+                    externo = (float(loc.latitude), float(loc.longitude))
+
+            ancora = externo if externo else None
+            geobase = self.casar_rua(rua_norm, cod, ancora)
+            if geobase:
+                return (
+                    geobase[0],
+                    geobase[1],
+                    "Centroide de Rua",
+                    "Parquet (Base Enxuta)",
+                    True,
+                    0.0,
+                )
+
+            if externo:
+                return (
+                    externo[0],
+                    externo[1],
+                    "Centroide de Rua",
+                    "ArcGIS (nao confirmado)",
+                    False,
+                    None,
+                )
+
+        if tem_bairro and tem_municipio and self.geocode_ext is not None:
+            consulta = ", ".join([bairro_limpo, municipio_limpo, "Ceara", "Brasil"])
+            loc = self.geocode_ext(consulta, out_fields="*")
+            if loc:
+                return (
+                    float(loc.latitude),
+                    float(loc.longitude),
+                    "Centroide de Bairro",
+                    "ArcGIS Bairro",
+                    False,
+                    None,
+                )
+
+        centroide = self.centroides_municipio.get(cod)
+        if centroide:
+            return (
+                centroide[0],
+                centroide[1],
+                "Centroide de Cidade",
+                "Centroide Municipio",
+                False,
+                None,
+            )
+
+        if tem_municipio and self.geocode_ext is not None:
+            loc = self.geocode_ext(f"{municipio_limpo}, Ceara, Brasil", out_fields="*")
+            if loc:
+                return (
+                    float(loc.latitude),
+                    float(loc.longitude),
+                    "Centroide de Cidade",
+                    "ArcGIS Cidade",
+                    False,
+                    None,
+                )
+
+        return (None, None, "Nao Encontrado", "-", False, None)
+
+
+def preparar_campos_geocodificacao(
+    df: pd.DataFrame,
+    col_endereco: str,
+    col_numero: str,
+    col_bairro: str,
+    col_municipio: str,
+) -> pd.DataFrame:
+    """Prepara campos auxiliares para geocodificacao."""
+    df = df.copy()
+    df["logradouro_busca"] = df[col_endereco].apply(limpar_logradouro)
+    df["numero_busca"] = df[col_numero].apply(limpar_numero)
+    df["bairro_busca"] = df.apply(
+        lambda linha: limpar_bairro(linha[col_bairro], linha[col_municipio]),
+        axis=1,
+    )
+    df["municipio_busca"] = df[col_municipio].fillna("").astype(str).str.strip()
+    return df
+
+
+def geocodificar_linhas_novas(
+    df: pd.DataFrame,
+    col_lat_destino: str,
+    col_lon_destino: str,
+) -> tuple[pd.DataFrame, int]:
+    """Geocodifica linhas novas e retorna DataFrame atualizado."""
+    config = obter_configuracao_tecnica()
+    motor = MotorGeocodificacaoSoberana()
+
+    lats = []
+    lons = []
+    niveis = []
+    fontes = []
+    confirmados = []
+    distancias = []
+
+    total = len(df)
+    geocodificados = 0
+    progresso = st.progress(0)
+    status = st.empty()
+
+    for indice, (_, linha) in enumerate(df.iterrows(), start=1):
+        resultado = motor.geocodificar(
+            linha.get("logradouro_busca", ""),
+            linha.get("numero_busca", ""),
+            linha.get("bairro_busca", ""),
+            linha.get("municipio_busca", ""),
+        )
+
+        lats.append(resultado[0])
+        lons.append(resultado[1])
+        niveis.append(resultado[2])
+        fontes.append(resultado[3])
+        confirmados.append(resultado[4])
+        distancias.append(resultado[5])
+
+        if resultado[0] is not None and resultado[1] is not None:
+            geocodificados += 1
+
+        progresso.progress(indice / max(total, 1))
+        status.info(
+            f"Geocodificando linhas novas... {indice}/{total} | "
+            f"Geocodificados: {geocodificados}"
+        )
+
+    df = df.copy()
+    df[col_lat_destino] = lats
+    df[col_lon_destino] = lons
+    df["Nivel_Geocodificacao"] = niveis
+    df["Fonte"] = fontes
+    df["_confirmado_base"] = confirmados
+    df["_dist_validacao_m"] = distancias
+
+    lat_series = pd.to_numeric(df[col_lat_destino], errors="coerce")
+    lon_series = pd.to_numeric(df[col_lon_destino], errors="coerce")
+    chave = lat_series.round(6).astype(str) + "," + lon_series.round(6).astype(str)
+    contagem = chave.value_counts()
+    df["Ocorrencias_Mesmo_Ponto"] = chave.map(contagem).fillna(1).astype(int)
+    df["_loc_aproximada"] = (
+        (df["Ocorrencias_Mesmo_Ponto"] >= config["limiar_suspeito"])
+        & (df["numero_busca"].fillna("").astype(str).str.strip() == "")
+    )
+
+    progresso.empty()
+    status.success(f"Geocodificacao concluida. Registros geocodificados: {geocodificados}")
+    return df, geocodificados
+
+
+def processar_cvp_sip(arquivo_01, arquivo_02):
+    """Processa CVP SIP e retorna (df_final, resumo)."""
+    arquivo_01.seek(0)
+    arquivo_02.seek(0)
+
+    xls_base = pd.ExcelFile(arquivo_01)
+    xls_novo = pd.ExcelFile(arquivo_02)
+
+    abas_base = xls_base.sheet_names
+    abas_novo = xls_novo.sheet_names
+
+    aba_base = _selecionar_aba_arquivo_01(abas_base)
+    aba_novo = _selecionar_aba_arquivo_02(abas_novo)
+
+    df_base = pd.read_excel(xls_base, sheet_name=aba_base)
+    df_novo = pd.read_excel(xls_novo, sheet_name=aba_novo)
+
+    df_base = normalizar_colunas(df_base)
+    df_novo = normalizar_colunas(df_novo)
+
+    col_data_base = encontrar_coluna_data(df_base)
+    col_hora_base = encontrar_coluna_hora(df_base)
+
+    col_datahora_novo = encontrar_coluna_por_nomes(
+        df_novo,
+        ["data", "datahora", "data/hora", "data hora"],
+        obrigatoria=True,
+    )
+
+    col_lat_base = encontrar_coluna_por_nomes(df_base, ["lat", "latitude"], obrigatoria=True)
+    col_lon_base = encontrar_coluna_por_nomes(
+        df_base,
+        ["lon", "long", "longitude"],
+        obrigatoria=True,
+    )
+
+    col_endereco = encontrar_coluna_por_nomes(
+        df_novo,
+        ["endereço", "endereco", "logradouro", "rua"],
+        obrigatoria=True,
+    )
+    col_numero = encontrar_coluna_por_nomes(
+        df_novo,
+        ["número", "numero", "localNumero", "num"],
+        obrigatoria=True,
+    )
+    col_bairro = encontrar_coluna_por_nomes(df_novo, ["bairro"], obrigatoria=True)
+    col_municipio = encontrar_coluna_por_nomes(
+        df_novo,
+        ["município", "municipio", "cidade"],
+        obrigatoria=True,
+    )
+
+    col_territorio_novo = encontrar_coluna_por_nomes(
+        df_novo,
+        ["regiões", "regioes"],
+        obrigatoria=False,
+    )
+
+    if col_territorio_novo and col_territorio_novo != "Território":
+        df_novo = df_novo.rename(columns={col_territorio_novo: "Território"})
+
+    df_novo = renomear_colunas_equivalentes(
+        df_base,
+        df_novo,
+        mapa_extra={
+            "AISNova": ["AIS", "AISNova", "AIS Nova", "AIS_Nova", "aisnova"],
+            "AIS": ["AISNova", "AIS Nova", "AIS_Nova", "aisnova"],
+        },
+    )
+
+    df_base = criar_coluna_datahora(df_base, col_data_base, col_hora_base, "__datahora__")
+    df_novo["__datahora__"] = pd.to_datetime(
+        df_novo[col_datahora_novo],
+        errors="coerce",
+        dayfirst=True,
+    )
+
+    ultima_datahora_base = obter_ultima_datahora(df_base, "__datahora__")
+
+    total_antes_filtro = len(df_novo)
+    df_novo_filtrado = filtrar_apenas_registros_posteriores(
+        df_novo,
+        "__datahora__",
+        ultima_datahora_base,
+    )
+    removidos_por_datahora = total_antes_filtro - len(df_novo_filtrado)
+
+    base_sem_aux = df_base.drop(columns=["__datahora__"]).copy()
+
+    for coluna_extra in [
+        "Nivel_Geocodificacao",
+        "Fonte",
+        "_confirmado_base",
+        "_dist_validacao_m",
+        "Ocorrencias_Mesmo_Ponto",
+        "_loc_aproximada",
+    ]:
+        if coluna_extra not in base_sem_aux.columns:
+            base_sem_aux[coluna_extra] = pd.NA
+
+    if ultima_datahora_base is None:
+        df_novo_util = df_novo.copy()
+        situacao = "Base anterior sem Data/Hora valida: Arquivo 02 foi incluido integralmente."
+    elif df_novo_filtrado.empty:
+        df_novo_util = df_novo_filtrado.copy()
+        situacao = (
+            "Nenhum registro novo encontrado apos a ultima Data/Hora da base: "
+            "Arquivo 01 foi mantido sem acrescimos."
+        )
+    else:
+        df_novo_util = df_novo_filtrado.copy()
+        situacao = (
+            "Base anterior localizada: somente registros posteriores a ultima "
+            "Data/Hora foram adicionados."
+        )
+
+    geocodificados = 0
+    removidos_sem_geocodificacao = 0
+
+    if not df_novo_util.empty:
+        df_novo_util = preparar_campos_geocodificacao(
+            df_novo_util,
+            col_endereco,
+            col_numero,
+            col_bairro,
+            col_municipio,
+        )
+
+        df_novo_util, geocodificados = geocodificar_linhas_novas(
+            df_novo_util,
+            col_lat_base,
+            col_lon_base,
+        )
+
+        antes_exclusao_sem_geo = len(df_novo_util)
+        df_novo_util = df_novo_util.dropna(subset=[col_lat_base, col_lon_base]).copy()
+        removidos_sem_geocodificacao = antes_exclusao_sem_geo - len(df_novo_util)
+
+        df_novo_util = df_novo_util.drop(
+            columns=[
+                "__datahora__",
+                "logradouro_busca",
+                "numero_busca",
+                "bairro_busca",
+                "municipio_busca",
+            ],
+            errors="ignore",
+        )
+
+        df_novo_util = alinhar_colunas_com_base(base_sem_aux, df_novo_util)
+        df_final = pd.concat([base_sem_aux, df_novo_util], ignore_index=True)
+        adicionados = len(df_novo_util)
+    else:
+        df_final = base_sem_aux.copy()
+        adicionados = 0
+
+    # Ordenacao final
+    df_final = criar_coluna_datahora(df_final, col_data_base, col_hora_base, "__datahora__")
+    df_final = df_final.sort_values(
+        by="__datahora__",
+        ascending=True,
+        na_position="last",
+    ).reset_index(drop=True)
+    df_final = df_final.drop(columns=["__datahora__"], errors="ignore")
+
+    # Filtro por nível de geocodificação
+    config = obter_configuracao_tecnica()
+    niveis_filtrar = config.get("niveis_filtrar") or []
+    if "Nivel_Geocodificacao" in df_final.columns and niveis_filtrar:
+        df_final = df_final[
+            df_final["Nivel_Geocodificacao"].isin(niveis_filtrar)
+        ].reset_index(drop=True)
+
+    contagens_nivel = {}
+    if "Nivel_Geocodificacao" in df_final.columns:
+        contagens_nivel = (
+            df_final["Nivel_Geocodificacao"]
+            .fillna("Nao Informado")
+            .value_counts(dropna=False)
+            .to_dict()
+        )
+
+    df_final = df_final.drop(
+        columns=[
+            "Fonte",
+            "_confirmado_base",
+            "_dist_validacao_m",
+            "Ocorrencias_Mesmo_Ponto",
+            "_loc_aproximada",
+        ],
+        errors="ignore",
+    )
+
+    total_final = len(df_final)
+
+    ultima_ref = (
+        ultima_datahora_base.strftime("%d/%m/%Y %H:%M:%S")
+        if ultima_datahora_base is not None
+        else "sem referencia anterior valida"
+    )
+
+    resumo = {
+        "adicionados": adicionados,
+        "total_final": total_final,
+        "geocodificados": geocodificados,
+        "removidos_por_datahora": removidos_por_datahora,
+        "removidos_sem_geocodificacao": removidos_sem_geocodificacao,
+        "ultima_datahora_base": ultima_ref,
+        "situacao": situacao,
+        "aba_arquivo_01": aba_base,
+        "aba_arquivo_02": aba_novo,
+        "contagens_nivel": contagens_nivel,
+        "nome_arquivo": NOME_ARQUIVO_FINAL,
+    }
+
+    return df_final, resumo
+
+
+def _init_state() -> None:
+    """Inicializa chaves de session_state do módulo."""
+    defaults = {
+        "cvp_sip_arquivo_01_bytes": None,
+        "cvp_sip_arquivo_01_nome": None,
+        "cvp_sip_arquivo_02_bytes": None,
+        "cvp_sip_arquivo_02_nome": None,
+        "cvp_sip_resultado_excel": None,
+        "cvp_sip_resultado_df": None,
+        "cvp_sip_resumo": None,
+        "cvp_sip_cfg_usar_externo": USAR_EXTERNO,
+        "cvp_sip_cfg_caminho_base_enxuta": CAMINHO_BASE_ENXUTA,
+        "cvp_sip_cfg_arq_cache_mun": ARQ_CACHE_MUN,
+        "cvp_sip_cfg_limiar_nome": LIMIAR_NOME,
+        "cvp_sip_cfg_raio_confirma_m": RAIO_CONFIRMA_M,
+        "cvp_sip_cfg_raio_municipio_km": RAIO_MUNICIPIO_KM,
+        "cvp_sip_cfg_limiar_suspeito": LIMIAR_SUSPEITO,
+        # estado inicial do filtro de níveis
+        "cvp_sip_cfg_niveis_filtrar": ["Exato (Numero)", "Centroide de Rua"],
+    }
+    for chave, valor in defaults.items():
+        if chave not in st.session_state:
+            st.session_state[chave] = valor
+
+
+def _render_configuracao_tecnica() -> None:
+    """Renderiza a seção de configuração técnica do módulo."""
+    with st.expander("Configuração técnica", expanded=True):
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.toggle(
+                "Usar ArcGIS como fallback",
+                key="cvp_sip_cfg_usar_externo",
+                help="Quando ativado, usa ArcGIS como apoio à geocodificação além da base parquet local.",
+            )
+            st.text_input(
+                "Base geográfica (.parquet)",
+                key="cvp_sip_cfg_caminho_base_enxuta",
+                help="Arquivo parquet enxuto utilizado para validação e apoio na geocodificação.",
+            )
+            st.text_input(
+                "Arquivo cache de municípios",
+                key="cvp_sip_cfg_arq_cache_mun",
+                help="Arquivo JSON local usado para cache dos municípios do Ceará.",
+            )
+
+        with col2:
+            st.slider(
+                "Limiar de similaridade",
+                min_value=70,
+                max_value=100,
+                key="cvp_sip_cfg_limiar_nome",
+                help="Percentual mínimo de similaridade entre logradouro informado e base local.",
+            )
+            st.number_input(
+                "Raio de confirmação (m)",
+                min_value=1.0,
+                step=1.0,
+                format="%.2f",
+                key="cvp_sip_cfg_raio_confirma_m",
+                help="Distância máxima em metros para considerar uma coordenada validada.",
+            )
+            st.number_input(
+                "Raio do município (km)",
+                min_value=1.0,
+                step=1.0,
+                format="%.2f",
+                key="cvp_sip_cfg_raio_municipio_km",
+                help="Raio usado para busca aproximada quando não há código municipal válido.",
+            )
+            st.number_input(
+                "Limiar de ponto suspeito",
+                min_value=1,
+                step=1,
+                key="cvp_sip_cfg_limiar_suspeito",
+                help="Quantidade mínima de ocorrências no mesmo ponto para sinalização de localização aproximada.",
+            )
+
+        st.multiselect(
+            "Selecione o nível de geocodificação",
+            options=NIVEIS_GEOCODIFICACAO_POSSIVEIS,
+            default=st.session_state.get(
+                "cvp_sip_cfg_niveis_filtrar",
+                ["Exato (Numero)", "Centroide de Rua"],
+            ),
+            key="cvp_sip_cfg_niveis_filtrar",
+            help=(
+                "Escolha quais níveis de geocodificação devem ser mantidos no arquivo final. "
+                "Registros com níveis não selecionados serão descartados."
+            ),
+        )
+
+
+def _render_resumo_cvp_sip(resumo: dict, df_final: pd.DataFrame) -> None:
+    """Renderiza o resumo do processamento."""
+    st.markdown(
+        """
+        <div class="cvp-sip-card">
+            <div class="cvp-sip-card-header">Resultado do processamento</div>
+            <div class="cvp-sip-card-desc">
+                O processamento foi concluído com sucesso. Abaixo estão os principais indicadores da execução.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.success("Processamento concluído com sucesso.")
+    st.caption(resumo["situacao"])
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Novos registros adicionados", resumo["adicionados"])
+    c2.metric("Total final da base", resumo["total_final"])
+    c3.metric("Registros geocodificados", resumo["geocodificados"])
+
+    c4, c5, c6 = st.columns(3)
+    c4.info(f"**Última Data/Hora base:** {resumo['ultima_datahora_base']}")
+    c5.info(f"**Removidos por filtro temporal:** {resumo['removidos_por_datahora']}")
+    c6.info(f"**Removidos sem geocodificação:** {resumo['removidos_sem_geocodificacao']}")
+
+    c7, c8 = st.columns(2)
+    c7.info(f"**Aba arquivo 01:** {resumo['aba_arquivo_01']}")
+    c8.info(f"**Aba arquivo 02:** {resumo['aba_arquivo_02']}")
+
+    contagens_nivel = resumo.get("contagens_nivel", {})
+    if contagens_nivel:
+        st.markdown(
+            """
+            <div class="cvp-sip-card">
+                <div class="cvp-sip-card-header">Níveis de geocodificação</div>
+                <div class="cvp-sip-card-desc">
+                    Distribuição dos registros conforme o nível de precisão obtido no processo de geocodificação.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        exato_numero = contagens_nivel.get("Exato (Numero)", 0)
+        centroide_rua = contagens_nivel.get("Centroide de Rua", 0)
+        centroide_bairro = contagens_nivel.get("Centroide de Bairro", 0)
+        centroide_cidade = contagens_nivel.get("Centroide de Cidade", 0)
+        nao_encontrado = contagens_nivel.get("Nao Encontrado", 0)
+
+        n1, n2, n3 = st.columns(3)
+        n1.metric("Exato (Número)", exato_numero)
+        n2.metric("Centroide de Rua", centroide_rua)
+        n3.metric("Centroide de Bairro", centroide_bairro)
+
+        n4, n5 = st.columns(2)
+        n4.metric("Centroide de Cidade", centroide_cidade)
+        n5.metric("Não encontrado", nao_encontrado)
+
+    st.markdown(
+        """
+        <div class="cvp-sip-card">
+            <div class="cvp-sip-card-header">Pré-visualização</div>
+            <div class="cvp-sip-card-desc">
+                Visualização inicial dos primeiros registros do arquivo final processado.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.dataframe(df_final.head(50), use_container_width=True)
+
+
+def render() -> None:
+    """Renderiza a interface principal do módulo."""
+    _init_state()
+
+    st.markdown(
+        """
+        <style>
+        .cvp-sip-card {
+            border-radius: 0.85rem;
+            padding: 1rem 1.1rem;
+            margin-bottom: 0.75rem;
+            border: 1px solid rgba(148, 163, 184, 0.30);
+            background: linear-gradient(180deg, rgba(2, 44, 34, 0.95), rgba(2, 26, 23, 0.95));
+        }
+        .cvp-sip-card-header {
+            font-weight: 700;
+            font-size: 1rem;
+            margin-bottom: 0.45rem;
+            color: rgba(248, 250, 252, 0.98);
+        }
+        .cvp-sip-card-desc {
+            font-size: 0.84rem;
+            color: rgba(226, 232, 240, 0.86);
+            margin-bottom: 0.15rem;
+            line-height: 1.6;
+        }
+        .cvp-sip-list {
+            margin: 0.7rem 0 0 0;
+            padding-left: 1.2rem;
+            color: rgba(226, 232, 240, 0.92);
+        }
+        .cvp-sip-list li {
+            margin-bottom: 0.35rem;
+        }
+        .cvp-sip-file-card {
+            border-radius: 0.75rem;
+            padding: 0.75rem 0.85rem;
+            background: rgba(15, 23, 42, 0.92);
+            border: 1px solid rgba(148, 163, 184, 0.20);
+            margin-top: 0.4rem;
+            margin-bottom: 0.45rem;
+        }
+        .cvp-sip-file-title {
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: rgba(248, 250, 252, 0.98);
+            margin-bottom: 0.2rem;
+        }
+        .cvp-sip-file-desc {
+            font-size: 0.78rem;
+            color: rgba(148, 163, 184, 0.95);
+        }
+        .element-container:has(#cvp-sip-download-marker) + div button {
+            background: linear-gradient(135deg, #ea580c, #f97316) !important;
+            border-color: rgba(248, 250, 252, 0.15) !important;
+            color: #fff7ed !important;
+            font-weight: 700 !important;
+        }
+        .element-container:has(#cvp-sip-download-marker) + div button:hover {
+            background: linear-gradient(135deg, #c2410c, #ea580c) !important;
+        }
+        .element-container:has(#cvp-sip-download-marker) + div button p {
+            color: #fff7ed !important;
+            font-weight: 700 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.caption("Atualização da base CVP com geocodificação por endereço a partir do complemento SIP.")
+
+    st.markdown(
+        """
+        <div class="cvp-sip-card">
+            <div class="cvp-sip-card-header">Processamento de CVP SIP</div>
+            <div class="cvp-sip-card-desc">
+                Envie a base histórica e o complemento SIP para atualizar a base consolidada com
+                geocodificação por endereço, validação temporal, classificação do nível de precisão
+                e padronização final no formato do QGP Online.
+            </div>
+            <ul class="cvp-sip-list">
+                <li>Filtro automático de registros posteriores à última Data/Hora da base.</li>
+                <li>Geocodificação híbrida com ArcGIS e base parquet enxuta.</li>
+                <li>Validação por similaridade de logradouro e contexto municipal.</li>
+                <li>Classificação por nível de geocodificação.</li>
+                <li>Geração do arquivo final consolidado para download.</li>
+            </ul>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    _render_configuracao_tecnica()
+
+    st.markdown(
+        f"""
+        <div class="cvp-sip-card">
+            <div class="cvp-sip-card-header">Base geográfica de apoio</div>
+            <div class="cvp-sip-card-desc">
+                Este módulo utiliza a base geográfica auxiliar localizada em
+                <strong>{st.session_state.get("cvp_sip_cfg_caminho_base_enxuta", CAMINHO_BASE_ENXUTA)}</strong>
+                para validação e apoio à geocodificação dos registros.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    try:
+        base_geo = carregar_base_geografica()
+        caminho_base = st.session_state.get("cvp_sip_cfg_caminho_base_enxuta", CAMINHO_BASE_ENXUTA)
+        if base_geo is not None and not base_geo.empty:
+            st.success(
+                f"Base geográfica carregada com sucesso: {len(base_geo):,} registros em {caminho_base}"
+            )
+        else:
+            st.warning(
+                f"A base geográfica não foi carregada. Verifique o arquivo {caminho_base}."
+            )
+    except Exception as exc:
+        st.error(f"Erro ao carregar base geográfica: {exc}")
+
+    st.markdown(
+        """
+        <div class="cvp-sip-card">
+            <div class="cvp-sip-card-header">Entrada de arquivos</div>
+            <div class="cvp-sip-card-desc">
+                Envie a base histórica e o arquivo complementar do SIP para processamento e geocodificação.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown(
+            """
+            <div class="cvp-sip-file-card">
+                <div class="cvp-sip-file-title">Arquivo 01</div>
+                <div class="cvp-sip-file-desc">Base histórica consolidada do CVP.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        arquivo_01 = st.file_uploader(
+            "Arquivo 01 - Base historica CVP",
+            type=["xlsx", "xls"],
+            key="cvp_sip_upload_01",
+            label_visibility="collapsed",
+        )
+
+    with col2:
+        st.markdown(
+            """
+            <div class="cvp-sip-file-card">
+                <div class="cvp-sip-file-title">Arquivo 02</div>
+                <div class="cvp-sip-file-desc">Complemento SIP para atualização e geocodificação.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        arquivo_02 = st.file_uploader(
+            "Arquivo 02 - Complemento SIP",
+            type=["xlsx", "xls"],
+            key="cvp_sip_upload_02",
+            label_visibility="collapsed",
+        )
+
+    if arquivo_01 is not None:
+        arquivo_01.seek(0)
+        st.session_state.cvp_sip_arquivo_01_bytes = arquivo_01.read()
+        st.session_state.cvp_sip_arquivo_01_nome = arquivo_01.name
+
+    if arquivo_02 is not None:
+        arquivo_02.seek(0)
+        st.session_state.cvp_sip_arquivo_02_bytes = arquivo_02.read()
+        st.session_state.cvp_sip_arquivo_02_nome = arquivo_02.name
+
+    col_status_1, col_status_2 = st.columns(2)
+    with col_status_1:
+        if st.session_state.cvp_sip_arquivo_01_nome:
+            st.info(f"Arquivo 01 carregado: {st.session_state.cvp_sip_arquivo_01_nome}")
+    with col_status_2:
+        if st.session_state.cvp_sip_arquivo_02_nome:
+            st.info(f"Arquivo 02 carregado: {st.session_state.cvp_sip_arquivo_02_nome}")
+
+    pode_processar = (
+        st.session_state.cvp_sip_arquivo_01_bytes is not None
+        and st.session_state.cvp_sip_arquivo_02_bytes is not None
+    )
+
+    if st.button(
+        "Processar CVP SIP",
+        type="primary",
+        disabled=not pode_processar,
+        use_container_width=True,
+        key="cvp_sip_processar",
+    ):
+        try:
+            carregar_base_geografica.clear()
+            carregar_municipios.clear()
+            obter_geocoder_arcgis.clear()
+
+            arquivo_01_buffer = BytesIO(st.session_state.cvp_sip_arquivo_01_bytes)
+            arquivo_02_buffer = BytesIO(st.session_state.cvp_sip_arquivo_02_bytes)
+
+            with st.spinner("Processando e geocodificando registros..."):
+                df_final, resumo = processar_cvp_sip(arquivo_01_buffer, arquivo_02_buffer)
+                arquivo_excel_bytes = gerar_excel_em_memoria(df_final)
+
+            st.session_state.cvp_sip_resultado_df = df_final
+            st.session_state.cvp_sip_resumo = resumo
+            st.session_state.cvp_sip_resultado_excel = arquivo_excel_bytes
+        except Exception as exc:
+            st.exception(exc)
+
+    if (
+        st.session_state.cvp_sip_resultado_df is not None
+        and st.session_state.cvp_sip_resumo is not None
+    ):
+        df_final = st.session_state.cvp_sip_resultado_df
+        resumo = st.session_state.cvp_sip_resumo
+
+        _render_resumo_cvp_sip(resumo, df_final)
+
+        if st.session_state.cvp_sip_resultado_excel is not None:
+            st.markdown(
+                """
+                <div class="cvp-sip-card">
+                    <div class="cvp-sip-card-header">Download</div>
+                    <div class="cvp-sip-card-desc">
+                        Baixe o arquivo final processado no padrão oficial do módulo CVP SIP,
+                        já filtrado pelos níveis de geocodificação selecionados.
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            st.markdown('<span id="cvp-sip-download-marker"></span>', unsafe_allow_html=True)
+            st.download_button(
+                label="Baixar arquivo final",
+                data=st.session_state.cvp_sip_resultado_excel,
+                file_name=NOME_ARQUIVO_FINAL,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="cvp_sip_download_final",
+                use_container_width=True,
+            )
+
+
+interface_cvp_sip = render
