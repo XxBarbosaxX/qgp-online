@@ -52,6 +52,8 @@ class RouboVeiculoSipConfig:
     arcgis_timeout: int = 15
     arcgis_delay_s: float = 0.4
     arcgis_retries: int = 2
+    # novo campo: níveis de geocodificação a manter no arquivo final
+    niveis_filtrar: Optional[list[str]] = None
 
 
 SUBST = {
@@ -94,6 +96,15 @@ TIPOS = ("Rua", "Avenida", "Travessa", "Praca", "Rodovia", "Alameda", "Passeio")
 
 ROOFTOP = ("pointaddress", "streetaddress", "subaddress", "pointaddressvd")
 
+# níveis possíveis de geocodificação para seleção
+NIVEIS_GEOCODIFICACAO_POSSIVEIS = [
+    "Exato (Numero)",
+    "Centroide de Rua",
+    "Centroide de Bairro",
+    "Centroide de Cidade",
+    "Nao Encontrado",
+]
+
 
 def _resolver_caminho_base_enxuta(caminho_informado: str) -> str:
     candidatos = [
@@ -125,6 +136,10 @@ def _normalizar_config(config: Optional[RouboVeiculoSipConfig]) -> RouboVeiculoS
 
     caminho_resolvido = _resolver_caminho_base_enxuta(config.caminho_base_enxuta)
 
+    # default de níveis se não informado
+    niveis_default = ["Exato (Numero)", "Centroide de Rua"]
+    niveis_filtrar = config.niveis_filtrar or niveis_default
+
     return RouboVeiculoSipConfig(
         usar_externo=config.usar_externo,
         caminho_base_enxuta=caminho_resolvido,
@@ -138,6 +153,7 @@ def _normalizar_config(config: Optional[RouboVeiculoSipConfig]) -> RouboVeiculoS
         arcgis_timeout=int(config.arcgis_timeout),
         arcgis_delay_s=float(config.arcgis_delay_s),
         arcgis_retries=int(config.arcgis_retries),
+        niveis_filtrar=list(niveis_filtrar),
     )
 
 
@@ -1209,6 +1225,13 @@ def processar_roubo_veiculo_sip(
     ).reset_index(drop=True)
     df_final = df_final.drop(columns=["__datahora__"], errors="ignore")
 
+    # filtro por nível de geocodificação selecionado em config
+    niveis_filtrar = config.niveis_filtrar or []
+    if "Nivel_Geocodificacao" in df_final.columns and niveis_filtrar:
+        df_final = df_final[
+            df_final["Nivel_Geocodificacao"].isin(niveis_filtrar)
+        ].reset_index(drop=True)
+
     contagens_nivel = {}
     if "Nivel_Geocodificacao" in df_final.columns:
         contagens_nivel = (
@@ -1284,6 +1307,15 @@ def _limpar_estado_roubo_veiculo_sip() -> None:
         "roubo_veiculo_sip_config",
         "roubo_veiculo_sip_upload_01",
         "roubo_veiculo_sip_upload_02",
+        "rvsip_cfg_usar_externo",
+        "rvsip_cfg_base_parquet",
+        "rvsip_cfg_filtro_natureza",
+        "rvsip_cfg_cache_municipios",
+        "rvsip_cfg_limiar_nome",
+        "rvsip_cfg_raio_confirma",
+        "rvsip_cfg_raio_municipio",
+        "rvsip_cfg_limiar_suspeito",
+        "rvsip_cfg_niveis_filtrar",
     ]
     for chave in chaves:
         if chave in st.session_state:
@@ -1326,7 +1358,7 @@ def _obter_configuracao_ui() -> RouboVeiculoSipConfig:
             _render_label_flutuante(
                 "Filtro de Natureza",
                 (
-                    "Parâmetro informativo da interface. O processamento agora usa "
+                    "Parâmetro informativo da interface. O processamento usa "
                     "regras internas para identificar Roubo de Veículo na coluna Natureza."
                 ),
             )
@@ -1416,16 +1448,36 @@ def _obter_configuracao_ui() -> RouboVeiculoSipConfig:
                 key="rvsip_cfg_limiar_suspeito",
             )
 
+        # seleção dos níveis de geocodificação para o arquivo final
+        _render_label_flutuante(
+            "Níveis de geocodificação a manter",
+            (
+                "Selecione quais níveis de geocodificação serão mantidos na base final "
+                "de Roubo de Veículo (SIP). Registros com níveis não selecionados serão descartados."
+            ),
+        )
+        niveis_filtrar = st.multiselect(
+            "Níveis de geocodificação",
+            options=NIVEIS_GEOCODIFICACAO_POSSIVEIS,
+            default=st.session_state.get(
+                "rvsip_cfg_niveis_filtrar",
+                ["Exato (Numero)", "Centroide de Rua"],
+            ),
+            key="rvsip_cfg_niveis_filtrar",
+        )
+
     return _normalizar_config(
         RouboVeiculoSipConfig(
             usar_externo=usar_externo,
-            caminho_base_enxuta=caminho_base_enxuta.strip() or "CVP_SIP_GEOCODIFICAR.parquet",
+            caminho_base_enxuta=caminho_base_enxuta.strip()
+            or "CVP_SIP_GEOCODIFICAR.parquet",
             valor_filtro_natureza=valor_filtro_natureza.strip() or "ROUBO DE VEICULO",
             limiar_nome=int(limiar_nome),
             raio_confirma_m=float(raio_confirma_m),
             raio_municipio_km=float(raio_municipio_km),
             limiar_suspeito=int(limiar_suspeito),
             arq_cache_mun=arq_cache_mun.strip() or "municipios_ce.json",
+            niveis_filtrar=list(niveis_filtrar or ["Exato (Numero)", "Centroide de Rua"]),
         )
     )
 
