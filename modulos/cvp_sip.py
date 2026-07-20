@@ -87,6 +87,14 @@ RE_BNI = re.compile(
 TIPOS = ("Rua", "Avenida", "Travessa", "Praca", "Rodovia", "Alameda", "Passeio")
 ROOFTOP = ("pointaddress", "streetaddress", "subaddress", "pointaddressvd")
 
+# Níveis possíveis de geocodificação usados no filtro
+NIVEIS_GEOCODIFICACAO_POSSIVEIS = [
+    "Exato (Numero)",
+    "Centroide de Rua",
+    "Centroide de Bairro",
+    "Centroide de Cidade",
+]
+
 
 def obter_configuracao_tecnica() -> dict:
     """Obtém a configuração técnica atual do módulo a partir do session_state."""
@@ -106,6 +114,11 @@ def obter_configuracao_tecnica() -> dict:
         ),
         "limiar_suspeito": int(
             st.session_state.get("cvp_sip_cfg_limiar_suspeito", LIMIAR_SUSPEITO)
+        ),
+        # novo campo: níveis de geocodificação a manter no arquivo final
+        "niveis_filtrar": st.session_state.get(
+            "cvp_sip_cfg_niveis_filtrar",
+            ["Exato (Numero)", "Centroide de Rua"],
         ),
     }
 
@@ -459,7 +472,9 @@ class MotorGeocodificacaoSoberana:
             if self.geocode_ext is not None:
                 loc = self.geocode_ext(consulta, out_fields="*")
                 if loc:
-                    addr_type = ((loc.raw or {}).get("attributes", {}) or {}).get("Addr_type", "")
+                    addr_type = ((loc.raw or {}).get("attributes", {}) or {}).get(
+                        "Addr_type", ""
+                    )
                     externo = (float(loc.latitude), float(loc.longitude), str(addr_type).lower())
 
             ancora = (externo[0], externo[1]) if externo else None
@@ -649,7 +664,7 @@ def geocodificar_linhas_novas(
     df = df.copy()
     df[col_lat_destino] = lats
     df[col_lon_destino] = lons
-    df["Nivel_Geocodificacao"] = niveis
+    df["Nivel_Geocificacao"] = niveis
     df["Fonte"] = fontes
     df["_confirmado_base"] = confirmados
     df["_dist_validacao_m"] = distancias
@@ -772,7 +787,9 @@ def processar_cvp_sip(arquivo_01, arquivo_02):
 
     if ultima_datahora_base is None:
         df_novo_util = df_novo.copy()
-        situacao = "Base anterior sem Data/Hora valida: Arquivo 02 foi incluido integralmente."
+        situacao = (
+            "Base anterior sem Data/Hora valida: Arquivo 02 foi incluido integralmente."
+        )
     elif df_novo_filtrado.empty:
         df_novo_util = df_novo_filtrado.copy()
         situacao = (
@@ -826,6 +843,7 @@ def processar_cvp_sip(arquivo_01, arquivo_02):
         df_final = base_sem_aux.copy()
         adicionados = 0
 
+    # Ordenacao final
     df_final = criar_coluna_datahora(df_final, col_data_base, col_hora_base, "__datahora__")
     df_final = df_final.sort_values(
         by="__datahora__",
@@ -833,6 +851,14 @@ def processar_cvp_sip(arquivo_01, arquivo_02):
         na_position="last",
     ).reset_index(drop=True)
     df_final = df_final.drop(columns=["__datahora__"], errors="ignore")
+
+    # Aplicar filtro por nivel de geocodificacao selecionado na configuracao tecnica
+    config = obter_configuracao_tecnica()
+    niveis_filtrar = config.get("niveis_filtrar") or []
+    if "Nivel_Geocodificacao" in df_final.columns and niveis_filtrar:
+        df_final = df_final[
+            df_final["Nivel_Geocodificacao"].isin(niveis_filtrar)
+        ].reset_index(drop=True)
 
     contagens_nivel = {}
     if "Nivel_Geocodificacao" in df_final.columns:
@@ -896,6 +922,8 @@ def _init_state() -> None:
         "cvp_sip_cfg_raio_confirma_m": RAIO_CONFIRMA_M,
         "cvp_sip_cfg_raio_municipio_km": RAIO_MUNICIPIO_KM,
         "cvp_sip_cfg_limiar_suspeito": LIMIAR_SUSPEITO,
+        # estado inicial do filtro de níveis na UI
+        "cvp_sip_cfg_niveis_filtrar": ["Exato (Numero)", "Centroide de Rua"],
     }
     for chave, valor in defaults.items():
         if chave not in st.session_state:
@@ -955,6 +983,21 @@ def _render_configuracao_tecnica() -> None:
                 key="cvp_sip_cfg_limiar_suspeito",
                 help="Quantidade mínima de ocorrências no mesmo ponto para sinalização de localização aproximada.",
             )
+
+        # nova linha de configuração: seleção de níveis de geocodificação
+        st.multiselect(
+            "Selecione o nível de geocodificação",
+            options=NIVEIS_GEOCODIFICACAO_POSSIVEIS,
+            default=st.session_state.get(
+                "cvp_sip_cfg_niveis_filtrar",
+                ["Exato (Numero)", "Centroide de Rua"],
+            ),
+            key="cvp_sip_cfg_niveis_filtrar",
+            help=(
+                "Escolha quais níveis de geocodificação devem ser mantidos no arquivo final. "
+                "Registros com níveis não selecionados serão descartados."
+            ),
+        )
 
 
 def _render_resumo_cvp_sip(resumo: dict, df_final: pd.DataFrame) -> None:
@@ -1101,7 +1144,9 @@ def render() -> None:
         unsafe_allow_html=True,
     )
 
-    st.caption("Atualização da base CVP com geocodificação por endereço a partir do complemento SIP.")
+    st.caption(
+        "Atualização da base CVP com geocodificação por endereço a partir do complemento SIP."
+    )
 
     st.markdown(
         """
@@ -1247,7 +1292,6 @@ def render() -> None:
             st.session_state.cvp_sip_resultado_df = df_final
             st.session_state.cvp_sip_resumo = resumo
             st.session_state.cvp_sip_resultado_excel = arquivo_excel_bytes
-
         except Exception as exc:
             st.exception(exc)
 
@@ -1266,7 +1310,8 @@ def render() -> None:
                 <div class="cvp-sip-card">
                     <div class="cvp-sip-card-header">Download</div>
                     <div class="cvp-sip-card-desc">
-                        Baixe o arquivo final processado no padrão oficial do módulo CVP SIP.
+                        Baixe o arquivo final processado no padrão oficial do módulo CVP SIP,
+                        já filtrado pelos níveis de geocodificação selecionados.
                     </div>
                 </div>
                 """,
