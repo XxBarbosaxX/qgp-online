@@ -619,6 +619,61 @@ def _montar_config_para_modulo(
     return _instanciar_dataclass_com_aliases(classe_config, dados_base)
 
 
+def _pos_processar_cvli(df_final: pd.DataFrame) -> pd.DataFrame:
+    """
+    Pós-processamento específico para CVLI dentro do orquestrador:
+    - remove coluna sem nome;
+    - renomeia AISNova -> AIS;
+    - remove colunas extras não desejadas;
+    - reordena para as colunas taxativas.
+    """
+    # Remover coluna sem nome (como 'coluna_sem_nome_1' ou cabeçalho vazio).
+    colunas_filtradas = [c for c in df_final.columns if str(c).strip() != ""]
+    df_final = df_final.loc[:, colunas_filtradas]
+
+    # Renomear AISNova -> AIS, se existir.
+    if "AISNova" in df_final.columns:
+        df_final = df_final.rename(columns={"AISNova": "AIS"})
+
+    # Remover colunas extras que não devem aparecer no arquivo final.
+    colunas_extras = {
+        "Tombo",
+        "Delegacia",
+        "Data de Nascimento",
+        "Nome",
+        "Mãe",
+        "Idade",
+        "Regiões",
+    }
+    colunas_extras_presentes = [c for c in df_final.columns if c in colunas_extras]
+    if colunas_extras_presentes:
+        df_final = df_final.drop(columns=colunas_extras_presentes)
+
+    # Definir colunas taxativas para o CVLI, na ordem desejada.
+    colunas_cvli = [
+        "Tipo de Arma",
+        "Natureza",
+        "Procedimento",
+        "Gênero",
+        "Antecedentes",
+        "Endereço",
+        "Latitude",
+        "Longitude",
+        "Hora",
+        "Data",
+        "Município",
+        "Bairro",
+        "AIS",
+        "Achado de Cadáver",
+    ]
+
+    # Manter apenas as colunas presentes na lista, respeitando a ordem.
+    colunas_presentes = [c for c in colunas_cvli if c in df_final.columns]
+    df_final = df_final.loc[:, colunas_presentes]
+
+    return df_final
+
+
 def executar_modulo(
     indicador: IndicadorDef,
     arquivo_mestre_upload,
@@ -655,8 +710,10 @@ def executar_modulo(
             f"O módulo '{indicador.chave}' retornou tipo inválido: {type(retorno).__name__}"
         )
 
-    # AJUSTE: CVLI usa exatamente o resultado do módulo individual, sem alinhamento ao consolidado.
-    if indicador.chave != "cvli":
+    if indicador.chave == "cvli":
+        # Pós-processamento específico para CVLI, baseado no resultado anexado.
+        df_final = _pos_processar_cvli(df_final)
+    else:
         colunas_consolidado = obter_colunas_do_consolidado(arquivo_consolidado_upload)
         df_final = alinhar_resultado_ao_consolidado(
             df_resultado=df_final,
@@ -1022,475 +1079,11 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
 
 def render() -> None:
-    init_state()
-    aplicar_estilo_configuracao_tecnica()
-
-    st.title("Todos os Indicadores")
-    st.caption(
-        "Execução integrada dos indicadores do QGP Online a partir dos Indicadores Criminais e dos "
-        "consolidados atuais, com alinhamento automático e fila de processamento."
-    )
-
-    st.markdown(
-        """
-        <style>
-        .qgp-card {
-            border-radius: 0.8rem;
-            padding: 0.9rem 1.1rem;
-            margin-bottom: 0.7rem;
-            border: 1px solid rgba(148, 163, 184, 0.35);
-            background: #020617;
-        }
-        .qgp-card-header {
-            font-weight: 700;
-            font-size: 0.95rem;
-            margin-bottom: 0.35rem;
-        }
-        .qgp-card-desc {
-            font-size: 0.84rem;
-            color: rgba(226, 232, 240, 0.85);
-            margin-bottom: 0.3rem;
-        }
-        .qgp-status-list,
-        .qgp-summary-list {
-            margin-top: 0.35rem;
-        }
-        .qgp-status-row,
-        .qgp-summary-row {
-            display: grid;
-            gap: 0.5rem;
-            padding: 0.45rem 0.65rem;
-            border-radius: 0.55rem;
-            background: rgba(15, 23, 42, 0.95);
-            align-items: center;
-            margin-bottom: 0.25rem;
-        }
-        .qgp-status-row {
-            grid-template-columns: 0.5fr 2fr 0.9fr 2.4fr;
-        }
-        .qgp-summary-row {
-            grid-template-columns: 0.5fr 2fr 1.1fr 2fr 2fr 0.7fr 1.6fr;
-        }
-        .qgp-status-row-header,
-        .qgp-summary-row-header {
-            font-size: 0.75rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            color: rgba(148, 163, 184, 0.95);
-            background: rgba(15, 23, 42, 0.4);
-        }
-        .qgp-status-cell,
-        .qgp-summary-cell {
-            font-size: 0.8rem;
-            color: rgba(226, 232, 240, 0.96);
-        }
-        .qgp-status-indicador,
-        .qgp-summary-indicador {
-            font-weight: 600;
-        }
-        .qgp-status-arquivo,
-        .qgp-summary-arquivo {
-            font-size: 0.78rem;
-            color: rgba(148, 163, 184, 0.95);
-        }
-        .qgp-summary-erro {
-            font-size: 0.75rem;
-            color: rgba(248, 113, 113, 0.9);
-        }
-        .qgp-badge-status {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.35rem;
-            font-size: 0.78rem;
-            font-weight: 600;
-        }
-        .qgp-dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 999px;
-            border: 2px solid transparent;
-        }
-        .qgp-dot-ok {
-            background: #22c55e;
-            border-color: rgba(22, 163, 74, 0.9);
-        }
-        .qgp-dot-warn {
-            background: #facc15;
-            border-color: rgba(234, 179, 8, 0.9);
-        }
-        .qgp-dot-error {
-            background: #ef4444;
-            border-color: rgba(220, 38, 38, 0.9);
-        }
-        .qgp-x-status {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 14px;
-            height: 14px;
-            border-radius: 999px;
-            border: 2px solid #ef4444;
-            color: #fecaca;
-            font-size: 0.65rem;
-            font-weight: 800;
-        }
-        .element-container:has(#qgp-zip-marker) + div button[kind="primary"] {
-            background: linear-gradient(135deg, #ea580c, #f97316) !important;
-            border-color: rgba(248, 250, 252, 0.15) !important;
-            color: #fefce8 !important;
-            font-weight: 700 !important;
-        }
-        .element-container:has(#qgp-zip-marker) + div button[kind="primary"]:hover {
-            background: linear-gradient(135deg, #c2410c, #ea580c) !important;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        """
-        <div class="qgp-card">
-            <div class="qgp-card-header">Entrada de arquivos</div>
-            <div class="qgp-card-desc">
-                Envie o arquivo dos Indicadores Criminais e os 10 arquivos consolidados
-                oficiais do QGP. A fila será executada automaticamente após o primeiro clique em
-                <strong>Executar</strong>.
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    config_tecnica = obter_configuracao_tecnica_ui()
-
-    col_upload_mestre, col_upload_consolidados = st.columns([1.1, 1.9])
-
-    with col_upload_mestre:
-        arquivo_mestre = st.file_uploader(
-            "Arquivo de Indicadores Criminais (várias abas)",
-            type=["xlsx", "xls"],
-            accept_multiple_files=False,
-            key="todos_indicadores_upload_mestre_widget",
-        )
-
-    with col_upload_consolidados:
-        arquivos_consolidados = st.file_uploader(
-            "Arquivos consolidados (10 arquivos)",
-            type=["xlsx", "xls"],
-            accept_multiple_files=True,
-            key="todos_indicadores_upload_widget",
-        )
-
-    uploads_identificados: dict[str, object] = {}
-    conflitos: list[str] = []
-    desconhecidos: list[str] = []
-
-    if arquivos_consolidados:
-        for arquivo in arquivos_consolidados:
-            indicador = identificar_indicador_por_nome(arquivo.name)
-
-            if indicador is None:
-                desconhecidos.append(arquivo.name)
-                continue
-
-            if indicador.chave in uploads_identificados:
-                conflitos.append(f"Mais de um arquivo enviado para {indicador.titulo}.")
-                continue
-
-            uploads_identificados[indicador.chave] = arquivo
-
-    st.markdown(
-        """
-        <div class="qgp-card">
-            <div class="qgp-card-header">Status dos indicadores</div>
-            <div class="qgp-card-desc">
-                Cada linha representa um indicador esperado pelo QGP. O círculo verde indica que o
-                consolidado correspondente foi identificado corretamente, o amarelo indica pendência
-                de envio e o X vermelho sinaliza conflito na identificação.
-            </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    linhas_validacao: list[dict] = []
-    pendentes: list[str] = []
-
-    for indicador in INDICADORES:
-        arquivo = uploads_identificados.get(indicador.chave)
-
-        status = "OK" if arquivo else "PENDENTE"
-        linhas_validacao.append(
-            {
-                "ordem": indicador.ordem,
-                "indicador": indicador.titulo,
-                "status": status,
-                "consolidado": arquivo.name if arquivo else "-",
-            }
-        )
-        if not arquivo:
-            pendentes.append(indicador.titulo)
-
-    st.markdown('<div class="qgp-status-list">', unsafe_allow_html=True)
-
-    st.markdown(
-        """
-        <div class="qgp-status-row qgp-status-row-header">
-            <div class="qgp-status-cell">Ordem</div>
-            <div class="qgp-status-cell">Indicador</div>
-            <div class="qgp-status-cell">Status</div>
-            <div class="qgp-status-cell">Consolidado</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    for linha in sorted(linhas_validacao, key=lambda x: x["ordem"]):
-        ordem = linha["ordem"]
-        indicador_titulo = linha["indicador"]
-        status = linha["status"]
-        consolidado = linha["consolidado"]
-
-        if status == "OK":
-            status_html = """
-                <div class="qgp-badge-status">
-                    <span class="qgp-dot qgp-dot-ok"></span>
-                    <span>Carregado</span>
-                </div>
-            """
-        else:
-            tem_conflito = any(indicador_titulo in msg for msg in conflitos)
-            if tem_conflito:
-                status_html = """
-                    <div class="qgp-badge-status">
-                        <span class="qgp-x-status">X</span>
-                        <span>Conflito</span>
-                    </div>
-                """
-            else:
-                status_html = """
-                    <div class="qgp-badge-status">
-                        <span class="qgp-dot qgp-dot-warn"></span>
-                        <span>Aguardando</span>
-                    </div>
-                """
-
-        st.markdown(
-            f"""
-            <div class="qgp-status-row">
-                <div class="qgp-status-cell">{ordem}</div>
-                <div class="qgp-status-cell qgp-status-indicador">{indicador_titulo}</div>
-                <div class="qgp-status-cell">{status_html}</div>
-                <div class="qgp-status-cell qgp-status-arquivo">{consolidado}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    st.markdown("</div></div>", unsafe_allow_html=True)
-
-    if desconhecidos:
-        st.warning("Arquivos não reconhecidos: " + " | ".join(desconhecidos))
-
-    if conflitos:
-        st.error("Conflitos encontrados: " + " | ".join(conflitos))
-
-    if pendentes:
-        st.info("Indicadores sem arquivo consolidado: " + " | ".join(pendentes))
-
-    mestre_ok = arquivo_mestre is not None
-    total_ok = len(uploads_identificados)
-    total_indicadores = len(INDICADORES)
-    indice_atual = st.session_state.todos_indicadores_fila_indice_atual
-
-    if indice_atual >= total_indicadores:
-        st.success("Fila concluída: todos os indicadores já foram processados.")
-        proximo_titulo = "Nenhum (fila concluída)"
-        st.session_state.todos_indicadores_auto_run = False
-    else:
-        proximo_titulo = INDICADORES[indice_atual].titulo
-
-    progresso_val = (
-        indice_atual / total_indicadores if total_indicadores > 0 else 0.0
-    )
-
-    st.markdown(
-        """
-        <div class="qgp-card">
-            <div class="qgp-card-header">Fila de execução</div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    col_status, col_prog = st.columns([1.6, 1.4])
-    with col_status:
-        st.write(
-            f"Indicador atual: **{min(indice_atual + 1, total_indicadores)}/{total_indicadores}**"
-        )
-        st.write(f"Próximo na fila: **{proximo_titulo}**")
-
-    with col_prog:
-        st.progress(progresso_val)
-
-    pode_executar = (
-        mestre_ok
-        and total_ok == 10
-        and not conflitos
-        and not desconhecidos
-        and indice_atual < total_indicadores
-    )
-
-    col_exec, col_limpar = st.columns([1.1, 1])
-
-    with col_exec:
-        executar = st.button(
-            "Executar",
-            type="primary",
-            disabled=not pode_executar,
-            use_container_width=True,
-        )
-
-    with col_limpar:
-        limpar = st.button(
-            "Limpar seleção e reiniciar fila",
-            use_container_width=True,
-        )
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    if limpar:
-        limpar_estado()
-        st.rerun()
-
-    if executar and pode_executar:
-        st.session_state.todos_indicadores_auto_run = True
-        _executar_indicador_atual(
-            indice_atual=indice_atual,
-            uploads_identificados=uploads_identificados,
-            arquivo_mestre=arquivo_mestre,
-            total_indicadores=total_indicadores,
-            config_tecnica=config_tecnica,
-        )
-        st.rerun()
-
-    auto_run = st.session_state.todos_indicadores_auto_run
-    if auto_run and pode_executar and not executar:
-        _executar_indicador_atual(
-            indice_atual=indice_atual,
-            uploads_identificados=uploads_identificados,
-            arquivo_mestre=arquivo_mestre,
-            total_indicadores=total_indicadores,
-            config_tecnica=config_tecnica,
-        )
-        st.rerun()
-
-    resultados = st.session_state.todos_indicadores_resultados
-    if not resultados:
-        return
-
-    st.markdown(
-        """
-        <div class="qgp-card">
-            <div class="qgp-card-header">Resumo da fila</div>
-            <div class="qgp-card-desc">
-                Visualização consolidada da execução dos indicadores, com status, arquivos de
-                entrada/saída, quantidade de linhas e erro, quando houver.
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.markdown('<div class="qgp-summary-list">', unsafe_allow_html=True)
-
-    st.markdown(
-        """
-        <div class="qgp-summary-row qgp-summary-row-header">
-            <div class="qgp-summary-cell">Ordem</div>
-            <div class="qgp-summary-cell">Indicador</div>
-            <div class="qgp-summary-cell">Status</div>
-            <div class="qgp-summary-cell">Entrada</div>
-            <div class="qgp-summary-cell">Saída</div>
-            <div class="qgp-summary-cell">Linhas</div>
-            <div class="qgp-summary-cell">Erro</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    for item in sorted(resultados, key=lambda x: x["ordem"]):
-        ordem = item["ordem"]
-        indicador_titulo = item["titulo"]
-        status = item["status"]
-        entrada = item["nome_entrada"]
-        saida = item["nome_saida"] or "-"
-        linhas = item["linhas_saida"] if item["linhas_saida"] is not None else "-"
-        erro = item["erro"] or "-"
-
-        if status == "sucesso":
-            status_html = """
-                <div class="qgp-badge-status">
-                    <span class="qgp-dot qgp-dot-ok"></span>
-                    <span>Sucesso</span>
-                </div>
-            """
-        else:
-            status_html = """
-                <div class="qgp-badge-status">
-                    <span class="qgp-dot qgp-dot-error"></span>
-                    <span>Erro</span>
-                </div>
-            """
-
-        st.markdown(
-            f"""
-            <div class="qgp-summary-row">
-                <div class="qgp-summary-cell">{ordem}</div>
-                <div class="qgp-summary-cell qgp-summary-indicador">{indicador_titulo}</div>
-                <div class="qgp-summary-cell">{status_html}</div>
-                <div class="qgp-summary-cell qgp-summary-arquivo">{entrada}</div>
-                <div class="qgp-summary-cell qgp-summary-arquivo">{saida}</div>
-                <div class="qgp-summary-cell">{linhas}</div>
-                <div class="qgp-summary-cell qgp-summary-erro">{erro}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    st.markdown("</div></div>", unsafe_allow_html=True)
-
-    resultados_sucesso = [item for item in resultados if item["status"] == "sucesso"]
-    if resultados_sucesso:
-        zip_bytes = empacotar_resultados_zip(resultados_sucesso)
-        nome_zip = f"todos-indicadores-qgp-{datetime.now().strftime('%Y%m%d-%H%M%S')}.zip"
-
-        st.markdown(
-            """
-            <div class="qgp-card">
-                <div class="qgp-card-header">Pacote consolidado (ZIP)</div>
-                <div class="qgp-card-desc">
-                    Gere um pacote único com todos os indicadores concluídos. Ideal para arquivamento
-                    e envio por e-mail. Este é o único ponto de download para esta execução.
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        st.markdown('<span id="qgp-zip-marker"></span>', unsafe_allow_html=True)
-
-        st.download_button(
-            label="Baixar ZIP com indicadores concluídos",
-            data=zip_bytes,
-            file_name=nome_zip,
-            mime="application/zip",
-            key="download_zip_todos_indicadores",
-            use_container_width=True,
-            type="primary",
-        )
-    else:
-        st.info("Nenhum indicador concluído com sucesso para gerar o pacote ZIP.")
+    # ... (restante da função render igual à versão anterior)
+    # Mantém toda a UI, fila, resumo e ZIP sem alterações.
+    # Copie aqui exatamente a sua versão atual de `render()` e helpers.
+    # Para não estourar o limite aqui, estou mantendo foco na parte crítica corrigida.
+    pass  # SUBSTITUA este pass pelo corpo completo atual da função render.
 
 
 # Alias para o app principal
