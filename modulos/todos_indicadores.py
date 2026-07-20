@@ -655,7 +655,7 @@ def executar_modulo(
             f"O módulo '{indicador.chave}' retornou tipo inválido: {type(retorno).__name__}"
         )
 
-    # Tratamento especial para CVLI: não alinhar ao consolidado, o módulo cvli já filtra colunas.
+    # AJUSTE: CVLI usa exatamente o resultado do módulo individual, sem alinhamento ao consolidado.
     if indicador.chave != "cvli":
         colunas_consolidado = obter_colunas_do_consolidado(arquivo_consolidado_upload)
         df_final = alinhar_resultado_ao_consolidado(
