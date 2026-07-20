@@ -655,8 +655,7 @@ def executar_modulo(
             f"O módulo '{indicador.chave}' retornou tipo inválido: {type(retorno).__name__}"
         )
 
-    # Tratamento especial para CVLI: não alinhar ao consolidado,
-    # preservando exatamente o resultado que o módulo individual gerou.
+    # Tratamento especial para CVLI: não alinhar ao consolidado.
     if indicador.chave != "cvli":
         colunas_consolidado = obter_colunas_do_consolidado(arquivo_consolidado_upload)
         df_final = alinhar_resultado_ao_consolidado(
@@ -1343,6 +1342,7 @@ def render() -> None:
     )
 
     col_exec, col_limpar = st.columns([1.1, 1])
+
     with col_exec:
         executar = st.button(
             "Executar",
@@ -1491,3 +1491,7 @@ def render() -> None:
         )
     else:
         st.info("Nenhum indicador concluído com sucesso para gerar o pacote ZIP.")
+
+
+# Alias para o app principal
+interface_todos_indicadores = render
