@@ -1,4 +1,5 @@
-"""Módulo Todos os Indicadores - Orquestrador principal do QGP Online.
+"""
+Módulo Todos os Indicadores - Orquestrador principal do QGP Online.
 Estratégia de estabilidade:
 - evita armazenar bytes grandes em st.session_state;
 - usa apenas objetos de upload do ciclo atual;
@@ -654,12 +655,14 @@ def executar_modulo(
             f"O módulo '{indicador.chave}' retornou tipo inválido: {type(retorno).__name__}"
         )
 
-    colunas_consolidado = obter_colunas_do_consolidado(arquivo_consolidado_upload)
-    df_final = alinhar_resultado_ao_consolidado(
-        df_resultado=df_final,
-        indicador=indicador,
-        colunas_consolidado=colunas_consolidado,
-    )
+    # Tratamento especial para CVLI: não alinhar ao consolidado, o módulo cvli já filtra colunas.
+    if indicador.chave != "cvli":
+        colunas_consolidado = obter_colunas_do_consolidado(arquivo_consolidado_upload)
+        df_final = alinhar_resultado_ao_consolidado(
+            df_resultado=df_final,
+            indicador=indicador,
+            colunas_consolidado=colunas_consolidado,
+        )
 
     arquivo_saida = gerar_excel_em_memoria(df_final, sheet_name=indicador.titulo[:31])
 
@@ -1000,7 +1003,8 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
     config = TodosIndicadoresConfigTecnica(
         usar_externo=bool(usar_externo),
-        caminho_base_enxuta=caminho_base_enxuta.strip() or "CVP_SIP_GEOCODIFICAR.parquet",
+        caminho_base_enxuta=caminho_base_enxuta.strip()
+        or "CVP_SIP_GEOCODIFICAR.parquet",
         arq_cache_municipios=arq_cache_municipios.strip() or "municipios_ce.json",
         limiar_nome=int(limiar_nome),
         raio_confirma_m=float(raio_confirma_m),
@@ -1393,6 +1397,7 @@ def render() -> None:
                 Visualização consolidada da execução dos indicadores, com status, arquivos de
                 entrada/saída, quantidade de linhas e erro, quando houver.
             </div>
+        </div>
         """,
         unsafe_allow_html=True,
     )
@@ -1488,5 +1493,5 @@ def render() -> None:
         st.info("Nenhum indicador concluído com sucesso para gerar o pacote ZIP.")
 
 
+# Alias para o app principal
 interface_todos_indicadores = render
-interface_todos_os_indicadores = render
