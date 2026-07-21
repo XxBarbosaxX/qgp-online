@@ -1,5 +1,6 @@
 """
 Módulo Todos os Indicadores - Orquestrador principal do QGP Online.
+
 Estratégia de estabilidade:
 - evita armazenar bytes grandes em st.session_state;
 - usa apenas objetos de upload do ciclo atual;
@@ -161,6 +162,7 @@ INDICADORES: list[IndicadorDef] = [
     ),
 ]
 
+
 MAPEAMENTO_EQUIVALENCIAS_POR_INDICADOR: dict[str, dict[str, list[str]]] = {
     "cvli": {
         "AIS": ["AISNova"],
@@ -273,6 +275,7 @@ MAPEAMENTO_EQUIVALENCIAS_POR_INDICADOR: dict[str, dict[str, list[str]]] = {
     },
 }
 
+
 COLUNAS_CRITICAS_POR_INDICADOR: dict[str, list[str]] = {
     "acidente_transito": ["Nome da Ocorrência", "Subnome da Ocorrência"],
     "deslocamento_forcado": ["Nome da Ocorrência", "Subnome da Ocorrência"],
@@ -311,6 +314,7 @@ def limpar_estado() -> None:
         "todos_cfg_arcgis_timeout",
         "todos_cfg_arcgis_delay_s",
         "todos_cfg_arcgis_retries",
+        "todos_indicadores_ultimo_progresso",
     ]
     for chave in chaves:
         if chave in st.session_state:
@@ -914,8 +918,7 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
         with colcfg1:
             render_label_flutuante(
                 "Usar ArcGIS como fallback",
-                "Quando ativado, o sistema complementa a busca local com geocodificação externa "
-                "ArcGIS nos módulos que suportam esse recurso.",
+                "Quando ativado, o sistema complementa a busca local com geocodificação externa ArcGIS nos módulos que suportam esse recurso.",
             )
             usar_externo = st.toggle(
                 "Usar ArcGIS como fallback",
@@ -926,8 +929,7 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Base geográfica (.parquet)",
-                "Arquivo parquet auxiliar com logradouros e coordenadas utilizado como base "
-                "principal da geocodificação local.",
+                "Arquivo parquet auxiliar com logradouros e coordenadas utilizado como base principal da geocodificação local.",
             )
             caminho_base_enxuta = st.text_input(
                 "Base geográfica (.parquet)",
@@ -938,8 +940,7 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Arquivo cache de municípios",
-                "Arquivo JSON local usado para armazenar o mapeamento IBGE dos municípios do "
-                "Ceará e evitar consultas repetidas.",
+                "Arquivo JSON local usado para armazenar o mapeamento IBGE dos municípios do Ceará e evitar consultas repetidas.",
             )
             arq_cache_municipios = st.text_input(
                 "Arquivo cache de municípios",
@@ -950,8 +951,7 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Filtro de Natureza",
-                "Parâmetro textual usado por módulos compatíveis para filtrar a natureza da "
-                "ocorrência durante o processamento.",
+                "Parâmetro textual usado por módulos compatíveis para filtrar a natureza da ocorrência durante o processamento.",
             )
             valor_filtro_natureza = st.text_input(
                 "Filtro de Natureza",
@@ -962,8 +962,7 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Código da UF",
-                "Código IBGE.da UF usado nas consultas auxiliares de municípios. Para o Ceará, "
-                "o padrão é 23.",
+                "Código IBGE da UF usado nas consultas auxiliares de municípios. Para o Ceará, o padrão é 23.",
             )
             uf_codigo = st.text_input(
                 "Código da UF",
@@ -975,8 +974,7 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
         with colcfg2:
             render_label_flutuante(
                 "Limiar de similaridade",
-                "Percentual mínimo de similaridade entre o logradouro informado e o logradouro "
-                "da base para aceitar o casamento textual.",
+                "Percentual mínimo de similaridade entre o logradouro informado e o logradouro da base para aceitar o casamento textual.",
             )
             limiar_nome = st.slider(
                 "Limiar de similaridade",
@@ -989,8 +987,7 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Raio de confirmação (m)",
-                "Distância máxima, em metros, para validar se o ponto retornado externamente é "
-                "coerente com a base espacial local.",
+                "Distância máxima, em metros, para validar se o ponto retornado externamente é coerente com a base espacial local.",
             )
             raio_confirma_m = st.number_input(
                 "Raio de confirmação (m)",
@@ -1003,8 +1000,7 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Raio do município (km)",
-                "Raio usado para restringir a busca espacial quando o município não é "
-                "localizado diretamente por código.",
+                "Raio usado para restringir a busca espacial quando o município não é localizado diretamente por código.",
             )
             raio_municipio_km = st.number_input(
                 "Raio do município (km)",
@@ -1017,8 +1013,7 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Limiar de ponto suspeito",
-                "Quantidade mínima de ocorrências no mesmo ponto para marcar localização "
-                "aproximada em registros sem número.",
+                "Quantidade mínima de ocorrências no mesmo ponto para marcar localização aproximada em registros sem número.",
             )
             limiar_suspeito = st.number_input(
                 "Limiar de ponto suspeito",
@@ -1044,7 +1039,7 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "ArcGIS delay (s)",
-                "Intervalo entre tentativas/requisições para reduzir bloqueios e excesso de chamadas.",
+                "Intervalo entre tentativas ou requisições para reduzir bloqueios e excesso de chamadas.",
             )
             arcgis_delay_s = st.number_input(
                 "ArcGIS delay (s)",
@@ -1071,8 +1066,7 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
     config = TodosIndicadoresConfigTecnica(
         usar_externo=bool(usar_externo),
-        caminho_base_enxuta=caminho_base_enxuta.strip()
-        or "CVP_SIP_GEOCODIFICAR.parquet",
+        caminho_base_enxuta=caminho_base_enxuta.strip() or "CVP_SIP_GEOCODIFICAR.parquet",
         arq_cache_municipios=arq_cache_municipios.strip() or "municipios_ce.json",
         limiar_nome=int(limiar_nome),
         raio_confirma_m=float(raio_confirma_m),
@@ -1095,8 +1089,7 @@ def render() -> None:
 
     st.title("Todos os Indicadores")
     st.caption(
-        "Execução integrada dos indicadores do QGP Online a partir dos Indicadores Criminais e dos "
-        "consolidados atuais, com alinhamento automático e fila de processamento."
+        "Execução integrada dos indicadores do QGP Online a partir dos Indicadores Criminais e dos consolidados atuais, com alinhamento automático e fila de processamento."
     )
 
     st.markdown(
@@ -1165,6 +1158,7 @@ def render() -> None:
         .qgp-summary-erro {
             font-size: 0.75rem;
             color: rgba(248, 113, 113, 0.9);
+            word-break: break-word;
         }
         .qgp-badge-status {
             display: inline-flex;
@@ -1222,9 +1216,8 @@ def render() -> None:
         <div class="qgp-card">
             <div class="qgp-card-header">Entrada de arquivos</div>
             <div class="qgp-card-desc">
-                Envie o arquivo dos Indicadores Criminais e os 10 arquivos consolidados
-                oficiais do QGP. A fila será executada automaticamente após o primeiro clique em
-                <strong>Executar</strong>.
+                Envie o arquivo dos Indicadores Criminais e os 10 arquivos consolidados oficiais do QGP.
+                A fila será executada automaticamente após o primeiro clique em <strong>Executar</strong>.
             </div>
         </div>
         """,
@@ -1379,9 +1372,7 @@ def render() -> None:
     else:
         proximo_titulo = INDICADORES[indice_atual].titulo
 
-    progresso_val = (
-        indice_atual / total_indicadores if total_indicadores > 0 else 0.0
-    )
+    progresso_val = indice_atual / total_indicadores if total_indicadores > 0 else 0.0
 
     st.markdown(
         """
@@ -1462,8 +1453,8 @@ def render() -> None:
         <div class="qgp-card">
             <div class="qgp-card-header">Resumo da fila</div>
             <div class="qgp-card-desc">
-                Visualização consolidada da execução dos indicadores, com.status, arquivos de
-                entrada/saída, quantidade de linhas e.erro, quando houver.
+                Visualização consolidada da execução dos indicadores, com status, arquivos de
+                entrada e saída, quantidade de linhas e erro, quando houver.
             </div>
         </div>
         """,
@@ -1506,7 +1497,7 @@ def render() -> None:
         else:
             status_html = """
                 <div class="qgp-badge-status">
-                    <span class="qgp-dot.qgp-dot-error"></span>
+                    <span class="qgp-dot qgp-dot-error"></span>
                     <span>Erro</span>
                 </div>
             """
@@ -1561,5 +1552,4 @@ def render() -> None:
         st.info("Nenhum indicador concluído com sucesso para gerar o pacote ZIP.")
 
 
-# Alias para o app principal (compatível com código antigo, se ainda existir alguma chamada)
-interface_todos_indicadores = render  # Alias para o app principal
+interface_todos_indicadores = render
