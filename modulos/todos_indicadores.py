@@ -1462,5 +1462,5 @@ def render() -> None:
 
     st.markdown('<div class="qgp-summary-list">', unsafe_allow_html=True)
 
-    st.markdown("""...""")
+    st.markdown(""" ... """)
         <
