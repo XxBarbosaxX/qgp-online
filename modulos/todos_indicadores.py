@@ -1618,3 +1618,11 @@ def render() -> None:
         )
     else:
         st.info("Nenhum indicador concluído com sucesso para gerar o pacote ZIP.")
+        # ... (todo o código do módulo)
+
+def render() -> None:
+    # corpo completo da função (já está no arquivo)
+    ...
+
+# === ADICIONE ESTA LINHA NO FINAL DO ARQUIVO ===
+interface_todos_indicadores = render  # Alias para o app principal
