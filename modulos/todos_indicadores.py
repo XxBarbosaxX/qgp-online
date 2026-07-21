@@ -1023,7 +1023,7 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
             limiar_suspeito = st.number_input(
                 "Limiar de ponto suspeito",
                 min_value=2,
-                value=int(config_atual.limiarsuspeito),
+                value=int(config_atual.limiar_suspeito),
                 step=1,
                 label_visibility="collapsed",
                 key="todos_cfg_limiar_suspeito",
