@@ -1549,3 +1549,12 @@ def render() -> None:
         use_container_width=True,
         type="primary",
     )
+def interface_todos_indicadores() -> None:
+    """
+    Ponto de entrada compatível com o modules_loader.
+
+    Este wrapper existe apenas para manter compatibilidade com o nome
+    esperado (`interface_todos_indicadores`) e delega toda a lógica para
+    a função `render()`.
+    """
+    render()
