@@ -627,15 +627,12 @@ def _pos_processar_cvli(df_final: pd.DataFrame) -> pd.DataFrame:
     - remove colunas extras não desejadas;
     - mantém apenas colunas taxativas na ordem.
     """
-    # Remover coluna sem nome (como 'coluna_sem_nome_1' ou cabeçalho vazio).
     colunas_filtradas = [c for c in df_final.columns if str(c).strip() != ""]
     df_final = df_final.loc[:, colunas_filtradas]
 
-    # Renomear AISNova -> AIS, se existir.
     if "AISNova" in df_final.columns:
         df_final = df_final.rename(columns={"AISNova": "AIS"})
 
-    # Remover colunas extras que não devem aparecer no arquivo final.
     colunas_extras = {
         "Tombo",
         "Delegacia",
@@ -649,7 +646,6 @@ def _pos_processar_cvli(df_final: pd.DataFrame) -> pd.DataFrame:
     if colunas_extras_presentes:
         df_final = df_final.drop(columns=colunas_extras_presentes)
 
-    # Definir colunas taxativas para o CVLI, na ordem desejada.
     colunas_cvli = [
         "Tipo de Arma",
         "Natureza",
@@ -667,7 +663,6 @@ def _pos_processar_cvli(df_final: pd.DataFrame) -> pd.DataFrame:
         "Achado de Cadáver",
     ]
 
-    # Manter apenas as colunas presentes na lista, respeitando a ordem.
     colunas_presentes = [c for c in colunas_cvli if c in df_final.columns]
     df_final = df_final.loc[:, colunas_presentes]
 
@@ -711,10 +706,8 @@ def executar_modulo(
         )
 
     if indicador.chave == "cvli":
-        # Pós-processamento específico para CVLI: aplica layout taxativo.
         df_final = _pos_processar_cvli(df_final)
     else:
-        # Demais indicadores: alinhar com o consolidado histórico.
         colunas_consolidado = obter_colunas_do_consolidado(arquivo_consolidado_upload)
         df_final = alinhar_resultado_ao_consolidado(
             df_resultado=df_final,
@@ -1268,6 +1261,7 @@ def render() -> None:
                 consolidado correspondente foi identificado corretamente, o amarelo indica pendência
                 de envio e o X vermelho sinaliza conflito na identificação.
             </div>
+        </div>
         """,
         unsafe_allow_html=True,
     )
@@ -1346,7 +1340,7 @@ def render() -> None:
             unsafe_allow_html=True,
         )
 
-    st.markdown("</div></div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
     if desconhecidos:
         st.warning("Arquivos não reconhecidos: " + " | ".join(desconhecidos))
@@ -1377,6 +1371,7 @@ def render() -> None:
         """
         <div class="qgp-card">
             <div class="qgp-card-header">Fila de execução</div>
+        </div>
         """,
         unsafe_allow_html=True,
     )
@@ -1399,67 +1394,4 @@ def render() -> None:
         and indice_atual < total_indicadores
     )
 
-    col_exec, col_limpar = st.columns([1.1, 1])
-
-    with col_exec:
-        executar = st.button(
-            "Executar",
-            type="primary",
-            disabled=not pode_executar,
-            use_container_width=True,
-        )
-
-    with col_limpar:
-        limpar = st.button(
-            "Limpar seleção e reiniciar fila",
-            use_container_width=True,
-        )
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    if limpar:
-        limpar_estado()
-        st.rerun()
-
-    if executar and pode_executar:
-        st.session_state.todos_indicadores_auto_run = True
-        _executar_indicador_atual(
-            indice_atual=indice_atual,
-            uploads_identificados=uploads_identificados,
-            arquivo_mestre=arquivo_mestre,
-            total_indicadores=total_indicadores,
-            config_tecnica=config_tecnica,
-        )
-        st.rerun()
-
-    auto_run = st.session_state.todos_indicadores_auto_run
-    if auto_run and pode_executar and not executar:
-        _executar_indicador_atual(
-            indice_atual=indice_atual,
-            uploads_identificados=uploads_identificados,
-            arquivo_mestre=arquivo_mestre,
-            total_indicadores=total_indicadores,
-            config_tecnica=config_tecnica,
-        )
-        st.rerun()
-
-    resultados = st.session_state.todos_indicadores_resultados
-    if not resultados:
-        return
-
-    st.markdown(
-        """
-        <div class="qgp-card">
-            <div class="qgp-card-header">Resumo da fila</div>
-            <div class="qgp-card-desc">
-                Visualização consolidada da execução dos indicadores, com.status, arquivos de
-                entrada/saída, quantidade de linhas e.erro, quando houver.
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.markdown('<div class="qgp-summary-list">', unsafe_allow_html=True)
-
-    st.markdown(""" ... """)
+    col_exec
