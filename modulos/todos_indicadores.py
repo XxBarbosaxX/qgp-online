@@ -161,7 +161,6 @@ INDICADORES: list[IndicadorDef] = [
     ),
 ]
 
-
 MAPEAMENTO_EQUIVALENCIAS_POR_INDICADOR: dict[str, dict[str, list[str]]] = {
     "cvli": {
         "AIS": ["AISNova"],
@@ -273,7 +272,6 @@ MAPEAMENTO_EQUIVALENCIAS_POR_INDICADOR: dict[str, dict[str, list[str]]] = {
         "Nivel_Geocodificacao": ["Nível_Geocodificação", "Nivel Geocodificacao"],
     },
 }
-
 
 COLUNAS_CRITICAS_POR_INDICADOR: dict[str, list[str]] = {
     "acidente_transito": ["Nome da Ocorrência", "Subnome da Ocorrência"],
@@ -669,6 +667,67 @@ def _pos_processar_cvli(df_final: pd.DataFrame) -> pd.DataFrame:
     return df_final
 
 
+def _mesclar_cvli_por_ultimo_mes(
+    arquivo_mestre_upload,
+    arquivo_consolidado_upload,
+    df_final_modulo: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Mescla CVLI substituindo o último mês do consolidado pelos dados do mestre.
+
+    - arquivo_mestre_upload: arquivo complementar (mais recente)
+    - arquivo_consolidado_upload: consolidado oficial
+    - df_final_modulo: DataFrame retornado pelo módulo cvli (não é obrigatório usar)
+    """
+    df_consolidado = pd.read_excel(arquivo_consolidado_upload)
+    df_mestre = pd.read_excel(arquivo_mestre_upload)
+
+    for df in (df_consolidado, df_mestre):
+        if "Data" not in df.columns:
+            raise ValueError("Coluna 'Data' não encontrada nos arquivos de CVLI.")
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce", dayfirst=True)
+
+    ultima_data = df_consolidado["Data"].max()
+    if pd.isna(ultima_data):
+        return df_mestre.copy()
+
+    ultimo_ano = ultima_data.year
+    ultimo_mes = ultima_data.month
+
+    mask_ultimo_mes = (
+        (df_consolidado["Data"].dt.year == ultimo_ano)
+        & (df_consolidado["Data"].dt.month == ultimo_mes)
+    )
+    df_consolidado_sem_ultimo_mes = df_consolidado[~mask_ultimo_mes].copy()
+
+    mask_ultimo_mes_mestre = (
+        (df_mestre["Data"].dt.year == ultimo_ano)
+        & (df_mestre["Data"].dt.month == ultimo_mes)
+    )
+    df_mestre_ultimo_mes = df_mestre[mask_ultimo_mes_mestre].copy()
+
+    if df_mestre_ultimo_mes.empty:
+        df_resultado = df_consolidado.copy()
+    else:
+        df_resultado = pd.concat(
+            [df_consolidado_sem_ultimo_mes, df_mestre_ultimo_mes],
+            ignore_index=True,
+        )
+
+    if "Hora" in df_resultado.columns:
+        try:
+            df_resultado = df_resultado.sort_values(
+                ["Data", "Hora"],
+                ignore_index=True,
+            )
+        except Exception:
+            df_resultado = df_resultado.sort_values("Data", ignore_index=True)
+    else:
+        df_resultado = df_resultado.sort_values("Data", ignore_index=True)
+
+    return df_resultado
+
+
 def executar_modulo(
     indicador: IndicadorDef,
     arquivo_mestre_upload,
@@ -705,7 +764,21 @@ def executar_modulo(
             f"O módulo '{indicador.chave}' retornou tipo inválido: {type(retorno).__name__}"
         )
 
-    if indicador.chave == "cvli":
+    colunas = set(df_final.columns)
+    assinatura_cvli = {
+        "Tipo de Arma",
+        "Natureza",
+        "Antecedentes",
+        "Achado de Cadáver",
+    }
+    is_cvli_layout = assinatura_cvli.issubset(colunas)
+
+    if indicador.chave == "cvli" or is_cvli_layout:
+        df_final = _mesclar_cvli_por_ultimo_mes(
+            arquivo_mestre_upload=arquivo_mestre_upload,
+            arquivo_consolidado_upload=arquivo_consolidado_upload,
+            df_final_modulo=df_final,
+        )
         df_final = _pos_processar_cvli(df_final)
     else:
         colunas_consolidado = obter_colunas_do_consolidado(arquivo_consolidado_upload)
@@ -715,7 +788,10 @@ def executar_modulo(
             colunas_consolidado=colunas_consolidado,
         )
 
-    arquivo_saida = gerar_excel_em_memoria(df_final, sheet_name=indicador.titulo[:31])
+    arquivo_saida = gerar_excel_em_memoria(
+        df_final,
+        sheet_name=indicador.titulo[:31],
+    )
 
     return {
         "chave": indicador.chave,
@@ -835,7 +911,7 @@ def aplicar_estilo_configuracao_tecnica() -> None:
             opacity: 0;
             visibility: hidden;
             pointer-events: none;
-            transition: opacity 0.18s ease, transform 0.18s ease;
+            transition: opacity 0.18s.ease, transform 0.18s.ease;
             z-index: 9999;
         }
         .qgp-tech-tooltip-box::before {
@@ -950,7 +1026,7 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Código da UF",
-                "Código IBGE da UF usado nas consultas auxiliares de municípios. Para o Ceará, o padrão é 23.",
+                "Código IBGE.da UF usado nas consultas auxiliares de municípios. Para o Ceará, o padrão é 23.",
             )
             uf_codigo = st.text_input(
                 "Código da UF",
@@ -975,7 +1051,7 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Raio de confirmação (m)",
-                "Distância máxima, em metros, para validar se o ponto retornado externamente é coerente com a base espacial local.",
+                "Distância máxima, em metros, para validar se o ponto retornado externamente é coerente com a.base espacial local.",
             )
             raio_confirma_m = st.number_input(
                 "Raio de confirmação (m)",
@@ -1261,7 +1337,6 @@ def render() -> None:
                 consolidado correspondente foi identificado corretamente, o amarelo indica pendência
                 de envio e o X vermelho sinaliza conflito na identificação.
             </div>
-        </div>
         """,
         unsafe_allow_html=True,
     )
@@ -1340,7 +1415,7 @@ def render() -> None:
             unsafe_allow_html=True,
         )
 
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("</div></div>", unsafe_allow_html=True)
 
     if desconhecidos:
         st.warning("Arquivos não reconhecidos: " + " | ".join(desconhecidos))
@@ -1371,7 +1446,6 @@ def render() -> None:
         """
         <div class="qgp-card">
             <div class="qgp-card-header">Fila de execução</div>
-        </div>
         """,
         unsafe_allow_html=True,
     )
@@ -1447,8 +1521,8 @@ def render() -> None:
         <div class="qgp-card">
             <div class="qgp-card-header">Resumo da fila</div>
             <div class="qgp-card-desc">
-                Visualização consolidada da execução dos indicadores, com status, arquivos de
-                entrada/saída, quantidade de linhas e erro, quando houver.
+                Visualização consolidada da execução dos indicadores, com.status, arquivos de
+                entrada/saída, quantidade de linhas e.erro, quando houver.
             </div>
         </div>
         """,
@@ -1463,8 +1537,8 @@ def render() -> None:
             <div class="qgp-summary-cell">Ordem</div>
             <div class="qgp-summary-cell">Indicador</div>
             <div class="qgp-summary-cell">Status</div>
-            <div class="qgp-summary-cell">Arquivo de entrada</div>
-            <div class="qgp-summary-cell">Arquivo de saída</div>
+            <div class="qgp-summary-cell">Entrada</div>
+            <div class="qgp-summary-cell">Saída</div>
             <div class="qgp-summary-cell">Linhas</div>
             <div class="qgp-summary-cell">Erro</div>
         </div>
@@ -1476,10 +1550,10 @@ def render() -> None:
         ordem = item["ordem"]
         indicador_titulo = item["titulo"]
         status = item["status"]
-        nome_entrada = item.get("nome_entrada") or "-"
-        nome_saida = item.get("nome_saida") or "-"
-        linhas_saida = item.get("linhas_saida")
-        erro = item.get("erro")
+        entrada = item["nome_entrada"]
+        saida = item["nome_saida"] or "-"
+        linhas = item["linhas_saida"] if item["linhas_saida"] is not None else "-"
+        erro = item["erro"] or "-"
 
         if status == "sucesso":
             status_html = """
@@ -1491,15 +1565,10 @@ def render() -> None:
         else:
             status_html = """
                 <div class="qgp-badge-status">
-                    <span class="qgp-dot qgp-dot-error"></span>
+                    <span class="qgp-dot.qgp-dot-error"></span>
                     <span>Erro</span>
                 </div>
             """
-
-        linhas_html = str(linhas_saida) if linhas_saida is not None else "-"
-        erro_html = (
-            f'<span class="qgp-summary-erro">{erro}</span>' if erro else "-"
-        )
 
         st.markdown(
             f"""
@@ -1507,54 +1576,45 @@ def render() -> None:
                 <div class="qgp-summary-cell">{ordem}</div>
                 <div class="qgp-summary-cell qgp-summary-indicador">{indicador_titulo}</div>
                 <div class="qgp-summary-cell">{status_html}</div>
-                <div class="qgp-summary-cell qgp-summary-arquivo">{nome_entrada}</div>
-                <div class="qgp-summary-cell qgp-summary-arquivo">{nome_saida}</div>
-                <div class="qgp-summary-cell">{linhas_html}</div>
-                <div class="qgp-summary-cell">{erro_html}</div>
+                <div class="qgp-summary-cell qgp-summary-arquivo">{entrada}</div>
+                <div class="qgp-summary-cell qgp-summary-arquivo">{saida}</div>
+                <div class="qgp-summary-cell">{linhas}</div>
+                <div class="qgp-summary-cell qgp-summary-erro">{erro}</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("</div></div>", unsafe_allow_html=True)
 
-    arquivos_sucesso = [r for r in resultados if r.get("status") == "sucesso"]
-    if not arquivos_sucesso:
-        return
+    resultados_sucesso = [item for item in resultados if item["status"] == "sucesso"]
+    if resultados_sucesso:
+        zip_bytes = empacotar_resultados_zip(resultados_sucesso)
+        nome_zip = f"todos-indicadores-qgp-{datetime.now().strftime('%Y%m%d-%H%M%S')}.zip"
 
-    zip_bytes = empacotar_resultados_zip(arquivos_sucesso)
-
-    st.markdown(
-        """
-        <div class="qgp-card" style="margin-top: 0.8rem;">
-            <div class="qgp-card-header">Pacote consolidado (ZIP)</div>
-            <div class="qgp-card-desc">
-                Baixe todos os indicadores executados em um único arquivo compactado,
-                pronto para envio ao QGP ou arquivamento local.
+        st.markdown(
+            """
+            <div class="qgp-card">
+                <div class="qgp-card-header">Pacote consolidado (ZIP)</div>
+                <div class="qgp-card-desc">
+                    Gere um pacote único com todos os indicadores concluídos. Ideal para arquivamento
+                    e envio por e-mail. Este é o único ponto de download para esta execução.
+                </div>
             </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+            """,
+            unsafe_allow_html=True,
+        )
 
-    st.markdown('<div id="qgp-zip-marker"></div>', unsafe_allow_html=True)
+        st.markdown('<span id="qgp-zip-marker"></span>', unsafe_allow_html=True)
 
-    nome_zip = f"QGP_ONLINE_TODOS_INDICADORES_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
-
-    st.download_button(
-        label="Baixar ZIP com todos os indicadores",
-        data=zip_bytes,
-        file_name=nome_zip,
-        mime="application/zip",
-        use_container_width=True,
-        type="primary",
-    )
-def interface_todos_indicadores() -> None:
-    """
-    Ponto de entrada compatível com o modules_loader.
-
-    Este wrapper existe apenas para manter compatibilidade com o nome
-    esperado (`interface_todos_indicadores`) e delega toda a lógica para
-    a função `render()`.
-    """
-    render()
+        st.download_button(
+            label="Baixar ZIP com indicadores concluídos",
+            data=zip_bytes,
+            file_name=nome_zip,
+            mime="application/zip",
+            key="download_zip_todos_indicadores",
+            use_container_width=True,
+            type="primary",
+        )
+    else:
+        st.info("Nenhum indicador concluído com sucesso para gerar o pacote ZIP.")
