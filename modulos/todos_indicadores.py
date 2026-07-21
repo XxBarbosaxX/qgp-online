@@ -1394,4 +1394,38 @@ def render() -> None:
         and indice_atual < total_indicadores
     )
 
-    col_exec
+    col_exec, col_limpar = st.columns([1.1, 1])
+
+    with col_exec:
+        executar = st.button(
+            "Executar",
+            type="primary",
+            disabled=not pode_executar,
+            use_container_width=True,
+        )
+
+    with col_limpar:
+        limpar = st.button(
+            "Limpar seleção e reiniciar fila",
+            use_container_width=True,
+        )
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    if limpar:
+        limpar_estado()
+        st.rerun()
+
+    if executar and pode_executar:
+        st.session_state.todos_indicadores_auto_run = True
+        _executar_indicador_atual(
+            indice_atual=indice_atual,
+            uploads_identificados=uploads_identificados,
+            arquivo_mestre=arquivo_mestre,
+            total_indicadores=total_indicadores,
+            config_tecnica=config_tecnica,
+        )
+        st.rerun()
+
+    auto_run = st.session_state.todos_indicadores_auto_run
+    if auto_run and pode_execut
