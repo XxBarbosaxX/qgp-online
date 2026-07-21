@@ -619,61 +619,6 @@ def _montar_config_para_modulo(
     return _instanciar_dataclass_com_aliases(classe_config, dados_base)
 
 
-def _pos_processar_cvli(df_final: pd.DataFrame) -> pd.DataFrame:
-    """
-    Pós-processamento para layout CVLI:
-    - remove coluna sem nome;
-    - renomeia AISNova -> AIS;
-    - remove colunas extras não desejadas;
-    - mantém apenas colunas taxativas na ordem.
-    """
-    # Remover coluna sem nome (como 'coluna_sem_nome_1' ou cabeçalho vazio).
-    colunas_filtradas = [c for c in df_final.columns if str(c).strip() != ""]
-    df_final = df_final.loc[:, colunas_filtradas]
-
-    # Renomear AISNova -> AIS, se existir.
-    if "AISNova" in df_final.columns:
-        df_final = df_final.rename(columns={"AISNova": "AIS"})
-
-    # Remover colunas extras que não devem aparecer no arquivo final.
-    colunas_extras = {
-        "Tombo",
-        "Delegacia",
-        "Data de Nascimento",
-        "Nome",
-        "Mãe",
-        "Idade",
-        "Regiões",
-    }
-    colunas_extras_presentes = [c for c in df_final.columns if c in colunas_extras]
-    if colunas_extras_presentes:
-        df_final = df_final.drop(columns=colunas_extras_presentes)
-
-    # Definir colunas taxativas para o CVLI, na ordem desejada.
-    colunas_cvli = [
-        "Tipo de Arma",
-        "Natureza",
-        "Procedimento",
-        "Gênero",
-        "Antecedentes",
-        "Endereço",
-        "Latitude",
-        "Longitude",
-        "Hora",
-        "Data",
-        "Município",
-        "Bairro",
-        "AIS",
-        "Achado de Cadáver",
-    ]
-
-    # Manter apenas as colunas presentes na lista, respeitando a ordem.
-    colunas_presentes = [c for c in colunas_cvli if c in df_final.columns]
-    df_final = df_final.loc[:, colunas_presentes]
-
-    return df_final
-
-
 def executar_modulo(
     indicador: IndicadorDef,
     arquivo_mestre_upload,
@@ -710,28 +655,22 @@ def executar_modulo(
             f"O módulo '{indicador.chave}' retornou tipo inválido: {type(retorno).__name__}"
         )
 
-    # Heurística: detectar layout de CVLI pela presença de colunas típicas.
-    colunas = set(df_final.columns)
-    assinatura_cvli = {
-        "Tipo de Arma",
-        "Natureza",
-        "Antecedentes",
-        "Achado de Cadáver",
-    }
-
-    is_cvli_layout = assinatura_cvli.issubset(colunas)
-
-    if indicador.chave == "cvli" or is_cvli_layout:
-        # Pós-processamento específico para CVLI,
-        # independente da chave ou do consolidado.
-        df_final = _pos_processar_cvli(df_final)
+    # Para o CVLI, o arquivo de referência de schema é o arquivo mestre (base histórica),
+    # pois é ele que contém as colunas canônicas do consolidado CVLI.
+    # Para todos os demais indicadores, o schema de referência é o arquivo consolidado histórico (QGP).
+    # Ambos os caminhos passam pelo mesmo alinhar_resultado_ao_consolidado, garantindo
+    # que o resultado do orquestrador seja idêntico ao da execução individual de cada módulo.
+    if indicador.chave == "cvli":
+        arquivo_schema_ref = arquivo_mestre_upload
     else:
-        colunas_consolidado = obter_colunas_do_consolidado(arquivo_consolidado_upload)
-        df_final = alinhar_resultado_ao_consolidado(
-            df_resultado=df_final,
-            indicador=indicador,
-            colunas_consolidado=colunas_consolidado,
-        )
+        arquivo_schema_ref = arquivo_consolidado_upload
+
+    colunas_consolidado = obter_colunas_do_consolidado(arquivo_schema_ref)
+    df_final = alinhar_resultado_ao_consolidado(
+        df_resultado=df_final,
+        indicador=indicador,
+        colunas_consolidado=colunas_consolidado,
+    )
 
     arquivo_saida = gerar_excel_em_memoria(df_final, sheet_name=indicador.titulo[:31])
 
@@ -853,7 +792,7 @@ def aplicar_estilo_configuracao_tecnica() -> None:
             opacity: 0;
             visibility: hidden;
             pointer-events: none;
-            transition: opacity 0.18s.ease, transform 0.18s.ease;
+            transition: opacity 0.18s ease, transform 0.18s ease;
             z-index: 9999;
         }
         .qgp-tech-tooltip-box::before {
@@ -968,7 +907,7 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Código da UF",
-                "Código IBGE.da UF usado nas consultas auxiliares de municípios. Para o Ceará, o padrão é 23.",
+                "Código IBGE da UF usado nas consultas auxiliares de municípios. Para o Ceará, o padrão é 23.",
             )
             uf_codigo = st.text_input(
                 "Código da UF",
@@ -993,7 +932,7 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Raio de confirmação (m)",
-                "Distância máxima, em metros, para validar se o ponto retornado externamente é coerente com a.base espacial local.",
+                "Distância máxima, em metros, para validar se o ponto retornado externamente é coerente com a base espacial local.",
             )
             raio_confirma_m = st.number_input(
                 "Raio de confirmação (m)",
@@ -1463,8 +1402,8 @@ def render() -> None:
         <div class="qgp-card">
             <div class="qgp-card-header">Resumo da fila</div>
             <div class="qgp-card-desc">
-                Visualização consolidada da execução dos indicadores, com.status, arquivos de
-                entrada/saída, quantidade de linhas e.erro, quando houver.
+                Visualização consolidada da execução dos indicadores, com status, arquivos de
+                entrada/saída, quantidade de linhas e erro, quando houver.
             </div>
         </div>
         """,
@@ -1507,7 +1446,7 @@ def render() -> None:
         else:
             status_html = """
                 <div class="qgp-badge-status">
-                    <span class="qgp-dot.qgp-dot-error"></span>
+                    <span class="qgp-dot qgp-dot-error"></span>
                     <span>Erro</span>
                 </div>
             """
