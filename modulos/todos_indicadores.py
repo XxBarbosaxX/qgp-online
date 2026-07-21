@@ -1,5 +1,6 @@
 """
 Módulo Todos os Indicadores - Orquestrador principal do QGP Online.
+
 Estratégia de estabilidade:
 - evita armazenar bytes grandes em st.session_state;
 - usa apenas objetos de upload do ciclo atual;
@@ -161,6 +162,7 @@ INDICADORES: list[IndicadorDef] = [
     ),
 ]
 
+
 MAPEAMENTO_EQUIVALENCIAS_POR_INDICADOR: dict[str, dict[str, list[str]]] = {
     "cvli": {
         "AIS": ["AISNova"],
@@ -272,6 +274,7 @@ MAPEAMENTO_EQUIVALENCIAS_POR_INDICADOR: dict[str, dict[str, list[str]]] = {
         "Nivel_Geocodificacao": ["Nível_Geocodificação", "Nivel Geocodificacao"],
     },
 }
+
 
 COLUNAS_CRITICAS_POR_INDICADOR: dict[str, list[str]] = {
     "acidente_transito": ["Nome da Ocorrência", "Subnome da Ocorrência"],
@@ -617,18 +620,33 @@ def _montar_config_para_modulo(
     return _instanciar_dataclass_com_aliases(classe_config, dados_base)
 
 
-def _pos_processar_cvli(df_final: pd.DataFrame) -> pd.DataFrame:
+def _pos_processar_cvli(
+    df_final: pd.DataFrame,
+    colunas_consolidado: list[str] | None = None,
+) -> pd.DataFrame:
     """
-    Pós-processamento para layout CVLI:
-    - remove coluna sem nome;
+    Pós-processamento do CVLI sem perder dados complementares.
+    - remove colunas vazias/sem nome;
     - renomeia AISNova -> AIS;
-    - remove colunas extras não desejadas;
-    - mantém apenas colunas taxativas na ordem.
+    - remove apenas colunas claramente indesejadas;
+    - preserva o layout do consolidado quando disponível;
+    - acrescenta colunas complementares relevantes, se vierem do módulo.
     """
-    colunas_filtradas = [c for c in df_final.columns if str(c).strip() != ""]
-    df_final = df_final.loc[:, colunas_filtradas]
+    colunas_validas = []
+    for c in df_final.columns:
+        nome = str(c).strip()
+        nome_norm = normalizar_rotulo_coluna(nome)
+        if not nome:
+            continue
+        if nome_norm.startswith("unnamed:"):
+            continue
+        if nome_norm.startswith("coluna_sem_nome"):
+            continue
+        colunas_validas.append(c)
 
-    if "AISNova" in df_final.columns:
+    df_final = df_final.loc[:, colunas_validas]
+
+    if "AISNova" in df_final.columns and "AIS" not in df_final.columns:
         df_final = df_final.rename(columns={"AISNova": "AIS"})
 
     colunas_extras = {
@@ -640,11 +658,25 @@ def _pos_processar_cvli(df_final: pd.DataFrame) -> pd.DataFrame:
         "Idade",
         "Regiões",
     }
-    colunas_extras_presentes = [c for c in df_final.columns if c in colunas_extras]
-    if colunas_extras_presentes:
-        df_final = df_final.drop(columns=colunas_extras_presentes)
+    remover = [c for c in df_final.columns if c in colunas_extras]
+    if remover:
+        df_final = df_final.drop(columns=remover)
 
-    colunas_cvli = [
+    if not colunas_consolidado:
+        return df_final
+
+    indicador_cvli = next((i for i in INDICADORES if i.chave == "cvli"), None)
+    if indicador_cvli is not None:
+        df_final = renomear_colunas_por_equivalencia(
+            df_resultado=df_final,
+            indicador=indicador_cvli,
+            colunas_consolidado=colunas_consolidado,
+        )
+
+    schema_final = list(colunas_consolidado)
+
+    colunas_complementares_cvli = [
+        "Achado de Cadáver",
         "Tipo de Arma",
         "Natureza",
         "Procedimento",
@@ -658,12 +690,25 @@ def _pos_processar_cvli(df_final: pd.DataFrame) -> pd.DataFrame:
         "Município",
         "Bairro",
         "AIS",
-        "Achado de Cadáver",
     ]
 
-    colunas_presentes = [c for c in colunas_cvli if c in df_final.columns]
-    df_final = df_final.loc[:, colunas_presentes]
+    for coluna in colunas_complementares_cvli:
+        existe_no_resultado = obter_coluna_real_por_nome_normalizado(
+            list(df_final.columns),
+            coluna,
+        )
+        existe_no_schema = obter_coluna_real_por_nome_normalizado(
+            schema_final,
+            coluna,
+        )
+        if existe_no_resultado and not existe_no_schema:
+            schema_final.append(existe_no_resultado)
 
+    for coluna in schema_final:
+        if coluna not in df_final.columns:
+            df_final[coluna] = pd.NA
+
+    df_final = df_final.reindex(columns=schema_final)
     return df_final
 
 
@@ -712,11 +757,11 @@ def executar_modulo(
     }
 
     is_cvli_layout = assinatura_cvli.issubset(colunas)
+    colunas_consolidado = obter_colunas_do_consolidado(arquivo_consolidado_upload)
 
     if indicador.chave == "cvli" or is_cvli_layout:
-        df_final = _pos_processar_cvli(df_final)
+        df_final = _pos_processar_cvli(df_final, colunas_consolidado)
     else:
-        colunas_consolidado = obter_colunas_do_consolidado(arquivo_consolidado_upload)
         df_final = alinhar_resultado_ao_consolidado(
             df_resultado=df_final,
             indicador=indicador,
@@ -1462,8 +1507,8 @@ def render() -> None:
         <div class="qgp-card">
             <div class="qgp-card-header">Resumo da fila</div>
             <div class="qgp-card-desc">
-                Visualização consolidada da execução dos indicadores, com.status, arquivos de
-                entrada/saída, quantidade de linhas e.erro, quando houver.
+                Visualização consolidada da execução dos indicadores, com status, arquivos de
+                entrada/saída, quantidade de linhas e erro, quando houver.
             </div>
         </div>
         """,
@@ -1506,7 +1551,7 @@ def render() -> None:
         else:
             status_html = """
                 <div class="qgp-badge-status">
-                    <span class="qgp-dot.qgp-dot-error"></span>
+                    <span class="qgp-dot qgp-dot-error"></span>
                     <span>Erro</span>
                 </div>
             """
@@ -1561,5 +1606,4 @@ def render() -> None:
         st.info("Nenhum indicador concluído com sucesso para gerar o pacote ZIP.")
 
 
-# Alias para o app principal (compatível com código antigo, se ainda existir alguma chamada)
-interface_todos_indicadores = render  # Alias para o app principal
+interface_todos_indicadores = render
