@@ -1623,3 +1623,5 @@ def render() -> None:
 def render() -> None:
     # corpo completo da função (já está no arquivo)
     ...
+    # Alias para o app principal (compatível com o MAPEAMENTO)
+interface_todos_indicadores = render
