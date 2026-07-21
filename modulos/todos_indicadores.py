@@ -1,6 +1,5 @@
 """
 Módulo Todos os Indicadores - Orquestrador principal do QGP Online.
-
 Estratégia de estabilidade:
 - evita armazenar bytes grandes em st.session_state;
 - usa apenas objetos de upload do ciclo atual;
@@ -14,7 +13,6 @@ Estratégia de estabilidade:
 
 from __future__ import annotations
 
-import hashlib
 import importlib
 import inspect
 import io
@@ -163,7 +161,6 @@ INDICADORES: list[IndicadorDef] = [
     ),
 ]
 
-
 MAPEAMENTO_EQUIVALENCIAS_POR_INDICADOR: dict[str, dict[str, list[str]]] = {
     "cvli": {
         "AIS": ["AISNova"],
@@ -276,7 +273,6 @@ MAPEAMENTO_EQUIVALENCIAS_POR_INDICADOR: dict[str, dict[str, list[str]]] = {
     },
 }
 
-
 COLUNAS_CRITICAS_POR_INDICADOR: dict[str, list[str]] = {
     "acidente_transito": ["Nome da Ocorrência", "Subnome da Ocorrência"],
     "deslocamento_forcado": ["Nome da Ocorrência", "Subnome da Ocorrência"],
@@ -289,25 +285,20 @@ def init_state() -> None:
         "todos_indicadores_resultados": [],
         "todos_indicadores_auto_run": False,
         "todos_indicadores_config_tecnica": TodosIndicadoresConfigTecnica(),
-        "todos_indicadores_ultimo_progresso": 0.0,
-        "todos_indicadores_upload_signature": None,
-        "todos_indicadores_execucao_ativa": False,
     }
     for chave, valor in defaults.items():
         if chave not in st.session_state:
             st.session_state[chave] = valor
 
 
-def limpar_estado(preservar_config: bool = False) -> None:
+def limpar_estado() -> None:
     chaves = [
         "todos_indicadores_fila_indice_atual",
         "todos_indicadores_resultados",
         "todos_indicadores_upload_mestre_widget",
         "todos_indicadores_upload_widget",
         "todos_indicadores_auto_run",
-        "todos_indicadores_ultimo_progresso",
-        "todos_indicadores_upload_signature",
-        "todos_indicadores_execucao_ativa",
+        "todos_indicadores_config_tecnica",
         "todos_cfg_usar_externo",
         "todos_cfg_caminho_base_enxuta",
         "todos_cfg_arq_cache_municipios",
@@ -321,27 +312,9 @@ def limpar_estado(preservar_config: bool = False) -> None:
         "todos_cfg_arcgis_delay_s",
         "todos_cfg_arcgis_retries",
     ]
-
-    if not preservar_config:
-        chaves.append("todos_indicadores_config_tecnica")
-
     for chave in chaves:
         if chave in st.session_state:
             del st.session_state[chave]
-
-
-def _resetar_fila_mantendo_config() -> None:
-    config_atual = st.session_state.get(
-        "todos_indicadores_config_tecnica",
-        TodosIndicadoresConfigTecnica(),
-    )
-    limpar_estado(preservar_config=True)
-    st.session_state["todos_indicadores_config_tecnica"] = config_atual
-    st.session_state["todos_indicadores_fila_indice_atual"] = 0
-    st.session_state["todos_indicadores_resultados"] = []
-    st.session_state["todos_indicadores_auto_run"] = False
-    st.session_state["todos_indicadores_ultimo_progresso"] = 0.0
-    st.session_state["todos_indicadores_execucao_ativa"] = False
 
 
 def carregar_processador(indicador: IndicadorDef) -> Callable:
@@ -382,35 +355,6 @@ def identificar_indicador_por_nome(nome_arquivo: str) -> IndicadorDef | None:
             candidatos.append(indicador)
 
     return candidatos[0] if len(candidatos) == 1 else None
-
-
-def _assinatura_arquivo_upload(arquivo) -> str:
-    if arquivo is None:
-        return "none"
-
-    nome = getattr(arquivo, "name", "")
-    tipo = getattr(arquivo, "type", "")
-    tamanho = getattr(arquivo, "size", None)
-
-    if tamanho is None:
-        try:
-            tamanho = len(arquivo.getvalue())
-        except Exception:
-            tamanho = 0
-
-    base = f"{nome}|{tipo}|{tamanho}"
-    return hashlib.md5(base.encode("utf-8")).hexdigest()
-
-
-def gerar_assinatura_uploads(arquivo_mestre, arquivos_consolidados: list | None) -> str:
-    partes = [_assinatura_arquivo_upload(arquivo_mestre)]
-
-    arquivos = arquivos_consolidados or []
-    assinaturas_consolidados = sorted(_assinatura_arquivo_upload(arq) for arq in arquivos)
-    partes.extend(assinaturas_consolidados)
-
-    base = "||".join(partes)
-    return hashlib.md5(base.encode("utf-8")).hexdigest()
 
 
 def montar_arquivos_para_modulo(
@@ -807,13 +751,9 @@ def _executar_indicador_atual(
 
     if arquivo_mestre is None or arquivo_consolidado is None:
         st.error(f"Arquivos ausentes para o indicador {indicador.titulo}.")
-        st.session_state["todos_indicadores_auto_run"] = False
-        st.session_state["todos_indicadores_execucao_ativa"] = False
         return
 
     try:
-        st.session_state["todos_indicadores_execucao_ativa"] = True
-
         with st.spinner(f"Executando {indicador.titulo}..."):
             resultado = executar_modulo(
                 indicador=indicador,
@@ -851,10 +791,6 @@ def _executar_indicador_atual(
         else 0.0
     )
     st.session_state["todos_indicadores_ultimo_progresso"] = progresso
-    st.session_state["todos_indicadores_execucao_ativa"] = False
-
-    if st.session_state.todos_indicadores_fila_indice_atual >= total_indicadores:
-        st.session_state["todos_indicadores_auto_run"] = False
 
 
 def aplicar_estilo_configuracao_tecnica() -> None:
@@ -978,7 +914,8 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
         with colcfg1:
             render_label_flutuante(
                 "Usar ArcGIS como fallback",
-                "Quando ativado, o sistema complementa a busca local com geocodificação externa ArcGIS nos módulos que suportam esse recurso.",
+                "Quando ativado, o sistema complementa a busca local com geocodificação externa "
+                "ArcGIS nos módulos que suportam esse recurso.",
             )
             usar_externo = st.toggle(
                 "Usar ArcGIS como fallback",
@@ -989,7 +926,8 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Base geográfica (.parquet)",
-                "Arquivo parquet auxiliar com logradouros e coordenadas utilizado como base principal da geocodificação local.",
+                "Arquivo parquet auxiliar com logradouros e coordenadas utilizado como base "
+                "principal da geocodificação local.",
             )
             caminho_base_enxuta = st.text_input(
                 "Base geográfica (.parquet)",
@@ -1000,7 +938,8 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Arquivo cache de municípios",
-                "Arquivo JSON local usado para armazenar o mapeamento IBGE dos municípios do Ceará e evitar consultas repetidas.",
+                "Arquivo JSON local usado para armazenar o mapeamento IBGE dos municípios do "
+                "Ceará e evitar consultas repetidas.",
             )
             arq_cache_municipios = st.text_input(
                 "Arquivo cache de municípios",
@@ -1011,7 +950,8 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Filtro de Natureza",
-                "Parâmetro textual usado por módulos compatíveis para filtrar a natureza da ocorrência durante o processamento.",
+                "Parâmetro textual usado por módulos compatíveis para filtrar a natureza da "
+                "ocorrência durante o processamento.",
             )
             valor_filtro_natureza = st.text_input(
                 "Filtro de Natureza",
@@ -1022,7 +962,8 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Código da UF",
-                "Código IBGE da UF usado nas consultas auxiliares de municípios. Para o Ceará, o padrão é 23.",
+                "Código IBGE.da UF usado nas consultas auxiliares de municípios. Para o Ceará, "
+                "o padrão é 23.",
             )
             uf_codigo = st.text_input(
                 "Código da UF",
@@ -1034,7 +975,8 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
         with colcfg2:
             render_label_flutuante(
                 "Limiar de similaridade",
-                "Percentual mínimo de similaridade entre o logradouro informado e o logradouro da base para aceitar o casamento textual.",
+                "Percentual mínimo de similaridade entre o logradouro informado e o logradouro "
+                "da base para aceitar o casamento textual.",
             )
             limiar_nome = st.slider(
                 "Limiar de similaridade",
@@ -1047,7 +989,8 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Raio de confirmação (m)",
-                "Distância máxima, em metros, para validar se o ponto retornado externamente é coerente com a base espacial local.",
+                "Distância máxima, em metros, para validar se o ponto retornado externamente é "
+                "coerente com a base espacial local.",
             )
             raio_confirma_m = st.number_input(
                 "Raio de confirmação (m)",
@@ -1060,7 +1003,8 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Raio do município (km)",
-                "Raio usado para restringir a busca espacial quando o município não é localizado diretamente por código.",
+                "Raio usado para restringir a busca espacial quando o município não é "
+                "localizado diretamente por código.",
             )
             raio_municipio_km = st.number_input(
                 "Raio do município (km)",
@@ -1073,7 +1017,8 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Limiar de ponto suspeito",
-                "Quantidade mínima de ocorrências no mesmo ponto para marcar localização aproximada em registros sem número.",
+                "Quantidade mínima de ocorrências no mesmo ponto para marcar localização "
+                "aproximada em registros sem número.",
             )
             limiar_suspeito = st.number_input(
                 "Limiar de ponto suspeito",
@@ -1099,7 +1044,7 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "ArcGIS delay (s)",
-                "Intervalo entre tentativas ou requisições para reduzir bloqueios e excesso de chamadas.",
+                "Intervalo entre tentativas/requisições para reduzir bloqueios e excesso de chamadas.",
             )
             arcgis_delay_s = st.number_input(
                 "ArcGIS delay (s)",
@@ -1126,7 +1071,8 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
     config = TodosIndicadoresConfigTecnica(
         usar_externo=bool(usar_externo),
-        caminho_base_enxuta=caminho_base_enxuta.strip() or "CVP_SIP_GEOCODIFICAR.parquet",
+        caminho_base_enxuta=caminho_base_enxuta.strip()
+        or "CVP_SIP_GEOCODIFICAR.parquet",
         arq_cache_municipios=arq_cache_municipios.strip() or "municipios_ce.json",
         limiar_nome=int(limiar_nome),
         raio_confirma_m=float(raio_confirma_m),
@@ -1143,46 +1089,14 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
     return config
 
 
-def _coletar_uploads_identificados(arquivos_consolidados: list | None):
-    uploads_identificados: dict[str, object] = {}
-    conflitos: list[str] = []
-    desconhecidos: list[str] = []
-    duplicados_por_indicador: dict[str, list[str]] = {}
-
-    if not arquivos_consolidados:
-        return uploads_identificados, conflitos, desconhecidos, duplicados_por_indicador
-
-    for arquivo in arquivos_consolidados:
-        indicador = identificar_indicador_por_nome(arquivo.name)
-
-        if indicador is None:
-            desconhecidos.append(arquivo.name)
-            continue
-
-        duplicados_por_indicador.setdefault(indicador.chave, []).append(arquivo.name)
-
-        if indicador.chave in uploads_identificados:
-            continue
-
-        uploads_identificados[indicador.chave] = arquivo
-
-    for indicador in INDICADORES:
-        arquivos_do_indicador = duplicados_por_indicador.get(indicador.chave, [])
-        if len(arquivos_do_indicador) > 1:
-            conflitos.append(
-                f"{indicador.titulo}: {len(arquivos_do_indicador)} arquivos enviados ({' | '.join(arquivos_do_indicador)})"
-            )
-
-    return uploads_identificados, conflitos, desconhecidos, duplicados_por_indicador
-
-
 def render() -> None:
     init_state()
     aplicar_estilo_configuracao_tecnica()
 
     st.title("Todos os Indicadores")
     st.caption(
-        "Execução integrada dos indicadores do QGP Online a partir dos Indicadores Criminais e dos consolidados atuais, com alinhamento automático e fila de processamento."
+        "Execução integrada dos indicadores do QGP Online a partir dos Indicadores Criminais e dos "
+        "consolidados atuais, com alinhamento automático e fila de processamento."
     )
 
     st.markdown(
@@ -1247,12 +1161,10 @@ def render() -> None:
         .qgp-summary-arquivo {
             font-size: 0.78rem;
             color: rgba(148, 163, 184, 0.95);
-            word-break: break-word;
         }
         .qgp-summary-erro {
             font-size: 0.75rem;
             color: rgba(248, 113, 113, 0.9);
-            word-break: break-word;
         }
         .qgp-badge-status {
             display: inline-flex;
@@ -1310,8 +1222,9 @@ def render() -> None:
         <div class="qgp-card">
             <div class="qgp-card-header">Entrada de arquivos</div>
             <div class="qgp-card-desc">
-                Envie o arquivo dos Indicadores Criminais e os 10 arquivos consolidados oficiais do QGP.
-                A fila será executada automaticamente após o primeiro clique em <strong>Executar</strong>.
+                Envie o arquivo dos Indicadores Criminais e os 10 arquivos consolidados
+                oficiais do QGP. A fila será executada automaticamente após o primeiro clique em
+                <strong>Executar</strong>.
             </div>
         </div>
         """,
@@ -1338,23 +1251,23 @@ def render() -> None:
             key="todos_indicadores_upload_widget",
         )
 
-    assinatura_uploads = gerar_assinatura_uploads(arquivo_mestre, arquivos_consolidados)
-    assinatura_anterior = st.session_state.get("todos_indicadores_upload_signature")
+    uploads_identificados: dict[str, object] = {}
+    conflitos: list[str] = []
+    desconhecidos: list[str] = []
 
-    if assinatura_anterior is None:
-        st.session_state["todos_indicadores_upload_signature"] = assinatura_uploads
-    elif assinatura_anterior != assinatura_uploads:
-        _resetar_fila_mantendo_config()
-        st.session_state["todos_indicadores_upload_signature"] = assinatura_uploads
-        st.info("Arquivos alterados. A fila foi reiniciada automaticamente.")
-        st.rerun()
+    if arquivos_consolidados:
+        for arquivo in arquivos_consolidados:
+            indicador = identificar_indicador_por_nome(arquivo.name)
 
-    (
-        uploads_identificados,
-        conflitos,
-        desconhecidos,
-        duplicados_por_indicador,
-    ) = _coletar_uploads_identificados(arquivos_consolidados)
+            if indicador is None:
+                desconhecidos.append(arquivo.name)
+                continue
+
+            if indicador.chave in uploads_identificados:
+                conflitos.append(f"Mais de um arquivo enviado para {indicador.titulo}.")
+                continue
+
+            uploads_identificados[indicador.chave] = arquivo
 
     st.markdown(
         """
@@ -1374,15 +1287,8 @@ def render() -> None:
 
     for indicador in INDICADORES:
         arquivo = uploads_identificados.get(indicador.chave)
-        arquivos_do_indicador = duplicados_por_indicador.get(indicador.chave, [])
 
-        if len(arquivos_do_indicador) > 1:
-            status = "CONFLITO"
-        elif arquivo:
-            status = "OK"
-        else:
-            status = "PENDENTE"
-
+        status = "OK" if arquivo else "PENDENTE"
         linhas_validacao.append(
             {
                 "ordem": indicador.ordem,
@@ -1391,7 +1297,6 @@ def render() -> None:
                 "consolidado": arquivo.name if arquivo else "-",
             }
         )
-
         if not arquivo:
             pendentes.append(indicador.titulo)
 
@@ -1422,20 +1327,22 @@ def render() -> None:
                     <span>Carregado</span>
                 </div>
             """
-        elif status == "CONFLITO":
-            status_html = """
-                <div class="qgp-badge-status">
-                    <span class="qgp-x-status">X</span>
-                    <span>Conflito</span>
-                </div>
-            """
         else:
-            status_html = """
-                <div class="qgp-badge-status">
-                    <span class="qgp-dot qgp-dot-warn"></span>
-                    <span>Aguardando</span>
-                </div>
-            """
+            tem_conflito = any(indicador_titulo in msg for msg in conflitos)
+            if tem_conflito:
+                status_html = """
+                    <div class="qgp-badge-status">
+                        <span class="qgp-x-status">X</span>
+                        <span>Conflito</span>
+                    </div>
+                """
+            else:
+                status_html = """
+                    <div class="qgp-badge-status">
+                        <span class="qgp-dot qgp-dot-warn"></span>
+                        <span>Aguardando</span>
+                    </div>
+                """
 
         st.markdown(
             f"""
@@ -1461,13 +1368,7 @@ def render() -> None:
         st.info("Indicadores sem arquivo consolidado: " + " | ".join(pendentes))
 
     mestre_ok = arquivo_mestre is not None
-    total_ok = len(
-        [
-            chave
-            for chave in uploads_identificados
-            if len(duplicados_por_indicador.get(chave, [])) == 1
-        ]
-    )
+    total_ok = len(uploads_identificados)
     total_indicadores = len(INDICADORES)
     indice_atual = st.session_state.todos_indicadores_fila_indice_atual
 
@@ -1478,7 +1379,9 @@ def render() -> None:
     else:
         proximo_titulo = INDICADORES[indice_atual].titulo
 
-    progresso_val = indice_atual / total_indicadores if total_indicadores > 0 else 0.0
+    progresso_val = (
+        indice_atual / total_indicadores if total_indicadores > 0 else 0.0
+    )
 
     st.markdown(
         """
@@ -1500,11 +1403,10 @@ def render() -> None:
 
     pode_executar = (
         mestre_ok
-        and total_ok == total_indicadores
+        and total_ok == 10
         and not conflitos
         and not desconhecidos
         and indice_atual < total_indicadores
-        and not st.session_state.get("todos_indicadores_execucao_ativa", False)
     )
 
     col_exec, col_limpar = st.columns([1.1, 1])
@@ -1541,9 +1443,7 @@ def render() -> None:
         st.rerun()
 
     auto_run = st.session_state.todos_indicadores_auto_run
-    execucao_ativa = st.session_state.get("todos_indicadores_execucao_ativa", False)
-
-    if auto_run and pode_executar and not executar and not execucao_ativa:
+    if auto_run and pode_executar and not executar:
         _executar_indicador_atual(
             indice_atual=indice_atual,
             uploads_identificados=uploads_identificados,
@@ -1562,7 +1462,8 @@ def render() -> None:
         <div class="qgp-card">
             <div class="qgp-card-header">Resumo da fila</div>
             <div class="qgp-card-desc">
-                Visualização consolidada da execução dos indicadores, com status, arquivos de entrada e saída, quantidade de linhas e erro, quando houver.
+                Visualização consolidada da execução dos indicadores, com.status, arquivos de
+                entrada/saída, quantidade de linhas e.erro, quando houver.
             </div>
         </div>
         """,
@@ -1605,7 +1506,7 @@ def render() -> None:
         else:
             status_html = """
                 <div class="qgp-badge-status">
-                    <span class="qgp-dot qgp-dot-error"></span>
+                    <span class="qgp-dot.qgp-dot-error"></span>
                     <span>Erro</span>
                 </div>
             """
@@ -1637,7 +1538,8 @@ def render() -> None:
             <div class="qgp-card">
                 <div class="qgp-card-header">Pacote consolidado (ZIP)</div>
                 <div class="qgp-card-desc">
-                    Gere um pacote único com todos os indicadores concluídos. Ideal para arquivamento e envio por e-mail. Este é o único ponto de download para esta execução.
+                    Gere um pacote único com todos os indicadores concluídos. Ideal para arquivamento
+                    e envio por e-mail. Este é o único ponto de download para esta execução.
                 </div>
             </div>
             """,
@@ -1659,4 +1561,5 @@ def render() -> None:
         st.info("Nenhum indicador concluído com sucesso para gerar o pacote ZIP.")
 
 
-interface_todos_indicadores = render
+# Alias para o app principal (compatível com código antigo, se ainda existir alguma chamada)
+interface_todos_indicadores = render  # Alias para o app principal
