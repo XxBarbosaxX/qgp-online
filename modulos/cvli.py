@@ -28,7 +28,7 @@ class ProcessadorCVLI:
 
     @staticmethod
     def _selecionar_aba_arquivo_02(sheet_names: list[str]) -> str:
-        """Seleciona a aba correta do Arquivo 02 conforme chaveamento oficial."""
+        """Seleciona a aba correta do Arquivo 01 complementar conforme chaveamento oficial."""
         return selecionar_aba_atualizacao(sheet_names, "cvli")
 
     @staticmethod
@@ -82,7 +82,7 @@ class ProcessadorCVLI:
         meses_anos_novo = obter_meses_anos(df_novo, coluna_data)
 
         if not meses_anos_novo:
-            raise ValueError("O Arquivo 02 não possui datas válidas na coluna de data.")
+            raise ValueError("O Arquivo 01 não possui datas válidas na coluna de data.")
 
         mask_remover = df_base[coluna_data].notna() & df_base[coluna_data].apply(
             lambda x: (x.year, x.month) in meses_anos_novo
@@ -110,19 +110,22 @@ class ProcessadorCVLI:
         return df_final, adicionados, total_final, total_inicial, houve_substituicao
 
     def processar(self, arquivo01, arquivo02) -> dict:
-        """Processa os arquivos CVLI."""
+        """Processa os arquivos CVLI com ordem invertida: arquivo01=complementar, arquivo02=base."""
         try:
             arquivo01.seek(0)
             arquivo02.seek(0)
 
-            xls_base = pd.ExcelFile(arquivo01)
-            xls_novo = pd.ExcelFile(arquivo02)
+            # Inversão da ordem esperada:
+            # arquivo01 = complementar/atualização
+            # arquivo02 = base consolidada atual
+            xls_novo = pd.ExcelFile(arquivo01)
+            xls_base = pd.ExcelFile(arquivo02)
 
-            aba_base = xls_base.sheet_names[0]
             aba_novo = self._selecionar_aba_arquivo_02(xls_novo.sheet_names)
+            aba_base = xls_base.sheet_names[0]
 
-            df_base = pd.read_excel(xls_base, sheet_name=aba_base)
             df_novo = pd.read_excel(xls_novo, sheet_name=aba_novo)
+            df_base = pd.read_excel(xls_base, sheet_name=aba_base)
 
             df_base = normalizar_colunas(df_base)
             df_novo = normalizar_colunas(df_novo)
@@ -154,8 +157,8 @@ class ProcessadorCVLI:
                 "total_inicial": total_inicial,
                 "houve_substituicao": houve_substituicao,
                 "nome_arquivo": self.nome_arquivo_final,
-                "aba_arquivo_01": aba_base,
-                "aba_arquivo_02": aba_novo,
+                "aba_arquivo_01": aba_novo,
+                "aba_arquivo_02": aba_base,
             }
 
         except Exception as e:
@@ -314,12 +317,12 @@ def interface_cvli() -> None:
         <div class="cvli-card">
             <div class="cvli-card-header">Processamento de CVLI</div>
             <div class="cvli-card-desc">
-                Envie a base histórica e o arquivo de atualização para consolidar o indicador CVLI no padrão do
-                QGP Online, com identificação automática da aba correta, alinhamento estrutural das colunas e
-                substituição dos períodos já existentes quando necessário.
+                Envie primeiro o arquivo complementar de atualização e depois a base histórica consolidada
+                para consolidar o indicador CVLI no padrão do QGP Online, com identificação automática da aba
+                correta, alinhamento estrutural das colunas e substituição dos períodos já existentes quando necessário.
             </div>
             <ul class="cvli-list">
-                <li>Seleção automática da aba correta do arquivo de atualização.</li>
+                <li>Seleção automática da aba correta do arquivo complementar.</li>
                 <li>Padronização e alinhamento das colunas com a base histórica.</li>
                 <li>Conversão e validação da coluna de data para processamento seguro.</li>
                 <li>Substituição automática de meses já existentes na base quando houver sobreposição.</li>
@@ -335,8 +338,9 @@ def interface_cvli() -> None:
         <div class="cvli-card">
             <div class="cvli-card-header">Entrada de arquivos</div>
             <div class="cvli-card-desc">
-                Envie a base atual do CVLI e o arquivo de atualização. O sistema irá identificar a aba correta,
-                alinhar as colunas e substituir automaticamente os meses já existentes quando necessário.
+                Envie o arquivo complementar no Arquivo 01 e a base atual consolidada no Arquivo 02.
+                O sistema irá identificar a aba correta, alinhar as colunas e substituir automaticamente
+                os meses já existentes quando necessário.
             </div>
         </div>
         """,
@@ -350,13 +354,13 @@ def interface_cvli() -> None:
             """
             <div class="cvli-file-card">
                 <div class="cvli-file-title">Arquivo 01</div>
-                <div class="cvli-file-desc">Base consolidada atual do CVLI.</div>
+                <div class="cvli-file-desc">Arquivo complementar para atualização do indicador.</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
         arquivo01 = st.file_uploader(
-            "Arquivo 01 - Base de dados CVLI",
+            "Arquivo 01 - Dados complementares",
             type=["xlsx", "xls"],
             key="cvli_arquivo01",
             label_visibility="collapsed",
@@ -367,13 +371,13 @@ def interface_cvli() -> None:
             """
             <div class="cvli-file-card">
                 <div class="cvli-file-title">Arquivo 02</div>
-                <div class="cvli-file-desc">Arquivo complementar para atualização do indicador.</div>
+                <div class="cvli-file-desc">Base consolidada atual do CVLI.</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
         arquivo02 = st.file_uploader(
-            "Arquivo 02 - Dados complementares",
+            "Arquivo 02 - Base de dados CVLI",
             type=["xlsx", "xls"],
             key="cvli_arquivo02",
             label_visibility="collapsed",
@@ -392,11 +396,11 @@ def interface_cvli() -> None:
         return
 
     if not arquivo01:
-        st.error("Envie o Arquivo 01 (Base de dados).")
+        st.error("Envie o Arquivo 01 (Dados complementares).")
         return
 
     if not arquivo02:
-        st.error("Envie o Arquivo 02 (Dados complementares).")
+        st.error("Envie o Arquivo 02 (Base de dados).")
         return
 
     with st.spinner("Processando dados CVLI..."):
