@@ -655,22 +655,15 @@ def executar_modulo(
             f"O módulo '{indicador.chave}' retornou tipo inválido: {type(retorno).__name__}"
         )
 
-    # Para o CVLI, o arquivo de referência de schema é o arquivo mestre (base histórica),
-    # pois é ele que contém as colunas canônicas do consolidado CVLI.
-    # Para todos os demais indicadores, o schema de referência é o arquivo consolidado histórico (QGP).
-    # Ambos os caminhos passam pelo mesmo alinhar_resultado_ao_consolidado, garantindo
-    # que o resultado do orquestrador seja idêntico ao da execução individual de cada módulo.
-    if indicador.chave == "cvli":
-        arquivo_schema_ref = arquivo_mestre_upload
-    else:
-        arquivo_schema_ref = arquivo_consolidado_upload
-
-    colunas_consolidado = obter_colunas_do_consolidado(arquivo_schema_ref)
-    df_final = alinhar_resultado_ao_consolidado(
-        df_resultado=df_final,
-        indicador=indicador,
-        colunas_consolidado=colunas_consolidado,
-    )
+    # Ajuste: para CVLI não realinhar colunas; usar exatamente o df_final do módulo cvli.
+    # Para os demais indicadores, manter alinhamento ao consolidado histórico.
+    if indicador.chave != "cvli":
+        colunas_consolidado = obter_colunas_do_consolidado(arquivo_consolidado_upload)
+        df_final = alinhar_resultado_ao_consolidado(
+            df_resultado=df_final,
+            indicador=indicador,
+            colunas_consolidado=colunas_consolidado,
+        )
 
     arquivo_saida = gerar_excel_em_memoria(df_final, sheet_name=indicador.titulo[:31])
 
@@ -863,7 +856,8 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
         with colcfg1:
             render_label_flutuante(
                 "Usar ArcGIS como fallback",
-                "Quando ativado, o sistema complementa a busca local com geocodificação externa ArcGIS nos módulos que suportam esse recurso.",
+                "Quando ativado, o sistema complementa a busca local com geocodificação externa "
+                "ArcGIS nos módulos que suportam esse recurso.",
             )
             usar_externo = st.toggle(
                 "Usar ArcGIS como fallback",
@@ -874,7 +868,8 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Base geográfica (.parquet)",
-                "Arquivo parquet auxiliar com logradouros e coordenadas utilizado como base principal da geocodificação local.",
+                "Arquivo parquet auxiliar com logradouros e coordenadas utilizado como base "
+                "principal da geocodificação local.",
             )
             caminho_base_enxuta = st.text_input(
                 "Base geográfica (.parquet)",
@@ -885,7 +880,8 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Arquivo cache de municípios",
-                "Arquivo JSON local usado para armazenar o mapeamento IBGE dos municípios do Ceará e evitar consultas repetidas.",
+                "Arquivo JSON local usado para armazenar o mapeamento IBGE dos municípios do "
+                "Ceará e evitar consultas repetidas.",
             )
             arq_cache_municipios = st.text_input(
                 "Arquivo cache de municípios",
@@ -896,7 +892,8 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Filtro de Natureza",
-                "Parâmetro textual usado por módulos compatíveis para filtrar a natureza da ocorrência durante o processamento.",
+                "Parâmetro textual usado por módulos compatíveis para filtrar a natureza da "
+                "ocorrência durante o processamento.",
             )
             valor_filtro_natureza = st.text_input(
                 "Filtro de Natureza",
@@ -919,7 +916,8 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
         with colcfg2:
             render_label_flutuante(
                 "Limiar de similaridade",
-                "Percentual mínimo de similaridade entre o logradouro informado e o logradouro da base para aceitar o casamento textual.",
+                "Percentual mínimo de similaridade entre o logradouro informado e o "
+                "logradouro da base para aceitar o casamento textual.",
             )
             limiar_nome = st.slider(
                 "Limiar de similaridade",
@@ -932,7 +930,8 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Raio de confirmação (m)",
-                "Distância máxima, em metros, para validar se o ponto retornado externamente é coerente com a base espacial local.",
+                "Distância máxima, em metros, para validar se o ponto retornado externamente é "
+                "coerente com a base espacial local.",
             )
             raio_confirma_m = st.number_input(
                 "Raio de confirmação (m)",
@@ -945,7 +944,8 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Raio do município (km)",
-                "Raio usado para restringir a busca espacial quando o município não é localizado diretamente por código.",
+                "Raio usado para restringir a busca espacial quando o município não é localizado "
+                "diretamente por código.",
             )
             raio_municipio_km = st.number_input(
                 "Raio do município (km)",
@@ -958,7 +958,8 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Limiar de ponto suspeito",
-                "Quantidade mínima de ocorrências no mesmo ponto para marcar localização aproximada em registros sem número.",
+                "Quantidade mínima de ocorrências no mesmo ponto para marcar localização "
+                "aproximada em registros sem número.",
             )
             limiar_suspeito = st.number_input(
                 "Limiar de ponto suspeito",
