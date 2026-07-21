@@ -667,67 +667,6 @@ def _pos_processar_cvli(df_final: pd.DataFrame) -> pd.DataFrame:
     return df_final
 
 
-def _mesclar_cvli_por_ultimo_mes(
-    arquivo_mestre_upload,
-    arquivo_consolidado_upload,
-    df_final_modulo: pd.DataFrame,
-) -> pd.DataFrame:
-    """
-    Mescla CVLI substituindo o último mês do consolidado pelos dados do mestre.
-
-    - arquivo_mestre_upload: arquivo complementar (mais recente)
-    - arquivo_consolidado_upload: consolidado oficial
-    - df_final_modulo: DataFrame retornado pelo módulo cvli (não é obrigatório usar)
-    """
-    df_consolidado = pd.read_excel(arquivo_consolidado_upload)
-    df_mestre = pd.read_excel(arquivo_mestre_upload)
-
-    for df in (df_consolidado, df_mestre):
-        if "Data" not in df.columns:
-            raise ValueError("Coluna 'Data' não encontrada nos arquivos de CVLI.")
-        df["Data"] = pd.to_datetime(df["Data"], errors="coerce", dayfirst=True)
-
-    ultima_data = df_consolidado["Data"].max()
-    if pd.isna(ultima_data):
-        return df_mestre.copy()
-
-    ultimo_ano = ultima_data.year
-    ultimo_mes = ultima_data.month
-
-    mask_ultimo_mes = (
-        (df_consolidado["Data"].dt.year == ultimo_ano)
-        & (df_consolidado["Data"].dt.month == ultimo_mes)
-    )
-    df_consolidado_sem_ultimo_mes = df_consolidado[~mask_ultimo_mes].copy()
-
-    mask_ultimo_mes_mestre = (
-        (df_mestre["Data"].dt.year == ultimo_ano)
-        & (df_mestre["Data"].dt.month == ultimo_mes)
-    )
-    df_mestre_ultimo_mes = df_mestre[mask_ultimo_mes_mestre].copy()
-
-    if df_mestre_ultimo_mes.empty:
-        df_resultado = df_consolidado.copy()
-    else:
-        df_resultado = pd.concat(
-            [df_consolidado_sem_ultimo_mes, df_mestre_ultimo_mes],
-            ignore_index=True,
-        )
-
-    if "Hora" in df_resultado.columns:
-        try:
-            df_resultado = df_resultado.sort_values(
-                ["Data", "Hora"],
-                ignore_index=True,
-            )
-        except Exception:
-            df_resultado = df_resultado.sort_values("Data", ignore_index=True)
-    else:
-        df_resultado = df_resultado.sort_values("Data", ignore_index=True)
-
-    return df_resultado
-
-
 def executar_modulo(
     indicador: IndicadorDef,
     arquivo_mestre_upload,
@@ -771,14 +710,10 @@ def executar_modulo(
         "Antecedentes",
         "Achado de Cadáver",
     }
+
     is_cvli_layout = assinatura_cvli.issubset(colunas)
 
     if indicador.chave == "cvli" or is_cvli_layout:
-        df_final = _mesclar_cvli_por_ultimo_mes(
-            arquivo_mestre_upload=arquivo_mestre_upload,
-            arquivo_consolidado_upload=arquivo_consolidado_upload,
-            df_final_modulo=df_final,
-        )
         df_final = _pos_processar_cvli(df_final)
     else:
         colunas_consolidado = obter_colunas_do_consolidado(arquivo_consolidado_upload)
@@ -788,10 +723,7 @@ def executar_modulo(
             colunas_consolidado=colunas_consolidado,
         )
 
-    arquivo_saida = gerar_excel_em_memoria(
-        df_final,
-        sheet_name=indicador.titulo[:31],
-    )
+    arquivo_saida = gerar_excel_em_memoria(df_final, sheet_name=indicador.titulo[:31])
 
     return {
         "chave": indicador.chave,
@@ -911,7 +843,7 @@ def aplicar_estilo_configuracao_tecnica() -> None:
             opacity: 0;
             visibility: hidden;
             pointer-events: none;
-            transition: opacity 0.18s.ease, transform 0.18s.ease;
+            transition: opacity 0.18s ease, transform 0.18s ease;
             z-index: 9999;
         }
         .qgp-tech-tooltip-box::before {
@@ -982,7 +914,8 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
         with colcfg1:
             render_label_flutuante(
                 "Usar ArcGIS como fallback",
-                "Quando ativado, o sistema complementa a busca local com geocodificação externa ArcGIS nos módulos que suportam esse recurso.",
+                "Quando ativado, o sistema complementa a busca local com geocodificação externa "
+                "ArcGIS nos módulos que suportam esse recurso.",
             )
             usar_externo = st.toggle(
                 "Usar ArcGIS como fallback",
@@ -993,7 +926,8 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Base geográfica (.parquet)",
-                "Arquivo parquet auxiliar com logradouros e coordenadas utilizado como base principal da geocodificação local.",
+                "Arquivo parquet auxiliar com logradouros e coordenadas utilizado como base "
+                "principal da geocodificação local.",
             )
             caminho_base_enxuta = st.text_input(
                 "Base geográfica (.parquet)",
@@ -1004,7 +938,8 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Arquivo cache de municípios",
-                "Arquivo JSON local usado para armazenar o mapeamento IBGE dos municípios do Ceará e evitar consultas repetidas.",
+                "Arquivo JSON local usado para armazenar o mapeamento IBGE dos municípios do "
+                "Ceará e evitar consultas repetidas.",
             )
             arq_cache_municipios = st.text_input(
                 "Arquivo cache de municípios",
@@ -1015,7 +950,8 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Filtro de Natureza",
-                "Parâmetro textual usado por módulos compatíveis para filtrar a natureza da ocorrência durante o processamento.",
+                "Parâmetro textual usado por módulos compatíveis para filtrar a natureza da "
+                "ocorrência durante o processamento.",
             )
             valor_filtro_natureza = st.text_input(
                 "Filtro de Natureza",
@@ -1026,7 +962,8 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Código da UF",
-                "Código IBGE.da UF usado nas consultas auxiliares de municípios. Para o Ceará, o padrão é 23.",
+                "Código IBGE.da UF usado nas consultas auxiliares de municípios. Para o Ceará, "
+                "o padrão é 23.",
             )
             uf_codigo = st.text_input(
                 "Código da UF",
@@ -1038,7 +975,8 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
         with colcfg2:
             render_label_flutuante(
                 "Limiar de similaridade",
-                "Percentual mínimo de similaridade entre o logradouro informado e o logradouro da base para aceitar o casamento textual.",
+                "Percentual mínimo de similaridade entre o logradouro informado e o logradouro "
+                "da base para aceitar o casamento textual.",
             )
             limiar_nome = st.slider(
                 "Limiar de similaridade",
@@ -1051,7 +989,8 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Raio de confirmação (m)",
-                "Distância máxima, em metros, para validar se o ponto retornado externamente é coerente com a.base espacial local.",
+                "Distância máxima, em metros, para validar se o ponto retornado externamente é "
+                "coerente com a base espacial local.",
             )
             raio_confirma_m = st.number_input(
                 "Raio de confirmação (m)",
@@ -1064,7 +1003,8 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Raio do município (km)",
-                "Raio usado para restringir a busca espacial quando o município não é localizado diretamente por código.",
+                "Raio usado para restringir a busca espacial quando o município não é "
+                "localizado diretamente por código.",
             )
             raio_municipio_km = st.number_input(
                 "Raio do município (km)",
@@ -1077,12 +1017,13 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Limiar de ponto suspeito",
-                "Quantidade mínima de ocorrências no mesmo ponto para marcar localização aproximada em registros sem número.",
+                "Quantidade mínima de ocorrências no mesmo ponto para marcar localização "
+                "aproximada em registros sem número.",
             )
             limiar_suspeito = st.number_input(
                 "Limiar de ponto suspeito",
                 min_value=2,
-                value=int(config_atual.limiar_suspeito),
+                value=int(config_atual.limiarsuspeito),
                 step=1,
                 label_visibility="collapsed",
                 key="todos_cfg_limiar_suspeito",
@@ -1618,10 +1559,7 @@ def render() -> None:
         )
     else:
         st.info("Nenhum indicador concluído com sucesso para gerar o pacote ZIP.")
-        # ... (todo o código do módulo)
 
-def render() -> None:
-    # corpo completo da função (já está no arquivo)
-    ...
-    # Alias para o app principal (compatível com o MAPEAMENTO)
-interface_todos_indicadores = render
+
+# Alias para o app principal (compatível com código antigo, se ainda existir alguma chamada)
+interface_todos_indicadores = render  # Alias para o app principal
