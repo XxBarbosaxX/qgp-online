@@ -619,6 +619,61 @@ def _montar_config_para_modulo(
     return _instanciar_dataclass_com_aliases(classe_config, dados_base)
 
 
+def _pos_processar_cvli(df_final: pd.DataFrame) -> pd.DataFrame:
+    """
+    Pós-processamento para layout CVLI:
+    - remove coluna sem nome;
+    - renomeia AISNova -> AIS;
+    - remove colunas extras não desejadas;
+    - mantém apenas colunas taxativas na ordem.
+    """
+    # Remover coluna sem nome (como 'coluna_sem_nome_1' ou cabeçalho vazio).
+    colunas_filtradas = [c for c in df_final.columns if str(c).strip() != ""]
+    df_final = df_final.loc[:, colunas_filtradas]
+
+    # Renomear AISNova -> AIS, se existir.
+    if "AISNova" in df_final.columns:
+        df_final = df_final.rename(columns={"AISNova": "AIS"})
+
+    # Remover colunas extras que não devem aparecer no arquivo final.
+    colunas_extras = {
+        "Tombo",
+        "Delegacia",
+        "Data de Nascimento",
+        "Nome",
+        "Mãe",
+        "Idade",
+        "Regiões",
+    }
+    colunas_extras_presentes = [c for c in df_final.columns if c in colunas_extras]
+    if colunas_extras_presentes:
+        df_final = df_final.drop(columns=colunas_extras_presentes)
+
+    # Definir colunas taxativas para o CVLI, na ordem desejada.
+    colunas_cvli = [
+        "Tipo de Arma",
+        "Natureza",
+        "Procedimento",
+        "Gênero",
+        "Antecedentes",
+        "Endereço",
+        "Latitude",
+        "Longitude",
+        "Hora",
+        "Data",
+        "Município",
+        "Bairro",
+        "AIS",
+        "Achado de Cadáver",
+    ]
+
+    # Manter apenas as colunas presentes na lista, respeitando a ordem.
+    colunas_presentes = [c for c in colunas_cvli if c in df_final.columns]
+    df_final = df_final.loc[:, colunas_presentes]
+
+    return df_final
+
+
 def executar_modulo(
     indicador: IndicadorDef,
     arquivo_mestre_upload,
@@ -655,9 +710,11 @@ def executar_modulo(
             f"O módulo '{indicador.chave}' retornou tipo inválido: {type(retorno).__name__}"
         )
 
-    # Ajuste: para CVLI não realinhar colunas; usar exatamente o df_final do módulo cvli.
-    # Para os demais indicadores, manter alinhamento ao consolidado histórico.
-    if indicador.chave != "cvli":
+    if indicador.chave == "cvli":
+        # Pós-processamento específico para CVLI: aplica layout taxativo.
+        df_final = _pos_processar_cvli(df_final)
+    else:
+        # Demais indicadores: alinhar com o consolidado histórico.
         colunas_consolidado = obter_colunas_do_consolidado(arquivo_consolidado_upload)
         df_final = alinhar_resultado_ao_consolidado(
             df_resultado=df_final,
@@ -856,8 +913,7 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
         with colcfg1:
             render_label_flutuante(
                 "Usar ArcGIS como fallback",
-                "Quando ativado, o sistema complementa a busca local com geocodificação externa "
-                "ArcGIS nos módulos que suportam esse recurso.",
+                "Quando ativado, o sistema complementa a busca local com geocodificação externa ArcGIS nos módulos que suportam esse recurso.",
             )
             usar_externo = st.toggle(
                 "Usar ArcGIS como fallback",
@@ -868,8 +924,7 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Base geográfica (.parquet)",
-                "Arquivo parquet auxiliar com logradouros e coordenadas utilizado como base "
-                "principal da geocodificação local.",
+                "Arquivo parquet auxiliar com logradouros e coordenadas utilizado como base principal da geocodificação local.",
             )
             caminho_base_enxuta = st.text_input(
                 "Base geográfica (.parquet)",
@@ -880,8 +935,7 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Arquivo cache de municípios",
-                "Arquivo JSON local usado para armazenar o mapeamento IBGE dos municípios do "
-                "Ceará e evitar consultas repetidas.",
+                "Arquivo JSON local usado para armazenar o mapeamento IBGE dos municípios do Ceará e evitar consultas repetidas.",
             )
             arq_cache_municipios = st.text_input(
                 "Arquivo cache de municípios",
@@ -892,8 +946,7 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Filtro de Natureza",
-                "Parâmetro textual usado por módulos compatíveis para filtrar a natureza da "
-                "ocorrência durante o processamento.",
+                "Parâmetro textual usado por módulos compatíveis para filtrar a natureza da ocorrência durante o processamento.",
             )
             valor_filtro_natureza = st.text_input(
                 "Filtro de Natureza",
@@ -916,8 +969,7 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
         with colcfg2:
             render_label_flutuante(
                 "Limiar de similaridade",
-                "Percentual mínimo de similaridade entre o logradouro informado e o "
-                "logradouro da base para aceitar o casamento textual.",
+                "Percentual mínimo de similaridade entre o logradouro informado e o logradouro da base para aceitar o casamento textual.",
             )
             limiar_nome = st.slider(
                 "Limiar de similaridade",
@@ -930,8 +982,7 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Raio de confirmação (m)",
-                "Distância máxima, em metros, para validar se o ponto retornado externamente é "
-                "coerente com a base espacial local.",
+                "Distância máxima, em metros, para validar se o ponto retornado externamente é coerente com a base espacial local.",
             )
             raio_confirma_m = st.number_input(
                 "Raio de confirmação (m)",
@@ -944,8 +995,7 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Raio do município (km)",
-                "Raio usado para restringir a busca espacial quando o município não é localizado "
-                "diretamente por código.",
+                "Raio usado para restringir a busca espacial quando o município não é localizado diretamente por código.",
             )
             raio_municipio_km = st.number_input(
                 "Raio do município (km)",
@@ -958,8 +1008,7 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
 
             render_label_flutuante(
                 "Limiar de ponto suspeito",
-                "Quantidade mínima de ocorrências no mesmo ponto para marcar localização "
-                "aproximada em registros sem número.",
+                "Quantidade mínima de ocorrências no mesmo ponto para marcar localização aproximada em registros sem número.",
             )
             limiar_suspeito = st.number_input(
                 "Limiar de ponto suspeito",
@@ -1403,8 +1452,8 @@ def render() -> None:
         <div class="qgp-card">
             <div class="qgp-card-header">Resumo da fila</div>
             <div class="qgp-card-desc">
-                Visualização consolidada da execução dos indicadores, com status, arquivos de
-                entrada/saída, quantidade de linhas e erro, quando houver.
+                Visualização consolidada da execução dos indicadores, com.status, arquivos de
+                entrada/saída, quantidade de linhas e.erro, quando houver.
             </div>
         </div>
         """,
@@ -1415,92 +1464,4 @@ def render() -> None:
 
     st.markdown(
         """
-        <div class="qgp-summary-row qgp-summary-row-header">
-            <div class="qgp-summary-cell">Ordem</div>
-            <div class="qgp-summary-cell">Indicador</div>
-            <div class="qgp-summary-cell">Status</div>
-            <div class="qgp-summary-cell">Entrada</div>
-            <div class="qgp-summary-cell">Saída</div>
-            <div class="qgp-summary-cell">Linhas</div>
-            <div class="qgp-summary-cell">Erro</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    for item in sorted(resultados, key=lambda x: x["ordem"]):
-        ordem = item["ordem"]
-        indicador_titulo = item["titulo"]
-        status = item["status"]
-        entrada = item["nome_entrada"]
-        saida = item["nome_saida"] or "-"
-        linhas = item["linhas_saida"] if item["linhas_saida"] is not None else "-"
-        erro = item["erro"] or "-"
-
-        if status == "sucesso":
-            status_html = """
-                <div class="qgp-badge-status">
-                    <span class="qgp-dot qgp-dot-ok"></span>
-                    <span>Sucesso</span>
-                </div>
-            """
-        else:
-            status_html = """
-                <div class="qgp-badge-status">
-                    <span class="qgp-dot qgp-dot-error"></span>
-                    <span>Erro</span>
-                </div>
-            """
-
-        st.markdown(
-            f"""
-            <div class="qgp-summary-row">
-                <div class="qgp-summary-cell">{ordem}</div>
-                <div class="qgp-summary-cell qgp-summary-indicador">{indicador_titulo}</div>
-                <div class="qgp-summary-cell">{status_html}</div>
-                <div class="qgp-summary-cell qgp-summary-arquivo">{entrada}</div>
-                <div class="qgp-summary-cell qgp-summary-arquivo">{saida}</div>
-                <div class="qgp-summary-cell">{linhas}</div>
-                <div class="qgp-summary-cell qgp-summary-erro">{erro}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    st.markdown("</div></div>", unsafe_allow_html=True)
-
-    resultados_sucesso = [item for item in resultados if item["status"] == "sucesso"]
-    if resultados_sucesso:
-        zip_bytes = empacotar_resultados_zip(resultados_sucesso)
-        nome_zip = f"todos-indicadores-qgp-{datetime.now().strftime('%Y%m%d-%H%M%S')}.zip"
-
-        st.markdown(
-            """
-            <div class="qgp-card">
-                <div class="qgp-card-header">Pacote consolidado (ZIP)</div>
-                <div class="qgp-card-desc">
-                    Gere um pacote único com todos os indicadores concluídos. Ideal para arquivamento
-                    e envio por e-mail. Este é o único ponto de download para esta execução.
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        st.markdown('<span id="qgp-zip-marker"></span>', unsafe_allow_html=True)
-
-        st.download_button(
-            label="Baixar ZIP com indicadores concluídos",
-            data=zip_bytes,
-            file_name=nome_zip,
-            mime="application/zip",
-            key="download_zip_todos_indicadores",
-            use_container_width=True,
-            type="primary",
-        )
-    else:
-        st.info("Nenhum indicador concluído com sucesso para gerar o pacote ZIP.")
-
-
-# Alias para o app principal
-interface_todos_indicadores = render
+        <
