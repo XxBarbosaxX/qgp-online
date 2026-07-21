@@ -1428,4 +1428,124 @@ def render() -> None:
         st.rerun()
 
     auto_run = st.session_state.todos_indicadores_auto_run
-    if auto_run and pode_execut
+    if auto_run and pode_executar and not executar:
+                _executar_indicador_atual(
+            indice_atual=indice_atual,
+            uploads_identificados=uploads_identificados,
+            arquivo_mestre=arquivo_mestre,
+            total_indicadores=total_indicadores,
+            config_tecnica=config_tecnica,
+        )
+        st.rerun()
+
+    resultados = st.session_state.todos_indicadores_resultados
+    if not resultados:
+        return
+
+    st.markdown(
+        """
+        <div class="qgp-card">
+            <div class="qgp-card-header">Resumo da fila</div>
+            <div class="qgp-card-desc">
+                Visualização consolidada da execução dos indicadores, com status, arquivos de
+                entrada/saída, quantidade de linhas e erro, quando houver.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown('<div class="qgp-summary-list">', unsafe_allow_html=True)
+
+    st.markdown(
+        """
+        <div class="qgp-summary-row qgp-summary-row-header">
+            <div class="qgp-summary-cell">Ordem</div>
+            <div class="qgp-summary-cell">Indicador</div>
+            <div class="qgp-summary-cell">Status</div>
+            <div class="qgp-summary-cell">Arquivo de entrada</div>
+            <div class="qgp-summary-cell">Arquivo de saída</div>
+            <div class="qgp-summary-cell">Linhas</div>
+            <div class="qgp-summary-cell">Erro</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    for item in sorted(resultados, key=lambda x: x["ordem"]):
+        ordem = item["ordem"]
+        indicador_titulo = item["titulo"]
+        status = item["status"]
+        nome_entrada = item.get("nome_entrada") or "-"
+        nome_saida = item.get("nome_saida") or "-"
+        linhas_saida = item.get("linhas_saida")
+        erro = item.get("erro")
+
+        if status == "sucesso":
+            status_html = """
+                <div class="qgp-badge-status">
+                    <span class="qgp-dot qgp-dot-ok"></span>
+                    <span>Sucesso</span>
+                </div>
+            """
+        else:
+            status_html = """
+                <div class="qgp-badge-status">
+                    <span class="qgp-dot qgp-dot-error"></span>
+                    <span>Erro</span>
+                </div>
+            """
+
+        linhas_html = str(linhas_saida) if linhas_saida is not None else "-"
+        erro_html = (
+            f'<span class="qgp-summary-erro">{erro}</span>' if erro else "-"
+        )
+
+        st.markdown(
+            f"""
+            <div class="qgp-summary-row">
+                <div class="qgp-summary-cell">{ordem}</div>
+                <div class="qgp-summary-cell qgp-summary-indicador">{indicador_titulo}</div>
+                <div class="qgp-summary-cell">{status_html}</div>
+                <div class="qgp-summary-cell qgp-summary-arquivo">{nome_entrada}</div>
+                <div class="qgp-summary-cell qgp-summary-arquivo">{nome_saida}</div>
+                <div class="qgp-summary-cell">{linhas_html}</div>
+                <div class="qgp-summary-cell">{erro_html}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    arquivos_sucesso = [r for r in resultados if r.get("status") == "sucesso"]
+    if not arquivos_sucesso:
+        return
+
+    zip_bytes = empacotar_resultados_zip(arquivos_sucesso)
+
+    st.markdown(
+        """
+        <div class="qgp-card" style="margin-top: 0.8rem;">
+            <div class="qgp-card-header">Pacote consolidado (ZIP)</div>
+            <div class="qgp-card-desc">
+                Baixe todos os indicadores executados em um único arquivo compactado,
+                pronto para envio ao QGP ou arquivamento local.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown('<div id="qgp-zip-marker"></div>', unsafe_allow_html=True)
+
+    nome_zip = f"QGP_ONLINE_TODOS_INDICADORES_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+
+    st.download_button(
+        label="Baixar ZIP com todos os indicadores",
+        data=zip_bytes,
+        file_name=nome_zip,
+        mime="application/zip",
+        use_container_width=True,
+        type="primary",
+    )
