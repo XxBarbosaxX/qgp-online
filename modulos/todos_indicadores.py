@@ -1428,8 +1428,7 @@ def render() -> None:
         st.rerun()
 
     auto_run = st.session_state.todos_indicadores_auto_run
-    if auto_run and pode_executar and not executar:
-                _executar_indicador_atual(
+    if auto_run and pode        _executar_indicador_atual(
             indice_atual=indice_atual,
             uploads_identificados=uploads_identificados,
             arquivo_mestre=arquivo_mestre,
