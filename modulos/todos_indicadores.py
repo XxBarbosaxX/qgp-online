@@ -14,6 +14,7 @@ Estratégia de estabilidade:
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import inspect
 import io
@@ -288,20 +289,25 @@ def init_state() -> None:
         "todos_indicadores_resultados": [],
         "todos_indicadores_auto_run": False,
         "todos_indicadores_config_tecnica": TodosIndicadoresConfigTecnica(),
+        "todos_indicadores_ultimo_progresso": 0.0,
+        "todos_indicadores_upload_signature": None,
+        "todos_indicadores_execucao_ativa": False,
     }
     for chave, valor in defaults.items():
         if chave not in st.session_state:
             st.session_state[chave] = valor
 
 
-def limpar_estado() -> None:
+def limpar_estado(preservar_config: bool = False) -> None:
     chaves = [
         "todos_indicadores_fila_indice_atual",
         "todos_indicadores_resultados",
         "todos_indicadores_upload_mestre_widget",
         "todos_indicadores_upload_widget",
         "todos_indicadores_auto_run",
-        "todos_indicadores_config_tecnica",
+        "todos_indicadores_ultimo_progresso",
+        "todos_indicadores_upload_signature",
+        "todos_indicadores_execucao_ativa",
         "todos_cfg_usar_externo",
         "todos_cfg_caminho_base_enxuta",
         "todos_cfg_arq_cache_municipios",
@@ -314,11 +320,28 @@ def limpar_estado() -> None:
         "todos_cfg_arcgis_timeout",
         "todos_cfg_arcgis_delay_s",
         "todos_cfg_arcgis_retries",
-        "todos_indicadores_ultimo_progresso",
     ]
+
+    if not preservar_config:
+        chaves.append("todos_indicadores_config_tecnica")
+
     for chave in chaves:
         if chave in st.session_state:
             del st.session_state[chave]
+
+
+def _resetar_fila_mantendo_config() -> None:
+    config_atual = st.session_state.get(
+        "todos_indicadores_config_tecnica",
+        TodosIndicadoresConfigTecnica(),
+    )
+    limpar_estado(preservar_config=True)
+    st.session_state["todos_indicadores_config_tecnica"] = config_atual
+    st.session_state["todos_indicadores_fila_indice_atual"] = 0
+    st.session_state["todos_indicadores_resultados"] = []
+    st.session_state["todos_indicadores_auto_run"] = False
+    st.session_state["todos_indicadores_ultimo_progresso"] = 0.0
+    st.session_state["todos_indicadores_execucao_ativa"] = False
 
 
 def carregar_processador(indicador: IndicadorDef) -> Callable:
@@ -359,6 +382,35 @@ def identificar_indicador_por_nome(nome_arquivo: str) -> IndicadorDef | None:
             candidatos.append(indicador)
 
     return candidatos[0] if len(candidatos) == 1 else None
+
+
+def _assinatura_arquivo_upload(arquivo) -> str:
+    if arquivo is None:
+        return "none"
+
+    nome = getattr(arquivo, "name", "")
+    tipo = getattr(arquivo, "type", "")
+    tamanho = getattr(arquivo, "size", None)
+
+    if tamanho is None:
+        try:
+            tamanho = len(arquivo.getvalue())
+        except Exception:
+            tamanho = 0
+
+    base = f"{nome}|{tipo}|{tamanho}"
+    return hashlib.md5(base.encode("utf-8")).hexdigest()
+
+
+def gerar_assinatura_uploads(arquivo_mestre, arquivos_consolidados: list | None) -> str:
+    partes = [_assinatura_arquivo_upload(arquivo_mestre)]
+
+    arquivos = arquivos_consolidados or []
+    assinaturas_consolidados = sorted(_assinatura_arquivo_upload(arq) for arq in arquivos)
+    partes.extend(assinaturas_consolidados)
+
+    base = "||".join(partes)
+    return hashlib.md5(base.encode("utf-8")).hexdigest()
 
 
 def montar_arquivos_para_modulo(
@@ -755,9 +807,13 @@ def _executar_indicador_atual(
 
     if arquivo_mestre is None or arquivo_consolidado is None:
         st.error(f"Arquivos ausentes para o indicador {indicador.titulo}.")
+        st.session_state["todos_indicadores_auto_run"] = False
+        st.session_state["todos_indicadores_execucao_ativa"] = False
         return
 
     try:
+        st.session_state["todos_indicadores_execucao_ativa"] = True
+
         with st.spinner(f"Executando {indicador.titulo}..."):
             resultado = executar_modulo(
                 indicador=indicador,
@@ -795,6 +851,10 @@ def _executar_indicador_atual(
         else 0.0
     )
     st.session_state["todos_indicadores_ultimo_progresso"] = progresso
+    st.session_state["todos_indicadores_execucao_ativa"] = False
+
+    if st.session_state.todos_indicadores_fila_indice_atual >= total_indicadores:
+        st.session_state["todos_indicadores_auto_run"] = False
 
 
 def aplicar_estilo_configuracao_tecnica() -> None:
@@ -1083,6 +1143,39 @@ def obter_configuracao_tecnica_ui() -> TodosIndicadoresConfigTecnica:
     return config
 
 
+def _coletar_uploads_identificados(arquivos_consolidados: list | None):
+    uploads_identificados: dict[str, object] = {}
+    conflitos: list[str] = []
+    desconhecidos: list[str] = []
+    duplicados_por_indicador: dict[str, list[str]] = {}
+
+    if not arquivos_consolidados:
+        return uploads_identificados, conflitos, desconhecidos, duplicados_por_indicador
+
+    for arquivo in arquivos_consolidados:
+        indicador = identificar_indicador_por_nome(arquivo.name)
+
+        if indicador is None:
+            desconhecidos.append(arquivo.name)
+            continue
+
+        duplicados_por_indicador.setdefault(indicador.chave, []).append(arquivo.name)
+
+        if indicador.chave in uploads_identificados:
+            continue
+
+        uploads_identificados[indicador.chave] = arquivo
+
+    for indicador in INDICADORES:
+        arquivos_do_indicador = duplicados_por_indicador.get(indicador.chave, [])
+        if len(arquivos_do_indicador) > 1:
+            conflitos.append(
+                f"{indicador.titulo}: {len(arquivos_do_indicador)} arquivos enviados ({' | '.join(arquivos_do_indicador)})"
+            )
+
+    return uploads_identificados, conflitos, desconhecidos, duplicados_por_indicador
+
+
 def render() -> None:
     init_state()
     aplicar_estilo_configuracao_tecnica()
@@ -1154,6 +1247,7 @@ def render() -> None:
         .qgp-summary-arquivo {
             font-size: 0.78rem;
             color: rgba(148, 163, 184, 0.95);
+            word-break: break-word;
         }
         .qgp-summary-erro {
             font-size: 0.75rem;
@@ -1244,23 +1338,23 @@ def render() -> None:
             key="todos_indicadores_upload_widget",
         )
 
-    uploads_identificados: dict[str, object] = {}
-    conflitos: list[str] = []
-    desconhecidos: list[str] = []
+    assinatura_uploads = gerar_assinatura_uploads(arquivo_mestre, arquivos_consolidados)
+    assinatura_anterior = st.session_state.get("todos_indicadores_upload_signature")
 
-    if arquivos_consolidados:
-        for arquivo in arquivos_consolidados:
-            indicador = identificar_indicador_por_nome(arquivo.name)
+    if assinatura_anterior is None:
+        st.session_state["todos_indicadores_upload_signature"] = assinatura_uploads
+    elif assinatura_anterior != assinatura_uploads:
+        _resetar_fila_mantendo_config()
+        st.session_state["todos_indicadores_upload_signature"] = assinatura_uploads
+        st.info("Arquivos alterados. A fila foi reiniciada automaticamente.")
+        st.rerun()
 
-            if indicador is None:
-                desconhecidos.append(arquivo.name)
-                continue
-
-            if indicador.chave in uploads_identificados:
-                conflitos.append(f"Mais de um arquivo enviado para {indicador.titulo}.")
-                continue
-
-            uploads_identificados[indicador.chave] = arquivo
+    (
+        uploads_identificados,
+        conflitos,
+        desconhecidos,
+        duplicados_por_indicador,
+    ) = _coletar_uploads_identificados(arquivos_consolidados)
 
     st.markdown(
         """
@@ -1280,8 +1374,15 @@ def render() -> None:
 
     for indicador in INDICADORES:
         arquivo = uploads_identificados.get(indicador.chave)
+        arquivos_do_indicador = duplicados_por_indicador.get(indicador.chave, [])
 
-        status = "OK" if arquivo else "PENDENTE"
+        if len(arquivos_do_indicador) > 1:
+            status = "CONFLITO"
+        elif arquivo:
+            status = "OK"
+        else:
+            status = "PENDENTE"
+
         linhas_validacao.append(
             {
                 "ordem": indicador.ordem,
@@ -1290,6 +1391,7 @@ def render() -> None:
                 "consolidado": arquivo.name if arquivo else "-",
             }
         )
+
         if not arquivo:
             pendentes.append(indicador.titulo)
 
@@ -1320,22 +1422,20 @@ def render() -> None:
                     <span>Carregado</span>
                 </div>
             """
+        elif status == "CONFLITO":
+            status_html = """
+                <div class="qgp-badge-status">
+                    <span class="qgp-x-status">X</span>
+                    <span>Conflito</span>
+                </div>
+            """
         else:
-            tem_conflito = any(indicador_titulo in msg for msg in conflitos)
-            if tem_conflito:
-                status_html = """
-                    <div class="qgp-badge-status">
-                        <span class="qgp-x-status">X</span>
-                        <span>Conflito</span>
-                    </div>
-                """
-            else:
-                status_html = """
-                    <div class="qgp-badge-status">
-                        <span class="qgp-dot qgp-dot-warn"></span>
-                        <span>Aguardando</span>
-                    </div>
-                """
+            status_html = """
+                <div class="qgp-badge-status">
+                    <span class="qgp-dot qgp-dot-warn"></span>
+                    <span>Aguardando</span>
+                </div>
+            """
 
         st.markdown(
             f"""
@@ -1361,7 +1461,13 @@ def render() -> None:
         st.info("Indicadores sem arquivo consolidado: " + " | ".join(pendentes))
 
     mestre_ok = arquivo_mestre is not None
-    total_ok = len(uploads_identificados)
+    total_ok = len(
+        [
+            chave
+            for chave in uploads_identificados
+            if len(duplicados_por_indicador.get(chave, [])) == 1
+        ]
+    )
     total_indicadores = len(INDICADORES)
     indice_atual = st.session_state.todos_indicadores_fila_indice_atual
 
@@ -1394,10 +1500,11 @@ def render() -> None:
 
     pode_executar = (
         mestre_ok
-        and total_ok == 10
+        and total_ok == total_indicadores
         and not conflitos
         and not desconhecidos
         and indice_atual < total_indicadores
+        and not st.session_state.get("todos_indicadores_execucao_ativa", False)
     )
 
     col_exec, col_limpar = st.columns([1.1, 1])
@@ -1434,7 +1541,9 @@ def render() -> None:
         st.rerun()
 
     auto_run = st.session_state.todos_indicadores_auto_run
-    if auto_run and pode_executar and not executar:
+    execucao_ativa = st.session_state.get("todos_indicadores_execucao_ativa", False)
+
+    if auto_run and pode_executar and not executar and not execucao_ativa:
         _executar_indicador_atual(
             indice_atual=indice_atual,
             uploads_identificados=uploads_identificados,
@@ -1453,8 +1562,7 @@ def render() -> None:
         <div class="qgp-card">
             <div class="qgp-card-header">Resumo da fila</div>
             <div class="qgp-card-desc">
-                Visualização consolidada da execução dos indicadores, com status, arquivos de
-                entrada e saída, quantidade de linhas e erro, quando houver.
+                Visualização consolidada da execução dos indicadores, com status, arquivos de entrada e saída, quantidade de linhas e erro, quando houver.
             </div>
         </div>
         """,
@@ -1529,8 +1637,7 @@ def render() -> None:
             <div class="qgp-card">
                 <div class="qgp-card-header">Pacote consolidado (ZIP)</div>
                 <div class="qgp-card-desc">
-                    Gere um pacote único com todos os indicadores concluídos. Ideal para arquivamento
-                    e envio por e-mail. Este é o único ponto de download para esta execução.
+                    Gere um pacote único com todos os indicadores concluídos. Ideal para arquivamento e envio por e-mail. Este é o único ponto de download para esta execução.
                 </div>
             </div>
             """,
