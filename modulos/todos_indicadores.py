@@ -1623,6 +1623,3 @@ def render() -> None:
 def render() -> None:
     # corpo completo da função (já está no arquivo)
     ...
-
-# === ADICIONE ESTA LINHA NO FINAL DO ARQUIVO ===
-interface_todos_indicadores = render  # Alias para o app principal
