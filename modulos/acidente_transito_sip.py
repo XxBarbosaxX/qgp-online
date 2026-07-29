@@ -92,12 +92,49 @@ NIVEIS_GEOCODIFICACAO_POSSIVEIS = [
     "Nao Encontrado",
 ]
 
+COLUNAS_CONSOLIDADA_ESPERADAS = [
+    "ais",
+    "natureza",
+    "tombo",
+    "tipo_procedimento",
+    "regiao",
+    "municipio",
+    "bairro",
+    "logradouro",
+    "numero",
+    "complemento",
+    "latitude",
+    "longitude",
+    "data",
+    "hora",
+    "lat",
+    "lon",
+    "nivel_geocodificacao",
+    "geocodificacao",
+]
+
+COLUNAS_COMPLEMENTAR_ESPERADAS = [
+    "ais",
+    "natureza",
+    "tombo",
+    "tipo_procedimento",
+    "regiao",
+    "municipio",
+    "bairro",
+    "logradouro",
+    "numero",
+    "complemento",
+    "latitude",
+    "longitude",
+    "data",
+    "hora",
+]
+
 COLUNAS_FINAIS_ESPERADAS = [
     "ais",
     "natureza",
     "tombo",
-    "tipo",
-    "procedimento",
+    "tipo_procedimento",
     "regiao",
     "municipio",
     "bairro",
@@ -141,7 +178,12 @@ def obter_configuracao_tecnica() -> dict[str, Any]:
         ),
         "niveis_filtrar": st.session_state.get(
             "acdt_sip_cfg_niveis_filtrar",
-            ["Exato (Numero)", "Centroide de Rua", "Centroide de Bairro", "Centroide de Cidade"],
+            [
+                "Exato (Numero)",
+                "Centroide de Rua",
+                "Centroide de Bairro",
+                "Centroide de Cidade",
+            ],
         ),
     }
 
@@ -838,33 +880,84 @@ def _garantir_colunas(df: pd.DataFrame, colunas: list[str]) -> pd.DataFrame:
 
 def _validar_colunas_consolidada(df: pd.DataFrame) -> None:
     """Valida as colunas mínimas da planilha consolidada."""
-    colunas_obrigatorias = [
-        "ais",
-        "natureza",
-        "tombo",
-        "tipo",
-        "procedimento",
-        "regiao",
-        "municipio",
-        "bairro",
-        "logradouro",
-        "numero",
-        "complemento",
-        "latitude",
-        "longitude",
-        "data",
-        "hora",
-        "lat",
-        "lon",
-        "nivel_geocodificacao",
-        "geocodificacao",
-    ]
-    faltantes = [coluna for coluna in colunas_obrigatorias if coluna not in df.columns]
+    faltantes = [coluna for coluna in COLUNAS_CONSOLIDADA_ESPERADAS if coluna not in df.columns]
     if faltantes:
         raise ValueError(
             "A planilha Consolidada não possui todas as colunas esperadas: "
             f"{faltantes}"
         )
+
+
+def _renomear_colunas_consolidada(df: pd.DataFrame) -> pd.DataFrame:
+    """Padroniza os nomes da planilha consolidada para o layout esperado."""
+    df = df.copy()
+
+    mapa_renomeacao: dict[str, str] = {}
+
+    col_ais = encontrar_coluna_por_nomes(df, ["ais"], obrigatoria=True)
+    col_natureza = encontrar_coluna_por_nomes(df, ["natureza"], obrigatoria=True)
+    col_tombo = encontrar_coluna_por_nomes(df, ["tombo"], obrigatoria=True)
+    col_tipo_procedimento = encontrar_coluna_por_nomes(
+        df,
+        ["tipo_procedimento", "tipo procedimento", "tipoprocedimento"],
+        obrigatoria=True,
+    )
+    col_regiao = encontrar_coluna_por_nomes(df, ["regiao", "região"], obrigatoria=True)
+    col_municipio = encontrar_coluna_por_nomes(
+        df,
+        ["municipio", "município"],
+        obrigatoria=True,
+    )
+    col_bairro = encontrar_coluna_por_nomes(df, ["bairro"], obrigatoria=True)
+    col_logradouro = encontrar_coluna_por_nomes(
+        df,
+        ["logradouro", "endereco", "endereço", "rua"],
+        obrigatoria=True,
+    )
+    col_numero = encontrar_coluna_por_nomes(
+        df,
+        ["numero", "número"],
+        obrigatoria=True,
+    )
+    col_complemento = encontrar_coluna_por_nomes(df, ["complemento"], obrigatoria=True)
+    col_latitude = encontrar_coluna_por_nomes(df, ["latitude"], obrigatoria=True)
+    col_longitude = encontrar_coluna_por_nomes(df, ["longitude"], obrigatoria=True)
+    col_data = encontrar_coluna_por_nomes(df, ["data"], obrigatoria=True)
+    col_hora = encontrar_coluna_por_nomes(df, ["hora"], obrigatoria=True)
+    col_lat = encontrar_coluna_por_nomes(df, ["lat"], obrigatoria=True)
+    col_lon = encontrar_coluna_por_nomes(df, ["lon"], obrigatoria=True)
+    col_nivel = encontrar_coluna_por_nomes(
+        df,
+        ["nivel_geocodificacao", "nivel geocodificacao", "nível_geocodificacao", "nível geocodificação"],
+        obrigatoria=True,
+    )
+    col_geocodificacao = encontrar_coluna_por_nomes(
+        df,
+        ["geocodificacao", "geocodificação"],
+        obrigatoria=True,
+    )
+
+    mapa_renomeacao[col_ais] = "ais"
+    mapa_renomeacao[col_natureza] = "natureza"
+    mapa_renomeacao[col_tombo] = "tombo"
+    mapa_renomeacao[col_tipo_procedimento] = "tipo_procedimento"
+    mapa_renomeacao[col_regiao] = "regiao"
+    mapa_renomeacao[col_municipio] = "municipio"
+    mapa_renomeacao[col_bairro] = "bairro"
+    mapa_renomeacao[col_logradouro] = "logradouro"
+    mapa_renomeacao[col_numero] = "numero"
+    mapa_renomeacao[col_complemento] = "complemento"
+    mapa_renomeacao[col_latitude] = "latitude"
+    mapa_renomeacao[col_longitude] = "longitude"
+    mapa_renomeacao[col_data] = "data"
+    mapa_renomeacao[col_hora] = "hora"
+    mapa_renomeacao[col_lat] = "lat"
+    mapa_renomeacao[col_lon] = "lon"
+    mapa_renomeacao[col_nivel] = "nivel_geocodificacao"
+    mapa_renomeacao[col_geocodificacao] = "geocodificacao"
+
+    df = df.rename(columns=mapa_renomeacao)
+    return _garantir_colunas(df, COLUNAS_FINAIS_ESPERADAS)
 
 
 def _renomear_colunas_complementar(df: pd.DataFrame) -> pd.DataFrame:
@@ -876,10 +969,9 @@ def _renomear_colunas_complementar(df: pd.DataFrame) -> pd.DataFrame:
     col_ais = encontrar_coluna_por_nomes(df, ["ais"], obrigatoria=True)
     col_natureza = encontrar_coluna_por_nomes(df, ["natureza"], obrigatoria=True)
     col_tombo = encontrar_coluna_por_nomes(df, ["tombo"], obrigatoria=True)
-    col_tipo = encontrar_coluna_por_nomes(df, ["tipo"], obrigatoria=True)
-    col_procedimento = encontrar_coluna_por_nomes(
+    col_tipo_procedimento = encontrar_coluna_por_nomes(
         df,
-        ["procedimento", "tipo_procedimento", "tipoprocedimento", "tipo procedimento"],
+        ["tipo_procedimento", "tipo procedimento", "tipoprocedimento"],
         obrigatoria=True,
     )
     col_regiao = encontrar_coluna_por_nomes(df, ["regiao", "região"], obrigatoria=True)
@@ -908,8 +1000,7 @@ def _renomear_colunas_complementar(df: pd.DataFrame) -> pd.DataFrame:
     mapa_renomeacao[col_ais] = "ais"
     mapa_renomeacao[col_natureza] = "natureza"
     mapa_renomeacao[col_tombo] = "tombo"
-    mapa_renomeacao[col_tipo] = "tipo"
-    mapa_renomeacao[col_procedimento] = "procedimento"
+    mapa_renomeacao[col_tipo_procedimento] = "tipo_procedimento"
     mapa_renomeacao[col_regiao] = "regiao"
     mapa_renomeacao[col_municipio] = "municipio"
     mapa_renomeacao[col_bairro] = "bairro"
@@ -1121,7 +1212,12 @@ def _render_configuracao_tecnica_acidente_transito_sip() -> None:
             options=NIVEIS_GEOCODIFICACAO_POSSIVEIS,
             default=st.session_state.get(
                 "acdt_sip_cfg_niveis_filtrar",
-                ["Exato (Numero)", "Centroide de Rua", "Centroide de Bairro", "Centroide de Cidade"],
+                [
+                    "Exato (Numero)",
+                    "Centroide de Rua",
+                    "Centroide de Bairro",
+                    "Centroide de Cidade",
+                ],
             ),
             key="acdt_sip_cfg_niveis_filtrar",
             help=(
@@ -1151,7 +1247,9 @@ def _processar_acidente_transito_sip(
     df_consolidada = normalizar_colunas(df_consolidada)
     df_complementar = normalizar_colunas(df_complementar)
 
+    df_consolidada = _renomear_colunas_consolidada(df_consolidada)
     _validar_colunas_consolidada(df_consolidada)
+
     df_complementar = _renomear_colunas_complementar(df_complementar)
 
     df_consolidada = _garantir_colunas(df_consolidada, COLUNAS_FINAIS_ESPERADAS)
