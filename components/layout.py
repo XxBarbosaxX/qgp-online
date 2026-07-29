@@ -15,7 +15,13 @@ from services.modules_loader import (
 INDICADORES_ATUALIZACAO: list[str] = [
     nome
     for nome in MAPEAMENTO.keys()
-    if nome not in {"TODOS OS INDICADORES", "GEOCODIFICAÇÃO", "CONVERSÃO", "CONSOLIDAR INDICADORES"}
+    if nome
+    not in {
+        "TODOS OS INDICADORES",
+        "GEOCODIFICAÇÃO",
+        "CONVERSÃO",
+        "CONSOLIDAR INDICADORES",
+    }
 ]
 
 
@@ -121,7 +127,11 @@ def render_panel_atualizacao() -> None:
 
         st.markdown('<div class="panel-divider"></div>', unsafe_allow_html=True)
 
-        if st.button("Executar todos os indicadores", key="btn_todos", use_container_width=True):
+        if st.button(
+            "Executar todos os indicadores",
+            key="btn_todos",
+            use_container_width=True,
+        ):
             selecionar_indicador("TODOS OS INDICADORES")
             st.rerun()
 
@@ -136,7 +146,11 @@ def render_panel_atualizacao() -> None:
 
         st.markdown('<div class="field-gap-sm"></div>', unsafe_allow_html=True)
 
-        if st.button("Abrir indicador selecionado", key="btn_abrir_indicador", use_container_width=True):
+        if st.button(
+            "Abrir indicador selecionado",
+            key="btn_abrir_indicador",
+            use_container_width=True,
+        ):
             selecionar_indicador(st.session_state.indicador_dropdown)
             st.rerun()
 
@@ -161,7 +175,11 @@ def render_panel_geocodificacao() -> None:
 
         st.markdown('<div class="panel-divider"></div>', unsafe_allow_html=True)
 
-        if st.button("Abrir módulo de geocodificação", key="btn_geo", use_container_width=True):
+        if st.button(
+            "Abrir módulo de geocodificação",
+            key="btn_geo",
+            use_container_width=True,
+        ):
             selecionar_indicador("GEOCODIFICAÇÃO")
             st.rerun()
 
@@ -186,7 +204,11 @@ def render_panel_conversao() -> None:
 
         st.markdown('<div class="panel-divider"></div>', unsafe_allow_html=True)
 
-        if st.button("Abrir módulo de conversão", key="btn_conversao", use_container_width=True):
+        if st.button(
+            "Abrir módulo de conversão",
+            key="btn_conversao",
+            use_container_width=True,
+        ):
             selecionar_indicador("CONVERSÃO")
             st.rerun()
 
@@ -211,7 +233,11 @@ def render_panel_consolidacao() -> None:
 
         st.markdown('<div class="panel-divider"></div>', unsafe_allow_html=True)
 
-        if st.button("Abrir módulo de consolidação", key="btn_consolidar", use_container_width=True):
+        if st.button(
+            "Abrir módulo de consolidação",
+            key="btn_consolidar",
+            use_container_width=True,
+        ):
             selecionar_indicador("CONSOLIDAR INDICADORES")
             st.rerun()
 
