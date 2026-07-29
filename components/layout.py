@@ -5,26 +5,51 @@ import importlib
 import traceback
 from typing import Callable
 
+
 import streamlit as st
 
 from config.settings import BASE_DIR
 
 MAPEAMENTO: dict[str, tuple[str, str]] = {
-    "TODOS OS INDICADORES": (
-        "modulos.todos_indicadores",
-        "interface_todos_indicadores",
-    ),
     "CVLI": (
         "modulos.cvli",
         "interface_cvli",
     ),
-    "CVP": (
-        "modulos.cvp",
-        "interface_cvp",
+    "CVP - SPORTAL": (
+        "modulos.cvp_sportal",
+        "interface_cvp_sportal",
     ),
-    "CVP-SIP": (
+    "CVP - SIP": (
         "modulos.cvp_sip",
         "render",
+    ),
+    "PERTURBAÇÃO DO SOSSEGO": (
+        "modulos.perturbacao_sossego",
+        "interface_perturbacao_sossego",
+    ),
+    "DESLOCAMENTO FORÇADO": (
+        "modulos.deslocamento_forcado",
+        "interface_deslocamento_forcado",
+    ),
+    "ROUBO DE VEÍCULO - SPORTAL": (
+        "modulos.roubo_veiculo_sportal",
+        "interface_roubo_veiculo_sportal",
+    ),
+    "ROUBO DE VEÍCULO - SIP": (
+        "modulos.roubo_veiculo_sip",
+        "interface_roubo_veiculo_sip",
+    ),
+    "ACIDENTE DE TRÂNSITO": (
+        "modulos.acidente_transito",
+        "interface_acidente_transito",
+    ),
+    "FURTO DE VEÍCULO - SPORTAL": (
+        "modulos.furto_veiculo_sportal",
+        "interface_furto_veiculo_sportal",
+    ),
+    "FURTO DE VEÍCULO - SIP": (
+        "modulos.furto_veiculo_sip",
+        "interface_furto_veiculo_sip",
     ),
     "ACIDENTE DE TRANSITO - SIP": (
         "modulos.acidente_transito_sip",
@@ -50,7 +75,6 @@ INDICADORES_ATUALIZACAO: list[str] = [
     for nome in MAPEAMENTO.keys()
     if nome
     not in {
-        "TODOS OS INDICADORES",
         "GEOCODIFICAÇÃO",
         "CONVERSÃO",
         "CONSOLIDAR INDICADORES",
@@ -178,16 +202,6 @@ def render_panel_atualizacao() -> None:
         )
 
         st.markdown('<div class="panel-divider"></div>', unsafe_allow_html=True)
-
-        if st.button(
-            "Executar todos os indicadores",
-            key="btn_todos",
-            use_container_width=True,
-        ):
-            selecionar_indicador("TODOS OS INDICADORES")
-            st.rerun()
-
-        st.markdown('<div class="field-gap"></div>', unsafe_allow_html=True)
 
         st.selectbox(
             "Selecione um Indicador",
