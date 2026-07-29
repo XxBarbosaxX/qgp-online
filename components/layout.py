@@ -5,12 +5,15 @@ import importlib
 import traceback
 from typing import Callable
 
-
 import streamlit as st
 
 from config.settings import BASE_DIR
 
 MAPEAMENTO: dict[str, tuple[str, str]] = {
+    "TODOS OS INDICADORES": (
+        "modulos.todos_indicadores",
+        "interface_todos_indicadores",
+    ),
     "CVLI": (
         "modulos.cvli",
         "interface_cvli",
@@ -69,12 +72,12 @@ MAPEAMENTO: dict[str, tuple[str, str]] = {
     ),
 }
 
-
 INDICADORES_ATUALIZACAO: list[str] = [
     nome
     for nome in MAPEAMENTO.keys()
     if nome
     not in {
+        "TODOS OS INDICADORES",
         "GEOCODIFICAÇÃO",
         "CONVERSÃO",
         "CONSOLIDAR INDICADORES",
@@ -195,6 +198,16 @@ def render_panel_text(kicker: str, titulo: str, descricao: str) -> None:
 def render_panel_atualizacao() -> None:
     """Renderiza o painel de atualização dos indicadores."""
     with st.container(key="panel-atualizacao"):
+        if st.button(
+            "Executar todos os indicadores",
+            key="btn_todos",
+            use_container_width=True,
+        ):
+            selecionar_indicador("TODOS OS INDICADORES")
+            st.rerun()
+
+        st.markdown('<div class="field-gap"></div>', unsafe_allow_html=True)
+
         render_panel_text(
             "🔄 Atualização",
             "Indicadores operacionais",
