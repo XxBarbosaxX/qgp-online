@@ -198,6 +198,14 @@ def render_panel_text(kicker: str, titulo: str, descricao: str) -> None:
 def render_panel_atualizacao() -> None:
     """Renderiza o painel de atualização dos indicadores."""
     with st.container(key="panel-atualizacao"):
+        render_panel_text(
+            "🔄 Atualização",
+            "Indicadores operacionais",
+            "Execute a atualização completa ou selecione um indicador específico para processamento individual.",
+        )
+
+        st.markdown('<div class="field-gap-sm"></div>', unsafe_allow_html=True)
+
         if st.button(
             "Executar todos os indicadores",
             key="btn_todos",
@@ -205,14 +213,6 @@ def render_panel_atualizacao() -> None:
         ):
             selecionar_indicador("TODOS OS INDICADORES")
             st.rerun()
-
-        st.markdown('<div class="field-gap"></div>', unsafe_allow_html=True)
-
-        render_panel_text(
-            "🔄 Atualização",
-            "Indicadores operacionais",
-            "Execute a atualização completa ou selecione um indicador específico para processamento individual.",
-        )
 
         st.markdown('<div class="panel-divider"></div>', unsafe_allow_html=True)
 
