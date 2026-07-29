@@ -58,6 +58,7 @@ def init_state() -> None:
 
 
 def main() -> None:
+    """Executa o fluxo principal da aplicação."""
     configure_page()
     configure_env()
     init_state()
