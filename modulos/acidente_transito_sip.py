@@ -23,7 +23,7 @@ from modulos.utils import (
     normalizar_colunas,
 )
 
-NOME_ARQUIVO_FINAL = "11 - ACIDENTE DE TRANSITO - SIP - 2026 - QGP.xlsx"
+NOME_ARQUIVO_FINAL = "11 - MORTES NO TRANSITO - SIP - 2026 - QGP.xlsx"
 
 USAR_EXTERNO = True
 CAMINHO_BASE_ENXUTA = "CVP_SIP_GEOCODIFICAR.parquet"
