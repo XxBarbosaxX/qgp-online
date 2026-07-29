@@ -1,15 +1,48 @@
 from __future__ import annotations
 
 import base64
+import importlib
+import traceback
+from typing import Callable
 
 import streamlit as st
 
 from config.settings import BASE_DIR
-from services.modules_loader import (
-    MAPEAMENTO,
-    carregar_modulo,
-    executar_interface_segura,
-)
+
+MAPEAMENTO: dict[str, tuple[str, str]] = {
+    "TODOS OS INDICADORES": (
+        "modulos.todos_indicadores",
+        "interface_todos_indicadores",
+    ),
+    "CVLI": (
+        "modulos.cvli",
+        "interface_cvli",
+    ),
+    "CVP": (
+        "modulos.cvp",
+        "interface_cvp",
+    ),
+    "CVP-SIP": (
+        "modulos.cvp_sip",
+        "render",
+    ),
+    "ACIDENTE DE TRANSITO - SIP": (
+        "modulos.acidente_transito_sip",
+        "interface_acidente_transito_sip",
+    ),
+    "GEOCODIFICAÇÃO": (
+        "modulos.geocodificacao",
+        "interface_geocodificacao",
+    ),
+    "CONVERSÃO": (
+        "modulos.conversor_coordenadas",
+        "interface_conversor_coordenadas",
+    ),
+    "CONSOLIDAR INDICADORES": (
+        "modulos.consolidar_indicadores",
+        "interface_consolidar_indicadores",
+    ),
+}
 
 
 INDICADORES_ATUALIZACAO: list[str] = [
@@ -23,6 +56,25 @@ INDICADORES_ATUALIZACAO: list[str] = [
         "CONSOLIDAR INDICADORES",
     }
 ]
+
+
+def carregar_modulo(nome_modulo: str, nome_funcao: str) -> Callable | None:
+    """Carrega dinamicamente a função de interface de um módulo."""
+    try:
+        modulo = importlib.import_module(nome_modulo)
+        return getattr(modulo, nome_funcao, None)
+    except Exception:
+        return None
+
+
+def executar_interface_segura(func: Callable, indicador: str) -> None:
+    """Executa a interface do módulo com tratamento seguro de erros."""
+    try:
+        func()
+    except Exception as exc:
+        st.error(f"Erro ao executar o módulo {indicador}: {exc}")
+        with st.expander("Detalhes do erro"):
+            st.code(traceback.format_exc())
 
 
 def selecionar_indicador(nome: str) -> None:
@@ -301,6 +353,10 @@ def render_modulo() -> None:
         func = carregar_modulo(nome_modulo, nome_funcao)
         if func:
             executar_interface_segura(func, indicador)
+        else:
+            st.error(
+                f"Não foi possível carregar a função '{nome_funcao}' do módulo '{nome_modulo}'."
+            )
     else:
         st.warning(f"O módulo **{indicador}** estará disponível em breve.")
         st.info("Sistema em desenvolvimento.")
