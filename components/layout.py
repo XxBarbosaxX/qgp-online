@@ -1,78 +1,376 @@
 from __future__ import annotations
 
-import sys
+import base64
+import importlib
+import traceback
+from typing import Callable
+
 
 import streamlit as st
 
-from components.footer import render_footer
-from components.layout import render_home, render_modulo, render_topbar
-from config.settings import (
-    BASE_DIR,
-    INITIAL_SIDEBAR_STATE,
-    PAGE_ICON,
-    PAGE_LAYOUT,
-    PAGE_TITLE,
-)
+from config.settings import BASE_DIR
+
+MAPEAMENTO: dict[str, tuple[str, str]] = {
+    "CVLI": (
+        "modulos.cvli",
+        "interface_cvli",
+    ),
+    "CVP - SPORTAL": (
+        "modulos.cvp_sportal",
+        "interface_cvp_sportal",
+    ),
+    "CVP - SIP": (
+        "modulos.cvp_sip",
+        "render",
+    ),
+    "PERTURBAÇÃO DO SOSSEGO": (
+        "modulos.perturbacao_sossego",
+        "interface_perturbacao_sossego",
+    ),
+    "DESLOCAMENTO FORÇADO": (
+        "modulos.deslocamento_forcado",
+        "interface_deslocamento_forcado",
+    ),
+    "ROUBO DE VEÍCULO - SPORTAL": (
+        "modulos.roubo_veiculo_sportal",
+        "interface_roubo_veiculo_sportal",
+    ),
+    "ROUBO DE VEÍCULO - SIP": (
+        "modulos.roubo_veiculo_sip",
+        "interface_roubo_veiculo_sip",
+    ),
+    "ACIDENTE DE TRÂNSITO": (
+        "modulos.acidente_transito",
+        "interface_acidente_transito",
+    ),
+    "FURTO DE VEÍCULO - SPORTAL": (
+        "modulos.furto_veiculo_sportal",
+        "interface_furto_veiculo_sportal",
+    ),
+    "FURTO DE VEÍCULO - SIP": (
+        "modulos.furto_veiculo_sip",
+        "interface_furto_veiculo_sip",
+    ),
+    "ACIDENTE DE TRANSITO - SIP": (
+        "modulos.acidente_transito_sip",
+        "interface_acidente_transito_sip",
+    ),
+    "GEOCODIFICAÇÃO": (
+        "modulos.geocodificacao",
+        "interface_geocodificacao",
+    ),
+    "CONVERSÃO": (
+        "modulos.conversor_coordenadas",
+        "interface_conversor_coordenadas",
+    ),
+    "CONSOLIDAR INDICADORES": (
+        "modulos.consolidar_indicadores",
+        "interface_consolidar_indicadores",
+    ),
+}
+
+
+INDICADORES_ATUALIZACAO: list[str] = [
+    nome
+    for nome in MAPEAMENTO.keys()
+    if nome
+    not in {
+        "GEOCODIFICAÇÃO",
+        "CONVERSÃO",
+        "CONSOLIDAR INDICADORES",
+    }
+]
+
+
+def carregar_modulo(nome_modulo: str, nome_funcao: str) -> Callable | None:
+    """Carrega dinamicamente a função de interface de um módulo."""
+    try:
+        modulo = importlib.import_module(nome_modulo)
+        return getattr(modulo, nome_funcao, None)
+    except Exception:
+        return None
+
+
+def executar_interface_segura(func: Callable, indicador: str) -> None:
+    """Executa a interface do módulo com tratamento seguro de erros."""
+    try:
+        func()
+    except Exception as exc:
+        st.error(f"Erro ao executar o módulo {indicador}: {exc}")
+        with st.expander("Detalhes do erro"):
+            st.code(traceback.format_exc())
+
+
+def selecionar_indicador(nome: str) -> None:
+    """Seleciona o módulo ativo."""
+    st.session_state.indicador_selecionado = nome
+
+
+def voltar_inicio() -> None:
+    """Retorna para a tela inicial."""
+    st.session_state.indicador_selecionado = "Selecione um indicador..."
 
 
 @st.cache_data(show_spinner=False)
-def _carregar_theme_css() -> str:
-    """Carrega o conteúdo do CSS principal do tema."""
-    css_path = BASE_DIR / "assets" / "css" / "theme.css"
-    if not css_path.exists():
-        return ""
-    return css_path.read_text(encoding="utf-8")
+def _obter_logo_base64() -> str | None:
+    """Carrega o logo da aplicação e retorna em base64."""
+    candidatos = [
+        BASE_DIR / "assets" / "Logo DIESP.PNG",
+        BASE_DIR / "assets" / "LOGO DIESP.PNG",
+        BASE_DIR / "assets" / "logo diesp.png",
+        BASE_DIR / "assets" / "LXogo DIESP.PNG",
+    ]
+
+    for caminho_logo in candidatos:
+        if not caminho_logo.exists():
+            continue
+
+        try:
+            return base64.b64encode(caminho_logo.read_bytes()).decode("utf-8")
+        except Exception:
+            continue
+
+    return None
 
 
-def load_theme_css() -> None:
-    """Aplica o CSS do tema, se disponível."""
-    css = _carregar_theme_css()
-    if css:
-        st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
+def render_topbar() -> None:
+    """Renderiza o cabeçalho superior da aplicação."""
+    logo_base64 = _obter_logo_base64()
 
+    if logo_base64:
+        logo_html = f"""
+        <div class="app-header-logo-wrap">
+            <img
+                src="data:image/png;base64,{logo_base64}"
+                alt="Logo DIESP"
+                class="app-header-logo"
+            >
+        </div>
+        """
+    else:
+        logo_html = ""
 
-def configure_env() -> None:
-    """Garante que o diretório base do projeto esteja disponível para imports."""
-    base_dir_str = str(BASE_DIR)
-    if base_dir_str not in sys.path:
-        sys.path.insert(0, base_dir_str)
-
-
-def configure_page() -> None:
-    """Configura os parâmetros globais da página Streamlit."""
-    st.set_page_config(
-        page_title=PAGE_TITLE,
-        page_icon=PAGE_ICON,
-        layout=PAGE_LAYOUT,
-        initial_sidebar_state=INITIAL_SIDEBAR_STATE,
+    st.markdown(
+        f"""
+        <div class="app-header app-header-with-logo">
+            <div class="app-header-main">
+                <div class="app-title">QGP Online</div>
+                <div class="app-subtitle">SUPESP / CE · Atualizador de Indicadores</div>
+            </div>
+            {logo_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
 
-def init_state() -> None:
-    """Inicializa as chaves básicas do session_state."""
-    if "indicador_selecionado" not in st.session_state:
-        st.session_state.indicador_selecionado = "Selecione um indicador..."
+def render_home_hero() -> None:
+    """Renderiza o bloco principal da página inicial."""
+    st.markdown(
+        """
+        <div class="hero-card">
+            <div class="hero-title">Bem-vindo ao QGP Online</div>
+            <p class="hero-text">
+                Sistema de atualização de indicadores de Segurança Pública da SUPESP/CE.
+                Selecione o módulo desejado para iniciar o processamento de forma clara, rápida e organizada.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    if "indicador_dropdown" not in st.session_state:
-        st.session_state.indicador_dropdown = "CVLI"
+
+def render_panel_text(kicker: str, titulo: str, descricao: str) -> None:
+    """Renderiza o conteúdo textual padrão de um painel."""
+    st.markdown(
+        f"""
+        <div class="panel-kicker">{kicker}</div>
+        <div class="panel-title">{titulo}</div>
+        <p class="panel-description">{descricao}</p>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
-def main() -> None:
-    configure_page()
-    configure_env()
-    init_state()
-    load_theme_css()
+def render_panel_atualizacao() -> None:
+    """Renderiza o painel de atualização dos indicadores."""
+    with st.container(key="panel-atualizacao"):
+        render_panel_text(
+            "🔄 Atualização",
+            "Indicadores operacionais",
+            "Execute a atualização completa ou selecione um indicador específico para processamento individual.",
+        )
 
-    render_topbar()
+        st.markdown('<div class="panel-divider"></div>', unsafe_allow_html=True)
 
+        st.selectbox(
+            "Selecione um Indicador",
+            options=INDICADORES_ATUALIZACAO,
+            key="indicador_dropdown",
+            label_visibility="visible",
+        )
+
+        st.markdown('<div class="field-gap-sm"></div>', unsafe_allow_html=True)
+
+        if st.button(
+            "Abrir indicador selecionado",
+            key="btn_abrir_indicador",
+            use_container_width=True,
+        ):
+            selecionar_indicador(st.session_state.indicador_dropdown)
+            st.rerun()
+
+        st.markdown(
+            f"""
+            <div class="panel-footer panel-footer-tight">
+                {len(INDICADORES_ATUALIZACAO)} indicadores disponíveis para processamento individual.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
+def render_panel_geocodificacao() -> None:
+    """Renderiza o painel do módulo de geocodificação."""
+    with st.container(key="panel-geocodificacao"):
+        render_panel_text(
+            "🌐 Geoprocessamento",
+            "Geocodificação",
+            "Módulo dedicado à geocodificação de ocorrências e endereços.",
+        )
+
+        st.markdown('<div class="panel-divider"></div>', unsafe_allow_html=True)
+
+        if st.button(
+            "Abrir módulo de geocodificação",
+            key="btn_geo",
+            use_container_width=True,
+        ):
+            selecionar_indicador("GEOCODIFICAÇÃO")
+            st.rerun()
+
+        st.markdown(
+            """
+            <div class="panel-footer">
+                Recomendado para geocodificar ocorrências por endereços.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
+def render_panel_conversao() -> None:
+    """Renderiza o painel do módulo de conversão."""
+    with st.container(key="panel-conversao"):
+        render_panel_text(
+            "📍 Conversão",
+            "Conversor de Coordenadas",
+            "Converta camadas em UTM para SIRGAS 2000 / UTM zona 24S.",
+        )
+
+        st.markdown('<div class="panel-divider"></div>', unsafe_allow_html=True)
+
+        if st.button(
+            "Abrir módulo de conversão",
+            key="btn_conversao",
+            use_container_width=True,
+        ):
+            selecionar_indicador("CONVERSÃO")
+            st.rerun()
+
+        st.markdown(
+            """
+            <div class="panel-footer">
+                Indicado para padronização cartográfica para análises territoriais no Ceará.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
+def render_panel_consolidacao() -> None:
+    """Renderiza o painel do módulo de consolidação."""
+    with st.container(key="panel-consolidacao"):
+        render_panel_text(
+            "✅ Consolidação",
+            "Consolidar indicadores",
+            "Organize e unifique os indicadores de fechamento em uma base consolidada.",
+        )
+
+        st.markdown('<div class="panel-divider"></div>', unsafe_allow_html=True)
+
+        if st.button(
+            "Abrir módulo de consolidação",
+            key="btn_consolidar",
+            use_container_width=True,
+        ):
+            selecionar_indicador("CONSOLIDAR INDICADORES")
+            st.rerun()
+
+        st.markdown(
+            """
+            <div class="panel-footer">
+                Ideal para consolidação de bases de arquivos de indicadores separados.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
+def render_home() -> None:
+    """Renderiza a tela inicial da aplicação."""
+    render_home_hero()
+
+    st.markdown(
+        '<div class="section-title">Módulos disponíveis</div>',
+        unsafe_allow_html=True,
+    )
+
+    col1, col2, col3 = st.columns(3, gap="large")
+
+    with col1:
+        render_panel_atualizacao()
+
+    with col2:
+        render_panel_geocodificacao()
+        render_panel_conversao()
+
+    with col3:
+        render_panel_consolidacao()
+
+
+def render_modulo() -> None:
+    """Renderiza o módulo selecionado pelo usuário."""
     indicador = st.session_state.indicador_selecionado
-    if indicador == "Selecione um indicador...":
-        render_home()
+
+    col_titulo, col_acao = st.columns([10, 2], gap="medium")
+
+    with col_titulo:
+        st.markdown(
+            f"""
+            <div class="module-header">
+                <div class="panel-kicker">Módulo ativo</div>
+                <div class="section-title module-title">{indicador}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with col_acao:
+        with st.container(key="panel-voltar"):
+            if st.button("← Voltar", key="btn_voltar", use_container_width=True):
+                voltar_inicio()
+                st.rerun()
+
+    if indicador in MAPEAMENTO:
+        nome_modulo, nome_funcao = MAPEAMENTO[indicador]
+        func = carregar_modulo(nome_modulo, nome_funcao)
+        if func:
+            executar_interface_segura(func, indicador)
+        else:
+            st.error(
+                f"Não foi possível carregar a função '{nome_funcao}' do módulo '{nome_modulo}'."
+            )
     else:
-        render_modulo()
-
-    render_footer()
-
-
-if __name__ == "__main__":
-    main()
+        st.warning(f"O módulo **{indicador}** estará disponível em breve.")
+        st.info("Sistema em desenvolvimento.")
