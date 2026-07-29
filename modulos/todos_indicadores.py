@@ -131,13 +131,13 @@ INDICADORES: list[IndicadorDef] = [
         ordem_arquivos="consolidado_primeiro",
     ),
     IndicadorDef(
-        chave="acidente_transito",
+        chave="acidente_transito_sip",
         ordem=8,
-        titulo="Acidente de Trânsito Sportal",
-        tokens_obrigatorios=["ACIDENTE", "TRANSITO", "SPORTAL", "QGP"],
-        modulo="acidente_transito",
-        funcao="processar_acidente_transito",
-        nome_saida=nome_arquivo_padrao(8, "ACIDENTE-DE-TRANSITO-SPORTAL-QGP"),
+        titulo="Acidente de Trânsito SIP",
+        tokens_obrigatorios=["MORTES", "TRANSITO", "SIP", "QGP"],
+        modulo="acidente_transito_sip",
+        funcao="processar_acidente_transito_sip",
+        nome_saida=nome_arquivo_padrao(8, "MORTES-NO-TRANSITO-SIP"),
         ordem_arquivos="consolidado_primeiro",
     ),
     IndicadorDef(
@@ -161,7 +161,6 @@ INDICADORES: list[IndicadorDef] = [
         ordem_arquivos="consolidado_primeiro",
     ),
 ]
-
 
 MAPEAMENTO_EQUIVALENCIAS_POR_INDICADOR: dict[str, dict[str, list[str]]] = {
     "cvli": {
@@ -233,29 +232,21 @@ MAPEAMENTO_EQUIVALENCIAS_POR_INDICADOR: dict[str, dict[str, list[str]]] = {
         "Data": ["data"],
         "data": ["Data"],
     },
-    "acidente_transito": {
-        "Regiões": ["Território", "Territorio", "Regioes"],
-        "AISNova": ["AIS"],
-        "Latitude": ["Lat"],
-        "Longitude": ["Long", "Lon"],
-        "Data": ["data"],
-        "data": ["Data"],
-        "Nome da Ocorrência": [
-            "Nome Ocorrência",
-            "Nome Ocorrencia",
-            "Ocorrência",
-            "Ocorrencia",
-            "Nome da ocorrencia",
+    "acidente_transito_sip": {
+        "REGIÃO": ["Região", "Regiao", "Território", "Territorio", "Regiões", "Regioes"],
+        "AIS": ["AISNova"],
+        "lat": ["Lat", "Latitude"],
+        "lon": ["Long", "Lon", "Longitude"],
+        "Nivel_Geocodificacao": [
+            "Nível_Geocodificação",
+            "Nivel Geocodificacao",
+            "nivel_geocodificacao",
         ],
-        "Subnome da Ocorrência": [
-            "Subnome da ocorrência",
-            "Subnome da Ocorrência",
-            "Subnome Ocorrência",
-            "Subnome Ocorrencia",
-            "Subnome da ocorrencia",
-            "Subocorrência",
-            "Subocorrencia",
-        ],
+        "Geocodificação": ["Geocodificacao", "geocodificacao"],
+        "DATA": ["Data", "data"],
+        "HORA": ["Hora", "hora"],
+        "MUNICÍPIO": ["Municipio", "Município"],
+        "NÚMERO": ["Numero", "Número"],
     },
     "furto_veiculo_sportal": {
         "Território": ["Regiões", "Regioes"],
@@ -275,9 +266,7 @@ MAPEAMENTO_EQUIVALENCIAS_POR_INDICADOR: dict[str, dict[str, list[str]]] = {
     },
 }
 
-
 COLUNAS_CRITICAS_POR_INDICADOR: dict[str, list[str]] = {
-    "acidente_transito": ["Nome da Ocorrência", "Subnome da Ocorrência"],
     "deslocamento_forcado": ["Nome da Ocorrência", "Subnome da Ocorrência"],
 }
 
@@ -1268,7 +1257,8 @@ def render() -> None:
             <div class="qgp-card-header">Entrada de arquivos</div>
             <div class="qgp-card-desc">
                 Envie o arquivo dos Indicadores Criminais e os 10 arquivos consolidados
-                oficiais do QGP. A fila será executada automaticamente após o primeiro clique em
+                oficiais do QGP, incluindo o consolidado de Acidente de Trânsito SIP.
+                A fila será executada automaticamente após o primeiro clique em
                 <strong>Executar</strong>.
             </div>
         </div>
@@ -1604,6 +1594,3 @@ def render() -> None:
         )
     else:
         st.info("Nenhum indicador concluído com sucesso para gerar o pacote ZIP.")
-
-
-interface_todos_indicadores = render
