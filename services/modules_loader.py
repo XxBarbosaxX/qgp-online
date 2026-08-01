@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import importlib
-import traceback
+import logging
 from typing import Callable, Optional
 
 import streamlit as st
+
+
+logger = logging.getLogger(__name__)
 
 
 MAPEAMENTO: dict[str, tuple[str, str]] = {
@@ -56,25 +59,39 @@ def carregar_modulo(nome_modulo: str, nome_funcao: str) -> Optional[Callable]:
         func = getattr(modulo, nome_funcao, None)
 
         if func is None:
-            st.error(f"Função '{nome_funcao}' não encontrada no módulo '{nome_modulo}'.")
+            logger.error(
+                "Função '%s' não encontrada no módulo '%s'.",
+                nome_funcao,
+                nome_modulo,
+            )
+            st.error(
+                "Não foi possível carregar o módulo solicitado. "
+                "Verifique a configuração da aplicação."
+            )
             return None
 
         return func
-    except Exception as exc:  # noqa: BLE001
-        st.error(f"Erro ao carregar módulo '{nome_modulo}': {exc}")
-        with st.expander("Detalhes do erro"):
-            st.code(traceback.format_exc())
+
+    except Exception:
+        logger.exception("Erro ao carregar módulo '%s'.", nome_modulo)
+        st.error(
+            "Ocorreu um erro interno ao carregar o módulo solicitado. "
+            "Tente novamente ou contate o administrador do sistema."
+        )
         return None
 
 
 def executar_interface_segura(func: Callable, nome_indicador: str) -> None:
-    """Executa interface dentro de container e captura erros com detalhes."""
+    """Executa interface dentro de container e captura erros sem expor detalhes internos."""
     area_execucao = st.container()
 
     try:
         with area_execucao:
             func()
-    except Exception as exc:  # noqa: BLE001
-        st.error(f"Erro ao executar o módulo '{nome_indicador}': {exc}")
-        with st.expander("Detalhes do erro"):
-            st.code(traceback.format_exc())
+
+    except Exception:
+        logger.exception("Erro ao executar o módulo '%s'.", nome_indicador)
+        st.error(
+            "Ocorreu um erro interno ao executar este módulo. "
+            "Tente novamente ou contate o administrador do sistema."
+        )
