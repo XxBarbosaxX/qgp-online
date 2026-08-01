@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import sys
 
 import streamlit as st
@@ -15,11 +16,15 @@ from config.settings import (
 )
 
 
+logger = logging.getLogger(__name__)
+
+
 @st.cache_data(show_spinner=False)
 def _carregar_theme_css() -> str:
     """Carrega o conteúdo do CSS principal do tema."""
     css_path = BASE_DIR / "assets" / "css" / "theme.css"
     if not css_path.exists():
+        logger.warning("Arquivo de tema não encontrado: %s", css_path)
         return ""
     return css_path.read_text(encoding="utf-8")
 
@@ -36,6 +41,19 @@ def configure_env() -> None:
     base_dir_str = str(BASE_DIR)
     if base_dir_str not in sys.path:
         sys.path.insert(0, base_dir_str)
+
+
+def configure_logging() -> None:
+    """Configura o logging base da aplicação."""
+    root_logger = logging.getLogger()
+
+    if root_logger.handlers:
+        return
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    )
 
 
 def configure_page() -> None:
@@ -60,6 +78,7 @@ def init_state() -> None:
 def main() -> None:
     """Executa o fluxo principal da aplicação."""
     configure_page()
+    configure_logging()
     configure_env()
     init_state()
 
@@ -67,6 +86,8 @@ def main() -> None:
     load_theme_css()
 
     indicador = st.session_state.indicador_selecionado
+    logger.info("Indicador atual: %s", indicador)
+
     if indicador == "Selecione um indicador...":
         render_home()
     else:
