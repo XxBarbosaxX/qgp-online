@@ -51,6 +51,10 @@ MAPEAMENTO: dict[str, tuple[str, str]] = {
         "modulos.acidente_transito",
         "interface_acidente_transito",
     ),
+    "MORTES NO TRÂNSITO (SIP)": (
+        "modulos.acidente_transito_sip",
+        "interface_acidente_transito_sip",
+    ),
     "FURTO DE VEÍCULO (SPORTAL)": (
         "modulos.furto_veiculo_sportal",
         "interface_furto_veiculo_sportal",
