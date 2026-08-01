@@ -14,13 +14,15 @@ Fluxo principal:
 
 from __future__ import annotations
 
+import html
 import io
 import json
+import logging
 import os
 import re
 import unicodedata
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
@@ -32,13 +34,20 @@ from rapidfuzz import fuzz
 from scipy.spatial import cKDTree
 
 
+logger = logging.getLogger(__name__)
+
+
 # ============================================================================
 # CONFIG
 # ============================================================================
 
+SESSION_TTL_MINUTOS = 30
+BASES_DIR = os.path.abspath("bases")
+
+
 @dataclass
 class GeocodificadorConfig:
-    usar_externo: bool = True
+    usar_externo: bool = False
     caminho_gpkg: str = "bases/Faces_de_Quadra_-_Ceara_ARRUAMENTO.gpkg"
     caminho_base_enxuta: str = "bases/faces_quadras_ce.parquet"
     layer_gpkg: str = "reprojetado"
@@ -110,6 +119,10 @@ TIPOS = ("Rua", "Avenida", "Travessa", "Praca", "Rodovia", "Alameda", "Passeio")
 
 ROOFTOP = ("pointaddress", "streetaddress", "subaddress", "pointaddressvd")
 
+
+# ============================================================================
+# UI / ESTILO
+# ============================================================================
 
 def _aplicar_estilo_geocodificacao() -> None:
     st.markdown(
@@ -323,18 +336,54 @@ def _aplicar_estilo_geocodificacao() -> None:
 
 
 def _render_label_flutuante(label: str, tooltip: str) -> None:
+    label_html = html.escape(label)
+    tooltip_html = html.escape(tooltip)
     st.markdown(
         f"""
         <div class="geo-field-label">
-            <span class="geo-field-label-text">{label}</span>
+            <span class="geo-field-label-text">{label_html}</span>
             <span class="geo-tooltip">
                 ?
-                <span class="geo-tooltip-box">{tooltip}</span>
+                <span class="geo-tooltip-box">{tooltip_html}</span>
             </span>
         </div>
         """,
         unsafe_allow_html=True,
     )
+
+
+# ============================================================================
+# HELPERS
+# ============================================================================
+
+def _touch_geo_session() -> None:
+    st.session_state["geo_last_activity"] = datetime.now().isoformat()
+
+
+def _is_subpath(path: str, base_dir: str) -> bool:
+    path_abs = os.path.abspath(path)
+    base_abs = os.path.abspath(base_dir)
+    try:
+        return os.path.commonpath([path_abs, base_abs]) == base_abs
+    except ValueError:
+        return False
+
+
+def _validar_caminho_bases(path: str, extensoes_permitidas: tuple[str, ...]) -> str:
+    caminho = (path or "").strip()
+    if not caminho:
+        raise ValueError("Caminho nao informado.")
+
+    caminho_abs = os.path.abspath(caminho)
+    ext = os.path.splitext(caminho_abs)[1].lower()
+
+    if ext not in extensoes_permitidas:
+        raise ValueError(f"Extensao nao permitida para o caminho informado: {ext}")
+
+    if not _is_subpath(caminho_abs, BASES_DIR):
+        raise ValueError("O caminho informado deve estar dentro da pasta 'bases/'.")
+
+    return caminho_abs
 
 
 def sem_acento(s: Any) -> str:
@@ -459,12 +508,13 @@ class GeocodificadorDIESP:
             )
 
     def _log(self, msg: str) -> None:
+        logger.info(msg)
         if self.logger:
             try:
                 self.logger(msg)
                 return
             except Exception:
-                pass
+                logger.exception("Falha ao enviar log para callback da interface.")
 
     def _construir_base_enxuta(self, gpkg: str, parquet_saida: str) -> pd.DataFrame:
         import fiona
@@ -486,8 +536,8 @@ class GeocodificadorDIESP:
 
                 tip = str(p.get("NM_TIP_LOG") or "").strip()
                 tit = str(p.get("NM_TIT_LOG") or "").strip()
-                log = str(p.get("NM_LOG") or "").strip()
-                nome = " ".join(x for x in (tip, tit, log) if x and x.lower() != "none")
+                log_nome = str(p.get("NM_LOG") or "").strip()
+                nome = " ".join(x for x in (tip, tit, log_nome) if x and x.lower() != "none")
                 if not nome:
                     continue
 
@@ -538,7 +588,7 @@ class GeocodificadorDIESP:
                 return base.reset_index(drop=True)
             except Exception as e:
                 raise RuntimeError(
-                    f"Falha ao abrir a base enxuta '{caminho_parquet}'. Erro original: {e}"
+                    f"Falha ao abrir a base enxuta '{caminho_parquet}'."
                 ) from e
 
         if caminho_gpkg and os.path.exists(caminho_gpkg):
@@ -555,7 +605,7 @@ class GeocodificadorDIESP:
                 with open(arq_cache, encoding="utf-8") as f:
                     return json.load(f)
             except Exception:
-                pass
+                logger.exception("Falha ao abrir cache local de municipios.")
 
         url = (
             f"https://servicodados.ibge.gov.br/api/v1/localidades/estados/"
@@ -585,8 +635,9 @@ class GeocodificadorDIESP:
             self._log(f"[MUN] Tabela de municipios carregada: {len(mapa)}.")
             return mapa
 
-        except Exception as e:
-            self._log(f"[MUN] Nao foi possivel obter a tabela do IBGE ({e}).")
+        except Exception:
+            logger.exception("Nao foi possivel obter a tabela do IBGE.")
+            self._log("[MUN] Nao foi possivel obter a tabela do IBGE.")
             return {}
 
     def cod_municipio(self, municipio: Any) -> str:
@@ -927,6 +978,23 @@ def _df_to_excel_bytes(df: pd.DataFrame) -> bytes:
     return buffer.read()
 
 
+def _expirar_estado_geocodificacao() -> None:
+    ultimo = st.session_state.get("geo_last_activity")
+    if not ultimo:
+        _touch_geo_session()
+        return
+
+    try:
+        dt_ultimo = datetime.fromisoformat(ultimo)
+    except Exception:
+        _touch_geo_session()
+        return
+
+    if datetime.now() - dt_ultimo > timedelta(minutes=SESSION_TTL_MINUTOS):
+        _limpar_estado_geocodificacao()
+        _touch_geo_session()
+
+
 def _init_state_geocodificacao() -> None:
     defaults = {
         "geo_df_entrada": None,
@@ -935,6 +1003,7 @@ def _init_state_geocodificacao() -> None:
         "geo_resumo": None,
         "geo_nome_arquivo": None,
         "geo_logs": [],
+        "geo_last_activity": datetime.now().isoformat(),
     }
     for chave, valor in defaults.items():
         if chave not in st.session_state:
@@ -950,6 +1019,7 @@ def _limpar_estado_geocodificacao() -> None:
         "geo_nome_arquivo",
         "geo_logs",
         "geo_upload_arquivo",
+        "geo_last_activity",
     ]
     for chave in chaves:
         if chave in st.session_state:
@@ -958,6 +1028,8 @@ def _limpar_estado_geocodificacao() -> None:
 
 def interface_geocodificar() -> None:
     _init_state_geocodificacao()
+    _expirar_estado_geocodificacao()
+    _touch_geo_session()
     _aplicar_estilo_geocodificacao()
 
     st.markdown(
@@ -994,7 +1066,7 @@ def interface_geocodificar() -> None:
             )
             usar_externo = st.toggle(
                 "Usar ArcGIS como fallback",
-                value=True,
+                value=False,
                 label_visibility="collapsed",
             )
 
@@ -1024,7 +1096,7 @@ def interface_geocodificar() -> None:
                 (
                     "É o valor (no seu caso 88, em uma escala de 70 a 100) que define "
                     "o quão parecido o texto do logradouro da ocorrência precisa ser com "
-                    "o logradouro da base oficial para ser considerado “match” válido."
+                    "o logradouro da base oficial para ser considerado match válido."
                 ),
             )
             limiar_nome = st.slider(
@@ -1077,8 +1149,13 @@ def interface_geocodificar() -> None:
             df = _ler_arquivo_upload(uploaded_file)
             st.session_state["geo_df_entrada"] = df
             st.session_state["geo_nome_upload"] = uploaded_file.name
-        except Exception as exc:
-            st.error(f"Falha ao ler o arquivo enviado: {exc}")
+            _touch_geo_session()
+        except Exception:
+            logger.exception("Falha ao ler o arquivo enviado para geocodificacao.")
+            st.error(
+                "Nao foi possivel ler o arquivo enviado. "
+                "Verifique o formato e tente novamente."
+            )
             return
 
     df = st.session_state.get("geo_df_entrada")
@@ -1088,13 +1165,15 @@ def interface_geocodificar() -> None:
         st.info("Envie um arquivo para iniciar a geocodificação.")
         return
 
+    nome_upload_seguro = html.escape(str(nome_upload or "arquivo"))
+
     st.markdown(
         f"""
         <div class="geo-badges">
-            <span class="geo-badge ok">Arquivo carregado: {nome_upload}</span>
+            <span class="geo-badge ok">Arquivo carregado: {nome_upload_seguro}</span>
             <span class="geo-badge info">Registros: {len(df):,}</span>
             <span class="geo-badge info">Colunas: {len(df.columns)}</span>
-            <span class="geo-badge info">Formato: {nome_upload.split('.')[-1].upper()}</span>
+            <span class="geo-badge info">Formato: {html.escape(nome_upload.split('.')[-1].upper())}</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -1201,14 +1280,19 @@ def interface_geocodificar() -> None:
     if processar:
         logs = []
 
-        def logger(msg: str) -> None:
+        def logger_ui(msg: str) -> None:
             logs.append(msg)
 
         try:
+            caminho_gpkg_validado = _validar_caminho_bases(caminho_gpkg, (".gpkg",))
+            caminho_base_enxuta_validado = _validar_caminho_bases(
+                caminho_base_enxuta, (".parquet",)
+            )
+
             config = GeocodificadorConfig(
                 usar_externo=usar_externo,
-                caminho_gpkg=caminho_gpkg,
-                caminho_base_enxuta=caminho_base_enxuta,
+                caminho_gpkg=caminho_gpkg_validado,
+                caminho_base_enxuta=caminho_base_enxuta_validado,
                 limiar_nome=limiar_nome,
                 raio_confirma_m=raio_confirma_m,
                 raio_municipio_km=raio_municipio_km,
@@ -1216,7 +1300,7 @@ def interface_geocodificar() -> None:
 
             with st.status("Processando geocodificação...", expanded=True) as status:
                 status.write("Inicializando serviço...")
-                geo = GeocodificadorDIESP(config=config, logger=logger)
+                geo = GeocodificadorDIESP(config=config, logger=logger_ui)
 
                 status.write("Executando geocodificação da base...")
                 df_saida = geo.geocodificar_dataframe(
@@ -1242,11 +1326,23 @@ def interface_geocodificar() -> None:
             st.session_state["geo_resumo"] = resumo
             st.session_state["geo_nome_arquivo"] = os.path.splitext(nome_upload)[0]
             st.session_state["geo_logs"] = logs
+            _touch_geo_session()
 
             st.success("✅ Processamento concluído.")
 
-        except Exception as exc:
-            st.error(f"Erro ao executar geocodificação: {exc}")
+        except ValueError:
+            logger.exception("Falha de validacao de parametros no modulo de geocodificacao.")
+            st.error(
+                "Configuracao invalida. Revise os caminhos informados na pasta bases/ "
+                "e tente novamente."
+            )
+            return
+        except Exception:
+            logger.exception("Erro ao executar geocodificacao.")
+            st.error(
+                "Ocorreu um erro interno durante a geocodificação. "
+                "Tente novamente ou contate o administrador."
+            )
             return
 
     if "geo_df_saida" not in st.session_state or st.session_state["geo_df_saida"] is None:
@@ -1284,7 +1380,7 @@ def interface_geocodificar() -> None:
             </div>
             <div class="geo-badges">
                 <span class="geo-badge ok">Exato (Número): {resumo['exato_numero']:,}</span>
-                <span class="geo-badge info">Arquivo base: {nome_upload}</span>
+                <span class="geo-badge info">Arquivo base: {html.escape(nome_upload or '')}</span>
                 <span class="geo-badge warn">Campos gerados: lat, lon, nível, fonte e diagnóstico</span>
             </div>
         </div>
