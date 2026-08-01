@@ -2,126 +2,17 @@ from __future__ import annotations
 
 import base64
 import html
-import importlib
 import logging
 from typing import Callable, Optional
 
 import streamlit as st
 
 from config.settings import BASE_DIR
+from services.modules_loader import carregar_modulo, executar_interface_segura
+from services.modules_registry import INDICADORES_ATUALIZACAO, MAPEAMENTO
 
 
 logger = logging.getLogger(__name__)
-
-
-MAPEAMENTO: dict[str, tuple[str, str]] = {
-    "TODOS OS INDICADORES": (
-        "modulos.todos_indicadores",
-        "interface_todos_indicadores",
-    ),
-    "CVLI": (
-        "modulos.cvli",
-        "interface_cvli",
-    ),
-    "CVP (SPORTAL)": (
-        "modulos.cvp_sportal",
-        "interface_cvp_sportal",
-    ),
-    "CVP (SIP)": (
-        "modulos.cvp_sip",
-        "interface_cvp_sip",
-    ),
-    "PERTURBAÇÃO AO SOSSEGO ALHEIO": (
-        "modulos.perturbacao_sossego",
-        "interface_perturbacao_sossego",
-    ),
-    "DESLOCAMENTO FORÇADO": (
-        "modulos.deslocamento_forcado",
-        "interface_deslocamento_forcado",
-    ),
-    "ROUBO DE VEÍCULO (SPORTAL)": (
-        "modulos.roubo_veiculo_sportal",
-        "interface_roubo_veiculo_sportal",
-    ),
-    "ROUBO DE VEÍCULO (SIP)": (
-        "modulos.roubo_veiculo_sip",
-        "interface_roubo_veiculo_sip",
-    ),
-    "ACIDENTE DE TRÂNSITO": (
-        "modulos.acidente_transito",
-        "interface_acidente_transito",
-    ),
-    "MORTES NO TRÂNSITO (SIP)": (
-        "modulos.acidente_transito_sip",
-        "interface_acidente_transito_sip",
-    ),
-    "FURTO DE VEÍCULO (SPORTAL)": (
-        "modulos.furto_veiculo_sportal",
-        "interface_furto_veiculo_sportal",
-    ),
-    "FURTO DE VEÍCULO (SIP)": (
-        "modulos.furto_veiculo_sip",
-        "interface_furto_veiculo_sip",
-    ),
-    "GEOCODIFICAÇÃO": (
-        "modulos.geocodificar",
-        "interface_geocodificar",
-    ),
-    "CONVERSÃO": (
-        "modulos.conversor_coordenadas",
-        "interface_conversor_coordenadas",
-    ),
-    "CONSOLIDAR INDICADORES": (
-        "modulos.consolidar_indicadores_criminais",
-        "interface_consolidar_indicadores_criminais",
-    ),
-}
-
-
-INDICADORES_ATUALIZACAO: list[str] = [
-    nome
-    for nome in MAPEAMENTO.keys()
-    if nome
-    not in {
-        "TODOS OS INDICADORES",
-        "GEOCODIFICAÇÃO",
-        "CONVERSÃO",
-        "CONSOLIDAR INDICADORES",
-    }
-]
-
-
-def carregar_modulo(nome_modulo: str, nome_funcao: str) -> Optional[Callable]:
-    """Carrega dinamicamente a função de interface de um módulo."""
-    try:
-        modulo = importlib.import_module(nome_modulo)
-        func = getattr(modulo, nome_funcao, None)
-
-        if func is None:
-            logger.error(
-                "Função '%s' não encontrada no módulo '%s'.",
-                nome_funcao,
-                nome_modulo,
-            )
-            return None
-
-        return func
-
-    except Exception:
-        logger.exception("Erro ao importar módulo '%s'.", nome_modulo)
-        return None
-
-
-def executar_interface_segura(func: Callable, indicador: str) -> None:
-    """Executa a interface do módulo com tratamento seguro de erros."""
-    try:
-        func()
-    except Exception:
-        logger.exception("Erro ao executar o módulo '%s'.", indicador)
-        st.error(
-            "Ocorreu um erro interno ao executar o módulo selecionado. "
-            "Tente novamente ou contate o administrador."
-        )
 
 
 def selecionar_indicador(nome: str) -> None:
