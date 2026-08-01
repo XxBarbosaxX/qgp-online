@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 import base64
+import html
 import importlib
-import traceback
-from typing import Callable
+import logging
+from typing import Callable, Optional
 
 import streamlit as st
 
 from config.settings import BASE_DIR
+
+
+logger = logging.getLogger(__name__)
+
 
 MAPEAMENTO: dict[str, tuple[str, str]] = {
     "TODOS OS INDICADORES": (
@@ -18,15 +23,15 @@ MAPEAMENTO: dict[str, tuple[str, str]] = {
         "modulos.cvli",
         "interface_cvli",
     ),
-    "CVP - SPORTAL": (
+    "CVP (SPORTAL)": (
         "modulos.cvp_sportal",
         "interface_cvp_sportal",
     ),
-    "CVP - SIP": (
+    "CVP (SIP)": (
         "modulos.cvp_sip",
-        "render",
+        "interface_cvp_sip",
     ),
-    "PERTURBAÇÃO DO SOSSEGO": (
+    "PERTURBAÇÃO AO SOSSEGO ALHEIO": (
         "modulos.perturbacao_sossego",
         "interface_perturbacao_sossego",
     ),
@@ -34,11 +39,11 @@ MAPEAMENTO: dict[str, tuple[str, str]] = {
         "modulos.deslocamento_forcado",
         "interface_deslocamento_forcado",
     ),
-    "ROUBO DE VEÍCULO - SPORTAL": (
+    "ROUBO DE VEÍCULO (SPORTAL)": (
         "modulos.roubo_veiculo_sportal",
         "interface_roubo_veiculo_sportal",
     ),
-    "ROUBO DE VEÍCULO - SIP": (
+    "ROUBO DE VEÍCULO (SIP)": (
         "modulos.roubo_veiculo_sip",
         "interface_roubo_veiculo_sip",
     ),
@@ -46,31 +51,28 @@ MAPEAMENTO: dict[str, tuple[str, str]] = {
         "modulos.acidente_transito",
         "interface_acidente_transito",
     ),
-    "FURTO DE VEÍCULO - SPORTAL": (
+    "FURTO DE VEÍCULO (SPORTAL)": (
         "modulos.furto_veiculo_sportal",
         "interface_furto_veiculo_sportal",
     ),
-    "FURTO DE VEÍCULO - SIP": (
+    "FURTO DE VEÍCULO (SIP)": (
         "modulos.furto_veiculo_sip",
         "interface_furto_veiculo_sip",
     ),
-    "MORTES NO TRÂNSITO - SIP": (
-        "modulos.acidente_transito_sip",
-        "interface_acidente_transito_sip",
-    ),
     "GEOCODIFICAÇÃO": (
-        "modulos.geocodificacao",
-        "interface_geocodificacao",
+        "modulos.geocodificar",
+        "interface_geocodificar",
     ),
     "CONVERSÃO": (
         "modulos.conversor_coordenadas",
         "interface_conversor_coordenadas",
     ),
     "CONSOLIDAR INDICADORES": (
-        "modulos.consolidar_indicadores",
-        "interface_consolidar_indicadores",
+        "modulos.consolidar_indicadores_criminais",
+        "interface_consolidar_indicadores_criminais",
     ),
 }
+
 
 INDICADORES_ATUALIZACAO: list[str] = [
     nome
@@ -85,12 +87,24 @@ INDICADORES_ATUALIZACAO: list[str] = [
 ]
 
 
-def carregar_modulo(nome_modulo: str, nome_funcao: str) -> Callable | None:
+def carregar_modulo(nome_modulo: str, nome_funcao: str) -> Optional[Callable]:
     """Carrega dinamicamente a função de interface de um módulo."""
     try:
         modulo = importlib.import_module(nome_modulo)
-        return getattr(modulo, nome_funcao, None)
+        func = getattr(modulo, nome_funcao, None)
+
+        if func is None:
+            logger.error(
+                "Função '%s' não encontrada no módulo '%s'.",
+                nome_funcao,
+                nome_modulo,
+            )
+            return None
+
+        return func
+
     except Exception:
+        logger.exception("Erro ao importar módulo '%s'.", nome_modulo)
         return None
 
 
@@ -98,10 +112,12 @@ def executar_interface_segura(func: Callable, indicador: str) -> None:
     """Executa a interface do módulo com tratamento seguro de erros."""
     try:
         func()
-    except Exception as exc:
-        st.error(f"Erro ao executar o módulo {indicador}: {exc}")
-        with st.expander("Detalhes do erro"):
-            st.code(traceback.format_exc())
+    except Exception:
+        logger.exception("Erro ao executar o módulo '%s'.", indicador)
+        st.error(
+            "Ocorreu um erro interno ao executar o módulo selecionado. "
+            "Tente novamente ou contate o administrador."
+        )
 
 
 def selecionar_indicador(nome: str) -> None:
@@ -131,6 +147,7 @@ def _obter_logo_base64() -> str | None:
         try:
             return base64.b64encode(caminho_logo.read_bytes()).decode("utf-8")
         except Exception:
+            logger.exception("Falha ao carregar logo: %s", caminho_logo)
             continue
 
     return None
@@ -187,9 +204,9 @@ def render_panel_text(kicker: str, titulo: str, descricao: str) -> None:
     """Renderiza o conteúdo textual padrão de um painel."""
     st.markdown(
         f"""
-        <div class="panel-kicker">{kicker}</div>
-        <div class="panel-title">{titulo}</div>
-        <p class="panel-description">{descricao}</p>
+        <div class="panel-kicker">{html.escape(kicker)}</div>
+        <div class="panel-title">{html.escape(titulo)}</div>
+        <p class="panel-description">{html.escape(descricao)}</p>
         """,
         unsafe_allow_html=True,
     )
@@ -197,9 +214,9 @@ def render_panel_text(kicker: str, titulo: str, descricao: str) -> None:
 
 def render_panel_atualizacao() -> None:
     """Renderiza o painel de atualização dos indicadores."""
-    with st.container(key="panel-atualizacao"):
+    with st.container():
         render_panel_text(
-            "🔄 Atualização",
+            "Atualização",
             "Indicadores operacionais",
             "Execute a atualização completa ou selecione um indicador específico para processamento individual.",
         )
@@ -217,10 +234,9 @@ def render_panel_atualizacao() -> None:
         st.markdown('<div class="panel-divider"></div>', unsafe_allow_html=True)
 
         st.selectbox(
-            "Selecione um Indicador",
+            "Selecione um indicador",
             options=INDICADORES_ATUALIZACAO,
             key="indicador_dropdown",
-            label_visibility="visible",
         )
 
         st.markdown('<div class="field-gap-sm"></div>', unsafe_allow_html=True)
@@ -245,9 +261,9 @@ def render_panel_atualizacao() -> None:
 
 def render_panel_geocodificacao() -> None:
     """Renderiza o painel do módulo de geocodificação."""
-    with st.container(key="panel-geocodificacao"):
+    with st.container():
         render_panel_text(
-            "🌐 Geoprocessamento",
+            "Geoprocessamento",
             "Geocodificação",
             "Módulo dedicado à geocodificação de ocorrências e endereços.",
         )
@@ -274,9 +290,9 @@ def render_panel_geocodificacao() -> None:
 
 def render_panel_conversao() -> None:
     """Renderiza o painel do módulo de conversão."""
-    with st.container(key="panel-conversao"):
+    with st.container():
         render_panel_text(
-            "📍 Conversão",
+            "Conversão",
             "Conversor de Coordenadas",
             "Converta camadas em UTM para SIRGAS 2000 / UTM zona 24S.",
         )
@@ -303,9 +319,9 @@ def render_panel_conversao() -> None:
 
 def render_panel_consolidacao() -> None:
     """Renderiza o painel do módulo de consolidação."""
-    with st.container(key="panel-consolidacao"):
+    with st.container():
         render_panel_text(
-            "✅ Consolidação",
+            "Consolidação",
             "Consolidar indicadores",
             "Organize e unifique os indicadores de fechamento em uma base consolidada.",
         )
@@ -363,27 +379,28 @@ def render_modulo() -> None:
             f"""
             <div class="module-header">
                 <div class="panel-kicker">Módulo ativo</div>
-                <div class="section-title module-title">{indicador}</div>
+                <div class="section-title module-title">{html.escape(indicador)}</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
     with col_acao:
-        with st.container(key="panel-voltar"):
-            if st.button("← Voltar", key="btn_voltar", use_container_width=True):
-                voltar_inicio()
-                st.rerun()
+        if st.button("← Voltar", key="btn_voltar", use_container_width=True):
+            voltar_inicio()
+            st.rerun()
 
     if indicador in MAPEAMENTO:
         nome_modulo, nome_funcao = MAPEAMENTO[indicador]
         func = carregar_modulo(nome_modulo, nome_funcao)
+
         if func:
             executar_interface_segura(func, indicador)
         else:
             st.error(
-                f"Não foi possível carregar a função '{nome_funcao}' do módulo '{nome_modulo}'."
+                "Não foi possível carregar o módulo selecionado. "
+                "Verifique a configuração da aplicação."
             )
     else:
-        st.warning(f"O módulo **{indicador}** estará disponível em breve.")
+        st.warning(f"O módulo {indicador} estará disponível em breve.")
         st.info("Sistema em desenvolvimento.")
