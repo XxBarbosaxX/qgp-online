@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import calendar
+import html
 import io
+import logging
 import re
 import time
 import unicodedata
@@ -11,6 +13,10 @@ from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 import streamlit as st
+
+
+logger = logging.getLogger(__name__)
+
 
 INDICADORES_DISPONIVEIS = [
     "CVLI",
@@ -153,6 +159,7 @@ SINONIMOS_COLUNAS: Dict[str, str] = {
     "subnome_ocorrencia": "Subnome da Ocorrência",
 }
 
+
 @dataclass
 class ArquivoAbaLida:
     nome_arquivo: str
@@ -164,6 +171,7 @@ class ArquivoAbaLida:
     dt_min: Optional[pd.Timestamp]
     dt_max: Optional[pd.Timestamp]
     log_colunas: Dict[str, object] = field(default_factory=dict)
+
 
 @dataclass
 class ResultadoIndicador:
@@ -182,6 +190,31 @@ class ResultadoIndicador:
     total_meses_incompletos: int = 0
     erros: List[str] = field(default_factory=list)
 
+
+SESSION_KEYS_CONSOLIDACAO = [
+    "consolidacao_resultados",
+    "consolidacao_zip_bytes",
+    "consolidacao_excel_multi",
+    "consolidacao_processado",
+    "consolidacao_erros_execucao",
+]
+
+
+def limpar_estado_consolidacao() -> None:
+    """Remove dados temporários da consolidação da sessão."""
+    for chave in SESSION_KEYS_CONSOLIDACAO:
+        if chave in st.session_state:
+            del st.session_state[chave]
+
+
+def registrar_erro_interno(contexto: str, exc: Exception | None = None) -> None:
+    """Registra erro técnico sem expor detalhes ao usuário."""
+    if exc is not None:
+        logger.exception("%s", contexto)
+    else:
+        logger.error("%s", contexto)
+
+
 def normalizar_texto(valor: str) -> str:
     if valor is None:
         return ""
@@ -192,14 +225,17 @@ def normalizar_texto(valor: str) -> str:
     valor = re.sub(r"\s+", " ", valor)
     return valor
 
+
 def slugify(valor: str) -> str:
     base = normalizar_texto(valor)
     base = re.sub(r"[^a-z0-9]+", "_", base)
     base = re.sub(r"_+", "_", base).strip("_")
     return base or "arquivo"
 
+
 def slug_coluna(valor: str) -> str:
     return slugify(valor)
+
 
 def _sequencia_comum(a: str, b: str) -> int:
     m, n = len(a), len(b)
@@ -216,6 +252,7 @@ def _sequencia_comum(a: str, b: str) -> int:
         prev = curr
     return prev[n]
 
+
 def similaridade_fuzzy(a: str, b: str) -> float:
     a, b = normalizar_texto(a), normalizar_texto(b)
     if not a or not b:
@@ -224,6 +261,7 @@ def similaridade_fuzzy(a: str, b: str) -> float:
         return 1.0
     lcs = _sequencia_comum(a, b)
     return (2 * lcs) / (len(a) + len(b))
+
 
 def _taxa_datas_validas(serie: pd.Series) -> float:
     amostra = serie.dropna().head(200)
@@ -235,11 +273,14 @@ def _taxa_datas_validas(serie: pd.Series) -> float:
     taxa = convertidos.notna().sum() / len(amostra)
     return float(taxa)
 
+
 def parse_data_robusta(serie: pd.Series) -> pd.Series:
     if pd.api.types.is_datetime64_any_dtype(serie):
         return serie
     serie_str = serie.astype(str).str.strip()
-    serie_str = serie_str.replace({"nan": pd.NA, "NaT": pd.NA, "None": pd.NA, "": pd.NA})
+    serie_str = serie_str.replace(
+        {"nan": pd.NA, "NaT": pd.NA, "None": pd.NA, "": pd.NA}
+    )
     resultado = pd.Series(pd.NaT, index=serie.index)
     pendente_mask = serie_str.notna()
     for fmt in FORMATOS_DATA_BRASIL:
@@ -264,6 +305,7 @@ def parse_data_robusta(serie: pd.Series) -> pd.Series:
         resultado = resultado.where(~acertou, fallback)
     return resultado
 
+
 def resolver_coluna_por_sinonimo(nome_coluna: str) -> Optional[str]:
     chave = slug_coluna(nome_coluna)
     if chave in SINONIMOS_COLUNAS:
@@ -279,6 +321,7 @@ def resolver_coluna_por_sinonimo(nome_coluna: str) -> Optional[str]:
         return melhor_valor
     return None
 
+
 def _detectar_coordenada_por_conteudo(serie: pd.Series) -> Optional[str]:
     valores = pd.to_numeric(serie.dropna(), errors="coerce").dropna()
     if len(valores) < 5:
@@ -289,6 +332,7 @@ def _detectar_coordenada_por_conteudo(serie: pd.Series) -> Optional[str]:
     if FAIXA_LONGITUDE[0] <= vmin and vmax <= FAIXA_LONGITUDE[1] and (vmax - vmin) < 20:
         return "Longitude"
     return None
+
 
 def renomear_colunas_por_sinonimos(
     df: pd.DataFrame,
@@ -315,6 +359,7 @@ def renomear_colunas_por_sinonimos(
     df_renomeado = df.rename(columns=nomes_finais)
     return df_renomeado, mapa, nao_reconhecidas, novas_colunas
 
+
 def encontrar_coluna_por_nome_oficial(df: pd.DataFrame, nome_oficial: str) -> Optional[str]:
     alvo = normalizar_texto(nome_oficial)
     for col in df.columns:
@@ -322,11 +367,13 @@ def encontrar_coluna_por_nome_oficial(df: pd.DataFrame, nome_oficial: str) -> Op
             return col
     return None
 
+
 def detectar_coluna_data(df: pd.DataFrame, log: List[str]) -> Optional[str]:
     candidatos_data = sorted(
         [c for c in df.columns if re.match(r"^Data(_\d+)?$", c, re.IGNORECASE)],
         key=lambda c: (
-            0 if c == "Data"
+            0
+            if c == "Data"
             else int(re.search(r"_(\d+)$", c).group(1)) if re.search(r"_(\d+)$", c) else 1
         ),
     )
@@ -340,8 +387,14 @@ def detectar_coluna_data(df: pd.DataFrame, log: List[str]) -> Optional[str]:
                 )
             return col
     candidatos_alt = [
-        "Data Completa", "Data Ocorrência", "Data Fato", "Data Registro",
-        "Data do Fato", "Data da Ocorrência", "dt_fato", "dt_ocorrencia",
+        "Data Completa",
+        "Data Ocorrência",
+        "Data Fato",
+        "Data Registro",
+        "Data do Fato",
+        "Data da Ocorrência",
+        "dt_fato",
+        "dt_ocorrencia",
         "Hora",
     ]
     for nome in candidatos_alt:
@@ -369,15 +422,18 @@ def detectar_coluna_data(df: pd.DataFrame, log: List[str]) -> Optional[str]:
         return melhor_col
     return None
 
+
 def detectar_coluna_hora(df: pd.DataFrame) -> Optional[str]:
     candidatos = sorted(
         [c for c in df.columns if re.match(r"^Hora(_\d+)?$", c, re.IGNORECASE)],
         key=lambda c: (
-            0 if c == "Hora"
+            0
+            if c == "Hora"
             else int(re.search(r"_(\d+)$", c).group(1)) if re.search(r"_(\d+)$", c) else 1
         ),
     )
     return candidatos[0] if candidatos else None
+
 
 def encontrar_nome_aba(sheet_names: List[str], indicador: str) -> Optional[str]:
     alvo = normalizar_texto(indicador)
@@ -395,6 +451,7 @@ def encontrar_nome_aba(sheet_names: List[str], indicador: str) -> Optional[str]:
         return melhor_nome
     return None
 
+
 def limpar_nome_colunas(df: pd.DataFrame) -> pd.DataFrame:
     novas = []
     usados: Dict[str, int] = {}
@@ -410,10 +467,12 @@ def limpar_nome_colunas(df: pd.DataFrame) -> pd.DataFrame:
     df.columns = novas
     return df
 
+
 def remover_linhas_vazias(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
     return df.dropna(how="all").copy()
+
 
 def normalizar_hora_para_6(valor) -> str:
     if pd.isna(valor):
@@ -426,6 +485,7 @@ def normalizar_hora_para_6(valor) -> str:
         return "000000"
     txt = txt.zfill(6)
     return txt[:6]
+
 
 def montar_datetime(
     df: pd.DataFrame, col_data: str, col_hora: Optional[str]
@@ -455,6 +515,7 @@ def montar_datetime(
     dt = dt.where(datas.notna(), pd.NaT)
     return dt
 
+
 def identificar_periodo_aba(aba: ArquivoAbaLida) -> Optional[str]:
     df = aba.df_processado
     if "_datetime_oficial" not in df.columns:
@@ -464,6 +525,7 @@ def identificar_periodo_aba(aba: ArquivoAbaLida) -> Optional[str]:
         return None
     periodos = datas.dt.to_period("M")
     return str(periodos.value_counts().idxmax())
+
 
 def selecionar_base_mais_completa(
     abas_mesmo_mes: List[ArquivoAbaLida],
@@ -478,7 +540,9 @@ def selecionar_base_mais_completa(
             int(datas.dt.date.nunique()),
             len(df),
         )
+
     return max(abas_mesmo_mes, key=score)
+
 
 def agrupar_e_selecionar_por_mes(
     abas_lidas: List[ArquivoAbaLida],
@@ -513,6 +577,7 @@ def agrupar_e_selecionar_por_mes(
         selecionadas.append(aba)
     return selecionadas, log_descartes, mapa_mes_arquivo
 
+
 def preencher_colunas_ausentes(
     df: pd.DataFrame, ordem_base: List[str]
 ) -> pd.DataFrame:
@@ -523,19 +588,28 @@ def preencher_colunas_ausentes(
     extras = [c for c in df.columns if c not in ordem_base]
     return df[ordem_base + extras]
 
+
 def gerar_chave_cvli(
     df: pd.DataFrame, col_tombo: str, col_data: str, col_vitima: str
 ) -> pd.Series:
     tombo = df[col_tombo].astype(str).fillna("").str.strip()
     data = parse_data_robusta(df[col_data]).dt.strftime("%Y-%m-%d").fillna("")
-    vitima = df[col_vitima].astype(str).fillna("").str.strip().map(normalizar_texto)
+    vitima = (
+        df[col_vitima].astype(str).fillna("").str.strip().map(normalizar_texto)
+    )
     return tombo + "||" + data + "||" + vitima
+
 
 def gerar_chave_secundaria_incremental(df: pd.DataFrame) -> pd.Series:
     candidatos_nomes = [
-        "Natureza", "Ocorrência", "Ocorrencia",
-        "Nome da Ocorrência", "Nome da Ocorrencia",
-        "Tombo", "Município", "Municipio",
+        "Natureza",
+        "Ocorrência",
+        "Ocorrencia",
+        "Nome da Ocorrência",
+        "Nome da Ocorrencia",
+        "Tombo",
+        "Município",
+        "Municipio",
     ]
     candidatos = []
     for nome in candidatos_nomes:
@@ -553,6 +627,7 @@ def gerar_chave_secundaria_incremental(df: pd.DataFrame) -> pd.Series:
         chave = chave + "||" + serie
     return chave
 
+
 def ordenar_arquivos_por_periodo(
     abas_lidas: List[ArquivoAbaLida],
 ) -> List[ArquivoAbaLida]:
@@ -566,6 +641,7 @@ def ordenar_arquivos_por_periodo(
         ),
     )
 
+
 def ler_aba_indicador(
     uploaded_file, indicador: str
 ) -> Tuple[Optional[ArquivoAbaLida], Optional[str]]:
@@ -573,37 +649,59 @@ def ler_aba_indicador(
         uploaded_file.seek(0)
         xls = pd.ExcelFile(uploaded_file)
     except Exception as e:
-        return None, f"Falha ao abrir o arquivo {uploaded_file.name}: {e}"
+        registrar_erro_interno(
+            f"Falha ao abrir o arquivo enviado para o indicador '{indicador}'.",
+            e,
+        )
+        return None, (
+            "Não foi possível abrir um dos arquivos enviados. "
+            "Verifique se o arquivo é um Excel válido."
+        )
+
     nome_aba_real = encontrar_nome_aba(xls.sheet_names, indicador)
     if not nome_aba_real:
         return None, (
-            f"A aba '{indicador}' não foi localizada no arquivo {uploaded_file.name}."
+            f"A aba '{indicador}' não foi localizada em um dos arquivos enviados."
         )
+
     try:
         uploaded_file.seek(0)
         df = pd.read_excel(uploaded_file, sheet_name=nome_aba_real)
     except Exception as e:
-        return None, (
-            f"Falha ao ler a aba '{indicador}' do arquivo {uploaded_file.name}: {e}"
+        registrar_erro_interno(
+            f"Falha ao ler a aba do indicador '{indicador}'.",
+            e,
         )
+        return None, (
+            f"Não foi possível ler a aba '{indicador}' em um dos arquivos enviados."
+        )
+
     df = limpar_nome_colunas(df)
     df = remover_linhas_vazias(df)
+
     if df.empty:
         return None, (
-            f"A aba '{indicador}' do arquivo {uploaded_file.name} está vazia."
+            f"A aba '{indicador}' de um dos arquivos enviados está vazia."
         )
+
     df_renomeado, mapa_renomeio, nao_reconhecidas, novas_colunas = (
         renomear_colunas_por_sinonimos(df)
     )
+
     log_erros_deteccao: List[str] = []
     coluna_data_real = detectar_coluna_data(df_renomeado, log_erros_deteccao)
+
     if not coluna_data_real:
         return None, (
-            f"A aba '{indicador}' do arquivo {uploaded_file.name} não possui "
-            f"coluna de data reconhecida com dados válidos suficientes."
+            f"A aba '{indicador}' não possui coluna de data reconhecida com "
+            "dados válidos suficientes."
         )
-    df_renomeado[coluna_data_real] = parse_data_robusta(df_renomeado[coluna_data_real])
+
+    df_renomeado[coluna_data_real] = parse_data_robusta(
+        df_renomeado[coluna_data_real]
+    )
     coluna_hora_real = detectar_coluna_hora(df_renomeado)
+
     df_proc = df_renomeado.copy()
     df_proc["_data_oficial"] = df_proc[coluna_data_real]
     df_proc["_hora_oficial"] = (
@@ -614,9 +712,11 @@ def ler_aba_indicador(
     df_proc["_datetime_oficial"] = montar_datetime(
         df_proc, coluna_data_real, coluna_hora_real
     )
+
     serie_dt = df_proc["_datetime_oficial"].dropna()
     dt_min = serie_dt.min() if not serie_dt.empty else None
     dt_max = serie_dt.max() if not serie_dt.empty else None
+
     log_colunas = {
         "mapa_renomeio": mapa_renomeio,
         "nao_reconhecidas": nao_reconhecidas,
@@ -625,6 +725,7 @@ def ler_aba_indicador(
         "coluna_hora": coluna_hora_real,
         "avisos_deteccao": log_erros_deteccao,
     }
+
     return (
         ArquivoAbaLida(
             nome_arquivo=uploaded_file.name,
@@ -640,6 +741,7 @@ def ler_aba_indicador(
         None,
     )
 
+
 def _unificar_ordem_colunas(abas_lidas: List[ArquivoAbaLida]) -> List[str]:
     ordem: List[str] = []
     visto: set = set()
@@ -654,27 +756,49 @@ def _unificar_ordem_colunas(abas_lidas: List[ArquivoAbaLida]) -> List[str]:
             visto.add(interno)
     return ordem
 
+
+def identificar_coluna_vitima_cvli(df: pd.DataFrame) -> Optional[str]:
+    candidatos = [
+        "Nome da Vítima",
+        "Nome da Vitima",
+        "Nome Vítima",
+        "Nome Vitima",
+        "Nome",
+    ]
+    for candidato in candidatos:
+        col = encontrar_coluna_por_nome_oficial(df, candidato)
+        if col:
+            return col
+    return None
+
+
 def consolidar_cvli(
     abas_lidas: List[ArquivoAbaLida],
 ) -> Tuple[pd.DataFrame, str]:
     if not abas_lidas:
         return pd.DataFrame(), "Nenhum arquivo válido para CVLI."
+
     abas_lidas = ordenar_arquivos_por_periodo(abas_lidas)
     ordem_base = _unificar_ordem_colunas(abas_lidas)
+
     df_base = pd.DataFrame()
     chaves_existentes: set = set()
+
     for idx, item in enumerate(abas_lidas):
         df = preencher_colunas_ausentes(item.df_processado.copy(), ordem_base)
         col_tombo = encontrar_coluna_por_nome_oficial(df, "Tombo")
         col_vitima = identificar_coluna_vitima_cvli(df)
+
         if not col_tombo or not col_vitima:
             return pd.DataFrame(), (
-                f"No arquivo {item.nome_arquivo}, a aba CVLI não contém as colunas "
-                f"obrigatórias para deduplicação (Tombo + Data + Nome da Vítima)."
+                "Uma das bases CVLI não contém as colunas obrigatórias "
+                "para deduplicação (Tombo + Data + Nome da Vítima)."
             )
+
         df["_chave_cvli"] = gerar_chave_cvli(
             df, col_tombo, item.coluna_data_real, col_vitima
         )
+
         if idx == 0:
             df_base = df.copy()
             chaves_existentes = set(df_base["_chave_cvli"].astype(str))
@@ -683,44 +807,42 @@ def consolidar_cvli(
             if not novos.empty:
                 chaves_existentes.update(novos["_chave_cvli"].astype(str))
                 df_base = pd.concat([df_base, novos], ignore_index=True)
+
     df_base = df_base.sort_values(
         "_datetime_oficial", ascending=True, na_position="last"
     ).reset_index(drop=True)
+
     colunas_exportar = [c for c in ordem_base if not c.startswith("_")]
     return df_base[colunas_exportar].copy(), "Consolidação de CVLI concluída com sucesso."
 
-def identificar_coluna_vitima_cvli(df: pd.DataFrame) -> Optional[str]:
-    candidatos = [
-        "Nome da Vítima", "Nome da Vitima",
-        "Nome Vítima", "Nome Vitima", "Nome",
-    ]
-    for candidato in candidatos:
-        col = encontrar_coluna_por_nome_oficial(df, candidato)
-        if col:
-            return col
-    return None
 
 def consolidar_incremental(
     abas_lidas: List[ArquivoAbaLida],
 ) -> Tuple[pd.DataFrame, str]:
     if not abas_lidas:
         return pd.DataFrame(), "Nenhum arquivo válido para o indicador."
+
     abas_lidas = ordenar_arquivos_por_periodo(abas_lidas)
     ordem_base = _unificar_ordem_colunas(abas_lidas)
+
     frames: List[pd.DataFrame] = []
     for item in abas_lidas:
         df = preencher_colunas_ausentes(item.df_processado.copy(), ordem_base)
         frames.append(df)
+
     if not frames:
         return pd.DataFrame(), "Nenhum frame válido para consolidação."
+
     df_total = pd.concat(frames, ignore_index=True)
     df_total["_chave_sec"] = gerar_chave_secundaria_incremental(df_total)
     df_total = df_total.drop_duplicates(subset=["_chave_sec"], keep="first")
     df_total = df_total.sort_values(
         "_datetime_oficial", ascending=True, na_position="last"
     ).reset_index(drop=True)
+
     colunas_exportar = [c for c in ordem_base if not c.startswith("_")]
     return df_total[colunas_exportar].copy(), "Consolidação incremental concluída."
+
 
 def montar_resumo_completude(
     df: pd.DataFrame, coluna_data_real: str, mapa_mes_arquivo: Dict[str, str]
@@ -760,60 +882,72 @@ def montar_resumo_completude(
         ultimo_dia = max(dias_registrados) if dias_registrados else 0
         qtd_faltantes = max(dias_mes - qtd_dias, 0)
         cobertura = round((qtd_dias / dias_mes) * 100, 1) if dias_mes > 0 else 0.0
-        status = "Completo" if cobertura >= 100.0 else ("Parcial" if cobertura >= 50.0 else "Incompleto")
+        status = (
+            "Completo"
+            if cobertura >= 100.0
+            else ("Parcial" if cobertura >= 50.0 else "Incompleto")
+        )
         nome_planilha = mapa_mes_arquivo.get(chave_mes, "")
-        linhas.append({
-            "Nome Planilha": nome_planilha,
-            "Mês": chave_mes,
-            "Ocorrências": len(grupo),
-            "Primeiro Dia": primeiro_dia,
-            "Último Dia": ultimo_dia,
-            "Dias com Registro": qtd_dias,
-            "Dias no Mês": dias_mes,
-            "Dias Faltantes": qtd_faltantes,
-            "Cobertura (%)": cobertura,
-            "Status": status,
-        })
+        linhas.append(
+            {
+                "Nome Planilha": nome_planilha,
+                "Mês": chave_mes,
+                "Ocorrências": len(grupo),
+                "Primeiro Dia": primeiro_dia,
+                "Último Dia": ultimo_dia,
+                "Dias com Registro": qtd_dias,
+                "Dias no Mês": dias_mes,
+                "Dias Faltantes": qtd_faltantes,
+                "Cobertura (%)": cobertura,
+                "Status": status,
+            }
+        )
     return pd.DataFrame(linhas)
 
-def montar_auditoria(
+
+def montar_auditoria_resumida(
     indicador: str,
     abas_lidas: List[ArquivoAbaLida],
     consolidado: pd.DataFrame,
-    log_descartes: List[str],
 ) -> pd.DataFrame:
     linhas = []
     for item in abas_lidas:
-        avisos = item.log_colunas.get("avisos_deteccao", [])
-        linhas.append({
+        linhas.append(
+            {
+                "Indicador": indicador,
+                "Arquivo": item.nome_arquivo,
+                "Coluna de Data": item.coluna_data_real,
+                "Coluna de Hora": item.coluna_hora_real or "",
+                "Data Inicial": (
+                    ""
+                    if item.dt_min is None or pd.isna(item.dt_min)
+                    else item.dt_min.strftime("%Y-%m-%d")
+                ),
+                "Data Final": (
+                    ""
+                    if item.dt_max is None or pd.isna(item.dt_max)
+                    else item.dt_max.strftime("%Y-%m-%d")
+                ),
+                "Registros Lidos": len(item.df_processado),
+            }
+        )
+
+    linhas.append(
+        {
             "Indicador": indicador,
-            "Arquivo": item.nome_arquivo,
-            "Coluna de Data": item.coluna_data_real,
-            "Coluna de Hora": item.coluna_hora_real or "",
-            "Data Inicial": (
-                "" if item.dt_min is None or pd.isna(item.dt_min)
-                else item.dt_min.strftime("%Y-%m-%d %H:%M:%S")
-            ),
-            "Data Final": (
-                "" if item.dt_max is None or pd.isna(item.dt_max)
-                else item.dt_max.strftime("%Y-%m-%d %H:%M:%S")
-            ),
-            "Registros Lidos": len(item.df_processado),
-            "Observações": "; ".join(avisos + log_descartes),
-        })
-    linhas.append({
-        "Indicador": indicador,
-        "Arquivo": "TOTAL CONSOLIDADO",
-        "Coluna de Data": "",
-        "Coluna de Hora": "",
-        "Data Inicial": "",
-        "Data Final": "",
-        "Registros Lidos": len(consolidado),
-        "Observações": "",
-    })
+            "Arquivo": "TOTAL CONSOLIDADO",
+            "Coluna de Data": "",
+            "Coluna de Hora": "",
+            "Data Inicial": "",
+            "Data Final": "",
+            "Registros Lidos": len(consolidado),
+        }
+    )
+
     return pd.DataFrame(linhas)
 
-def montar_log_execucao(
+
+def montar_log_execucao_resumido(
     indicador: str,
     abas_lidas: List[ArquivoAbaLida],
     tempo_segundos: float,
@@ -822,25 +956,19 @@ def montar_log_execucao(
 ) -> pd.DataFrame:
     linhas = []
     for item in abas_lidas:
-        log = item.log_colunas
-        mapa = log.get("mapa_renomeio", {})
-        nao_rec = log.get("nao_reconhecidas", [])
-        novas = log.get("novas_colunas", [])
-        avisos = log.get("avisos_deteccao", [])
-        linhas.append({
-            "Indicador": indicador,
-            "Arquivo": item.nome_arquivo,
-            "Coluna de Data Selecionada": item.coluna_data_real,
-            "Coluna de Hora Selecionada": item.coluna_hora_real or "",
-            "Registros": len(item.df_processado),
-            "Colunas Renomeadas": "; ".join(f"{o} → {d}" for o, d in mapa.items()),
-            "Colunas Não Reconhecidas": "; ".join(nao_rec),
-            "Colunas Novas": "; ".join(novas),
-            "Avisos Detecção": "; ".join(avisos),
-            "Tempo (s)": round(tempo_segundos, 2),
-            "Erros/Descartes": "; ".join((erros + log_descartes)[:10]),
-        })
+        linhas.append(
+            {
+                "Indicador": indicador,
+                "Arquivo": item.nome_arquivo,
+                "Coluna de Data Selecionada": item.coluna_data_real,
+                "Coluna de Hora Selecionada": item.coluna_hora_real or "",
+                "Registros": len(item.df_processado),
+                "Tempo (s)": round(tempo_segundos, 2),
+                "Alertas": "; ".join((erros + log_descartes)[:5]),
+            }
+        )
     return pd.DataFrame(linhas)
+
 
 def exportar_excel_indicador(
     indicador: str,
@@ -860,6 +988,7 @@ def exportar_excel_indicador(
     output.seek(0)
     return output.getvalue(), nome_saida
 
+
 def exportar_excel_multi_abas(
     resultados_validos: List[ResultadoIndicador],
 ) -> bytes:
@@ -874,6 +1003,7 @@ def exportar_excel_multi_abas(
     output.seek(0)
     return output.getvalue()
 
+
 def criar_zip_resultados(
     resultados_validos: List[ResultadoIndicador],
 ) -> bytes:
@@ -884,12 +1014,14 @@ def criar_zip_resultados(
     buffer.seek(0)
     return buffer.getvalue()
 
+
 def processar_indicador(
     indicador: str, arquivos_excel
 ) -> ResultadoIndicador:
     t_inicio = time.perf_counter()
     abas_validas: List[ArquivoAbaLida] = []
     erros: List[str] = []
+
     for arq in arquivos_excel:
         aba_lida, erro = ler_aba_indicador(arq, indicador)
         if erro:
@@ -900,44 +1032,58 @@ def processar_indicador(
             arq.seek(0)
         except Exception:
             pass
+
     if not abas_validas:
+        auditoria_vazia = pd.DataFrame({"Indicador": [indicador], "Erro": erros or ["Nenhuma aba válida."]})
         return ResultadoIndicador(
             indicador=indicador,
             sucesso=False,
             mensagem="Nenhuma aba válida encontrada para este indicador.",
             erros=erros,
-            df_auditoria=pd.DataFrame({"Erro": erros}) if erros else pd.DataFrame(),
+            df_auditoria=auditoria_vazia,
         )
-    abas_selecionadas, log_descartes, mapa_mes_arquivo = agrupar_e_selecionar_por_mes(abas_validas)
+
+    abas_selecionadas, log_descartes, mapa_mes_arquivo = agrupar_e_selecionar_por_mes(
+        abas_validas
+    )
     if log_descartes:
         erros.extend(log_descartes)
+
     if indicador == "CVLI":
         consolidado, mensagem = consolidar_cvli(abas_selecionadas)
     else:
         consolidado, mensagem = consolidar_incremental(abas_selecionadas)
+
     t_fim = time.perf_counter()
     tempo_proc = t_fim - t_inicio
+
+    auditoria = montar_auditoria_resumida(indicador, abas_selecionadas, consolidado)
+    log_df = montar_log_execucao_resumido(
+        indicador, abas_selecionadas, tempo_proc, erros, log_descartes
+    )
+
     if consolidado.empty:
-        auditoria = montar_auditoria(indicador, abas_selecionadas, consolidado, log_descartes)
         return ResultadoIndicador(
             indicador=indicador,
             sucesso=False,
             mensagem=mensagem,
             erros=erros,
             df_auditoria=auditoria,
+            df_log=log_df,
         )
+
     coluna_data_ref = abas_selecionadas[0].coluna_data_real
-    completude = montar_resumo_completude(consolidado, coluna_data_ref, mapa_mes_arquivo)
-    auditoria = montar_auditoria(indicador, abas_selecionadas, consolidado, log_descartes)
-    log_df = montar_log_execucao(
-        indicador, abas_selecionadas, tempo_proc, erros, log_descartes
+    completude = montar_resumo_completude(
+        consolidado, coluna_data_ref, mapa_mes_arquivo
     )
     arquivo_bytes, nome_saida = exportar_excel_indicador(
         indicador, consolidado, completude, auditoria, log_df
     )
+
     meses_incompletos = 0
     if not completude.empty and "Status" in completude.columns:
         meses_incompletos = int((completude["Status"] != "Completo").sum())
+
     return ResultadoIndicador(
         indicador=indicador,
         sucesso=True,
@@ -954,6 +1100,7 @@ def processar_indicador(
         total_meses_incompletos=meses_incompletos,
         erros=erros,
     )
+
 
 def aplicar_estilo_local():
     st.markdown(
@@ -996,45 +1143,83 @@ def aplicar_estilo_local():
         unsafe_allow_html=True,
     )
 
+
 def render_card(label: str, value: str, subvalue: str = ""):
     st.markdown(
         f"""
         <div class="qgp-card">
-            <div class="qgp-label">{label}</div>
-            <div class="qgp-value">{value}</div>
-            <div class="qgp-subvalue">{subvalue}</div>
+            <div class="qgp-label">{html.escape(str(label))}</div>
+            <div class="qgp-value">{html.escape(str(value))}</div>
+            <div class="qgp-subvalue">{html.escape(str(subvalue))}</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
+
 def render_resumo_resultado(resultado: ResultadoIndicador):
-    st.markdown(f"### {resultado.indicador}")
+    st.markdown(f"### {html.escape(str(resultado.indicador))}")
     c1, c2, c3, c4 = st.columns(4)
+
     with c1:
-        render_card("Arquivos lidos", str(resultado.total_arquivos_lidos), "Planilhas válidas")
+        render_card(
+            "Arquivos lidos",
+            str(resultado.total_arquivos_lidos),
+            "Planilhas válidas",
+        )
+
     with c2:
-        render_card("Registros finais", str(resultado.total_registros_saida), "Após consolidação")
+        render_card(
+            "Registros finais",
+            str(resultado.total_registros_saida),
+            "Após consolidação",
+        )
+
     with c3:
-        render_card("Meses identificados", str(resultado.total_meses), "Resumo mensal gerado")
+        render_card(
+            "Meses identificados",
+            str(resultado.total_meses),
+            "Resumo mensal gerado",
+        )
+
     with c4:
-        render_card("Meses incompletos", str(resultado.total_meses_incompletos), "Parcial ou Incompleto")
-    with st.expander(f"Detalhes de {resultado.indicador}", expanded=False):
+        render_card(
+            "Meses incompletos",
+            str(resultado.total_meses_incompletos),
+            "Parcial ou Incompleto",
+        )
+
+    with st.expander(
+        f"Detalhes de {html.escape(str(resultado.indicador))}", expanded=False
+    ):
         if resultado.erros:
-            st.warning("Ocorreram alertas durante o processamento:")
-            for erro in resultado.erros:
-                st.write(f"- {erro}")
+            st.warning("Ocorreram alertas durante o processamento.")
         st.markdown("#### Completude mensal")
         if not resultado.df_completude.empty:
-            st.dataframe(resultado.df_completude, use_container_width=True, hide_index=True)
+            st.dataframe(
+                resultado.df_completude,
+                use_container_width=True,
+                hide_index=True,
+            )
         else:
             st.info("Sem dados suficientes para montar o resumo mensal.")
-        st.markdown("#### Auditoria")
+
+        st.markdown("#### Auditoria resumida")
         if not resultado.df_auditoria.empty:
-            st.dataframe(resultado.df_auditoria, use_container_width=True, hide_index=True)
-        st.markdown("#### Log de execução")
+            st.dataframe(
+                resultado.df_auditoria,
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        st.markdown("#### Log de execução (resumido)")
         if not resultado.df_log.empty:
-            st.dataframe(resultado.df_log, use_container_width=True, hide_index=True)
+            st.dataframe(
+                resultado.df_log,
+                use_container_width=True,
+                hide_index=True,
+            )
+
 
 def render_downloads_grid(
     resultados_validos: List[ResultadoIndicador],
@@ -1042,7 +1227,9 @@ def render_downloads_grid(
     excel_multi_abas: Optional[bytes] = None,
 ):
     st.markdown("### Downloads")
+
     col_zip, col_multi = st.columns(2)
+
     with col_zip:
         if zip_bytes:
             st.download_button(
@@ -1052,6 +1239,7 @@ def render_downloads_grid(
                 mime="application/zip",
                 use_container_width=True,
             )
+
     with col_multi:
         if excel_multi_abas:
             st.download_button(
@@ -1061,7 +1249,9 @@ def render_downloads_grid(
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True,
             )
+
     st.markdown('<div class="qgp-divider"></div>', unsafe_allow_html=True)
+
     colunas_grade = 3
     for i in range(0, len(resultados_validos), colunas_grade):
         cols = st.columns(colunas_grade)
@@ -1069,7 +1259,7 @@ def render_downloads_grid(
         for j, resultado in enumerate(bloco):
             with cols[j]:
                 st.markdown(
-                    f'<div class="qgp-download-title">{resultado.indicador}</div>',
+                    f'<div class="qgp-download-title">{html.escape(str(resultado.indicador))}</div>',
                     unsafe_allow_html=True,
                 )
                 st.download_button(
@@ -1081,6 +1271,7 @@ def render_downloads_grid(
                     key=f"download_{slugify(resultado.indicador)}",
                 )
 
+
 def interface_consolidar_indicadores_criminais():
     aplicar_estilo_local()
     st.caption(
@@ -1088,94 +1279,89 @@ def interface_consolidar_indicadores_criminais():
         "valida e normaliza datas em múltiplos formatos, seleciona a base mais completa por mês "
         "e gera arquivo consolidado ordenado cronologicamente."
     )
+
     arquivos = st.file_uploader(
         "Selecione de 1 a 24 planilhas Excel",
         type=["xlsx", "xls"],
         accept_multiple_files=True,
     )
+
     col_ind1, col_ind2 = st.columns([3, 1])
+
     with col_ind1:
         indicadores = st.multiselect(
             "Selecione um ou mais indicadores criminais",
             options=INDICADORES_DISPONIVEIS,
             default=[],
         )
-    with col_ind2:
-        selecionar_todos = st.checkbox("Todos", value=False)
-    if selecionar_todos:
-        indicadores = INDICADORES_DISPONIVEIS
-    st.markdown("#### Formato de saída")
-    formato_saida = st.radio(
-        "Como deseja o resultado?",
-        options=["Arquivos separados por indicador", "Um único Excel com múltiplas abas"],
-        horizontal=True,
-    )
-    c1, c2 = st.columns([1, 1])
-    with c1:
-        executar = st.button("Executar consolidação", type="primary", use_container_width=True)
-    with c2:
-        limpar = st.button("Limpar seleção", use_container_width=True)
-    if limpar:
-        st.rerun()
-    if not executar:
-        return
-    if not arquivos:
-        st.warning("Selecione pelo menos uma planilha Excel.")
-        return
-    if not indicadores:
-        st.warning("Selecione pelo menos um indicador criminal.")
-        return
-    total = len(indicadores)
-    barra_global = st.progress(0, text="Preparando execução...")
-    status = st.empty()
-    resultados: List[ResultadoIndicador] = []
-    for idx, indicador in enumerate(indicadores, start=1):
-        status.info(f"Processando {indicador} ({idx}/{total})...")
-        resultado = processar_indicador(indicador, arquivos)
-        resultados.append(resultado)
-        barra_global.progress(
-            int((idx / total) * 100),
-            text=f"Processados {idx} de {total} indicadores",
-        )
-    status.empty()
-    st.success("Processamento finalizado.")
-    resultados_validos = [r for r in resultados if r.sucesso]
-    resultados_invalidos = [r for r in resultados if not r.sucesso]
-    if resultados_validos:
-        total_arq = sum(r.total_arquivos_lidos for r in resultados_validos)
-        total_reg = sum(r.total_registros_saida for r in resultados_validos)
-        total_inc = sum(r.total_meses_incompletos for r in resultados_validos)
-        st.markdown("### Resumo geral")
-        g1, g2, g3, g4 = st.columns(4)
-        with g1:
-            render_card("Indicadores com sucesso", str(len(resultados_validos)), "Arquivos gerados")
-        with g2:
-            render_card("Arquivos lidos", str(total_arq), "Somatório das abas válidas")
-        with g3:
-            render_card("Registros consolidados", str(total_reg), "Total em todos os indicadores")
-        with g4:
-            render_card("Meses incompletos", str(total_inc), "Parcial ou Incompleto")
-        for resultado in resultados_validos:
-            render_resumo_resultado(resultado)
-        zip_bytes = None
-        excel_multi = None
-        if formato_saida == "Arquivos separados por indicador":
-            zip_bytes = criar_zip_resultados(resultados_validos) if len(resultados_validos) > 1 else None
-        else:
-            excel_multi = exportar_excel_multi_abas(resultados_validos)
-        render_downloads_grid(
-            resultados_validos,
-            zip_bytes=zip_bytes,
-            excel_multi_abas=excel_multi,
-        )
-    if resultados_invalidos:
-        st.markdown("### Indicadores com falha")
-        for r in resultados_invalidos:
-            st.error(f"{r.indicador}: {r.mensagem}")
-            if r.erros:
-                for erro in r.erros:
-                    st.write(f"- {erro}")
-            if not r.df_auditoria.empty:
-                st.dataframe(r.df_auditoria, use_container_width=True, hide_index=True)
 
-render = interface_consolidar_indicadores_criminais
+    with col_ind2:
+        limite_info = "Limite operacional recomendado: até 24 arquivos por execução."
+        st.write(limite_info)
+        limpar_button = st.button(
+            "Limpar sessão", use_container_width=True, key="btn_limpar_consolidacao"
+        )
+
+    if limpar_button:
+        limpar_estado_consolidacao()
+        st.success("Memória da sessão de consolidação foi limpa.")
+        st.experimental_rerun()
+
+    if not arquivos or not indicadores:
+        st.info("Envie ao menos um arquivo e selecione indicadores para iniciar.")
+        return
+
+    if len(arquivos) > 24:
+        st.error(
+            "Foram enviados mais de 24 arquivos. "
+            "Por segurança e desempenho, limite a 24 planilhas por execução."
+        )
+        return
+
+    try:
+        resultados: List[ResultadoIndicador] = []
+
+        for indicador in indicadores:
+            resultado = processar_indicador(indicador, arquivos)
+            resultados.append(resultado)
+
+        resultados_validos = [r for r in resultados if r.sucesso]
+        resultados_falha = [r for r in resultados if not r.sucesso]
+
+        zip_bytes = (
+            criar_zip_resultados(resultados_validos) if resultados_validos else None
+        )
+        excel_multi_abas = (
+            exportar_excel_multi_abas(resultados_validos)
+            if resultados_validos
+            else None
+        )
+
+        st.session_state["consolidacao_resultados"] = resultados_validos
+        st.session_state["consolidacao_zip_bytes"] = zip_bytes
+        st.session_state["consolidacao_excel_multi"] = excel_multi_abas
+        st.session_state["consolidacao_processado"] = True
+
+        if resultados_validos:
+            for resultado in resultados_validos:
+                render_resumo_resultado(resultado)
+
+        if resultados_falha:
+            st.markdown("### Indicadores com falha")
+            for r in resultados_falha:
+                st.warning(
+                    f"{r.indicador}: {r.mensagem}"
+                )
+
+        if resultados_validos:
+            render_downloads_grid(resultados_validos, zip_bytes, excel_multi_abas)
+
+    except Exception as e:
+        registrar_erro_interno(
+            "Falha interna na consolidação de indicadores criminais.", e
+        )
+        st.error(
+            "Ocorreu um erro interno durante a consolidação. "
+            "Revise os arquivos enviados e tente novamente."
+        )
+        st.session_state["consolidacao_erros_execucao"] = True
