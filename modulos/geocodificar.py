@@ -67,6 +67,8 @@ class GeocodificadorConfig:
     arcgis_retries: int = 2
     arcgis_location_type: str = "rooftop"
     arcgis_score_minimo_exato: float = 85.0
+    raio_confirma_exato_m: float = 200.0
+    permitir_exato_sem_confirmacao_local: bool = True
 
     coluna_lat_saida: str = "lat"
     coluna_lon_saida: str = "lon"
@@ -894,27 +896,57 @@ class GeocodificadorDIESP:
                     score = float(score_raw) if score_raw is not None else None
                 except Exception:
                     score = None
+
+                disp_x = attrs.get("DisplayX")
+                disp_y = attrs.get("DisplayY")
+                try:
+                    disp_lon = float(disp_x) if disp_x is not None else None
+                    disp_lat = float(disp_y) if disp_y is not None else None
+                except Exception:
+                    disp_lon = None
+                    disp_lat = None
+
+                lat_valid = disp_lat if disp_lat is not None else float(loc.latitude)
+                lon_valid = disp_lon if disp_lon is not None else float(loc.longitude)
+
                 ext = {
                     "lat": float(loc.latitude),
                     "lon": float(loc.longitude),
+                    "lat_valid": lat_valid,
+                    "lon_valid": lon_valid,
                     "addr_type": at,
                     "score": score,
+                    "tem_display": disp_lat is not None and disp_lon is not None,
                 }
 
-        ancora = (ext["lat"], ext["lon"]) if ext else None
+        ancora = (ext["lat_valid"], ext["lon_valid"]) if ext else None
 
         if ext and ext["addr_type"] in ROOFTOP and num_l:
-            ok, dist = self.validar(ext["lat"], ext["lon"], rua_n, cod, ancora)
+            ok, dist = self.validar(ext["lat_valid"], ext["lon_valid"], rua_n, cod, ancora)
             score_ok = ext["score"] is None or ext["score"] >= self.config.arcgis_score_minimo_exato
             if ok and score_ok:
+                origem = "ArcGIS+GPKG"
+                detalhe = "com DisplayX/DisplayY" if ext["tem_display"] else "com coordenada principal do ArcGIS"
                 return (
-                    ext["lat"],
-                    ext["lon"],
+                    ext["lat_valid"],
+                    ext["lon_valid"],
                     "Exato (Numero)",
-                    "ArcGIS+GPKG",
+                    origem,
                     True,
                     dist,
-                    "Endereco validado com numero, addr_type preciso e proximidade espacial confirmada.",
+                    f"Endereco validado com numero, addr_type preciso e proximidade espacial confirmada {detalhe}.",
+                    ext["addr_type"],
+                    ext["score"],
+                )
+            if score_ok and self.config.permitir_exato_sem_confirmacao_local:
+                return (
+                    ext["lat_valid"],
+                    ext["lon_valid"],
+                    "Exato (Numero)",
+                    "ArcGIS (sem confirmacao local)",
+                    False,
+                    dist,
+                    "Endereco preciso no ArcGIS com score suficiente, mas sem confirmacao local pela base de faces/centroides.",
                     ext["addr_type"],
                     ext["score"],
                 )
@@ -955,8 +987,8 @@ class GeocodificadorDIESP:
             else:
                 nivel = "Centroide de Cidade"
             return (
-                ext["lat"],
-                ext["lon"],
+                ext["lat_valid"],
+                ext["lon_valid"],
                 nivel,
                 "ArcGIS (nao confirmado)",
                 False,
@@ -983,6 +1015,7 @@ class GeocodificadorDIESP:
         return (None, None, "Nao Encontrado", "-", False, None, motivo, None, None)
 
     def diagnosticar_coordenadas(
+
 
         self,
         df: pd.DataFrame,
@@ -1361,7 +1394,7 @@ def interface_geocodificar() -> None:
             raio_confirma_m = st.number_input(
                 "Raio de confirmação (m)",
                 min_value=10.0,
-                value=100.0,
+                value=200.0,
                 step=10.0,
                 label_visibility="collapsed",
             )
