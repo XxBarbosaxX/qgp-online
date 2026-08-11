@@ -60,6 +60,7 @@ class GeocodificadorConfig:
 
     uf_codigo: str = "23"
     arq_cache_mun: str = "bases/municipios_ce.json"
+    arq_centroides_municipios: str = "bases/centroides_municipios_ce.parquet"
 
     arcgis_timeout: int = 15
     arcgis_delay_s: float = 0.4
@@ -481,6 +482,7 @@ class GeocodificadorDIESP:
 
         self.tree = None
         self.cent_mun: Dict[str, Tuple[float, float]] = {}
+        self.cent_mun_por_nome: Dict[str, Tuple[float, float]] = {}
 
         self.glat = None
         self.glon = None
@@ -496,6 +498,12 @@ class GeocodificadorDIESP:
 
             cm = self.base.groupby("cod_mun")[["lat", "lon"]].mean()
             self.cent_mun = {k: (v["lat"], v["lon"]) for k, v in cm.iterrows()}
+
+        centroides_municipais = self._carregar_centroides_municipais()
+        if centroides_municipais:
+            self.cent_mun.update(centroides_municipais)
+
+        self.cent_mun_por_nome = self._indexar_centroides_por_nome()
 
         self.geocode_ext = None
         if self.config.usar_externo:
@@ -640,6 +648,93 @@ class GeocodificadorDIESP:
             self._log("[MUN] Nao foi possivel obter a tabela do IBGE.")
             return {}
 
+    def _carregar_centroides_municipais(self) -> Dict[str, Tuple[float, float]]:
+        caminho = (self.config.arq_centroides_municipios or "").strip()
+        if not caminho:
+            return {}
+
+        if not os.path.exists(caminho):
+            self._log(f"[MUN] Base de centroides municipais nao encontrada: {caminho}")
+            return {}
+
+        try:
+            if caminho.lower().endswith(".parquet"):
+                df = pd.read_parquet(caminho)
+            elif caminho.lower().endswith(".csv"):
+                df = pd.read_csv(caminho)
+            elif caminho.lower().endswith((".xlsx", ".xls")):
+                df = pd.read_excel(caminho)
+            else:
+                raise ValueError("Formato nao suportado para centroides municipais.")
+        except Exception:
+            logger.exception("Falha ao carregar base de centroides municipais.")
+            self._log("[MUN] Falha ao carregar base de centroides municipais.")
+            return {}
+
+        col_cod = detectar(df, ["cod_mun", "codigo_municipio", "cod_ibge", "ibge", "id_municipio"])
+        col_nome = detectar(df, ["municipio", "cidade", "nome_municipio", "nm_mun"])
+        col_lat = detectar(df, ["lat", "latitude", "y"])
+        col_lon = detectar(df, ["lon", "lng", "longitude", "x"])
+
+        if not col_lat or not col_lon or (not col_cod and not col_nome):
+            self._log(
+                "[MUN] Base de centroides municipais ignorada: colunas obrigatorias nao identificadas."
+            )
+            return {}
+
+        df = df.copy()
+        df[col_lat] = pd.to_numeric(df[col_lat], errors="coerce")
+        df[col_lon] = pd.to_numeric(df[col_lon], errors="coerce")
+        df = df.dropna(subset=[col_lat, col_lon])
+
+        centroides: Dict[str, Tuple[float, float]] = {}
+        for _, row in df.iterrows():
+            chave = ""
+            if col_cod:
+                chave = str(row.get(col_cod) or "").strip()
+                chave = re.sub(r"\D", "", chave)[:7]
+
+            if not chave and col_nome:
+                nome = sem_acento(row.get(col_nome))
+                chave = self.mun.get(nome, "")
+
+            if not chave:
+                continue
+
+            centroides[chave] = (float(row[col_lat]), float(row[col_lon]))
+
+        self._log(f"[MUN] Centroides municipais carregados: {len(centroides)}.")
+        return centroides
+
+    def _indexar_centroides_por_nome(self) -> Dict[str, Tuple[float, float]]:
+        indice: Dict[str, Tuple[float, float]] = {}
+        for nome_norm, cod in self.mun.items():
+            centro = self.cent_mun.get(str(cod))
+            if centro:
+                indice[nome_norm] = centro
+        return indice
+
+    def obter_centroide_municipio(self, municipio: Any, cod: str = "") -> Optional[Tuple[float, float]]:
+        cod_limpo = str(cod or "").strip()
+        if cod_limpo:
+            centro = self.cent_mun.get(cod_limpo)
+            if centro:
+                return centro
+
+        nome_norm = sem_acento(municipio)
+        if nome_norm:
+            centro = self.cent_mun_por_nome.get(nome_norm)
+            if centro:
+                return centro
+
+            cod_por_nome = self.mun.get(nome_norm, "")
+            if cod_por_nome:
+                centro = self.cent_mun.get(cod_por_nome)
+                if centro:
+                    return centro
+
+        return None
+
     def cod_municipio(self, municipio: Any) -> str:
         return self.mun.get(sem_acento(municipio), "")
 
@@ -712,7 +807,7 @@ class GeocodificadorDIESP:
         num_l = limpar_numero(num)
 
         if not rua_l:
-            c = self.cent_mun.get(cod)
+            c = self.obter_centroide_municipio(municipio, cod)
             if c:
                 return (c[0], c[1], "Centroide de Cidade", "Centroide Municipio", False, None)
             return (None, None, "Nao Encontrado", "-", False, None)
@@ -750,7 +845,7 @@ class GeocodificadorDIESP:
                 nivel = "Centroide de Cidade"
             return (ext[0], ext[1], nivel, "ArcGIS (nao confirmado)", False, None)
 
-        c = self.cent_mun.get(cod)
+        c = self.obter_centroide_municipio(municipio, cod)
         if c:
             return (c[0], c[1], "Centroide de Cidade", "Centroide Municipio", False, None)
 
@@ -1090,6 +1185,16 @@ def interface_geocodificar() -> None:
                 label_visibility="collapsed",
             )
 
+            _render_label_flutuante(
+                "Caminho dos centroides municipais",
+                "Base opcional com centroides por municipio para cobrir registros sem logradouro e reforcar o fallback de centroide de cidade.",
+            )
+            caminho_centroides_municipios = st.text_input(
+                "Caminho dos centroides municipais",
+                value="bases/centroides_municipios_ce.parquet",
+                label_visibility="collapsed",
+            )
+
         with col_c2:
             _render_label_flutuante(
                 "Limiar de similaridade",
@@ -1288,11 +1393,15 @@ def interface_geocodificar() -> None:
             caminho_base_enxuta_validado = _validar_caminho_bases(
                 caminho_base_enxuta, (".parquet",)
             )
+            caminho_centroides_municipios_validado = _validar_caminho_bases(
+                caminho_centroides_municipios, (".parquet", ".csv", ".xlsx", ".xls")
+            )
 
             config = GeocodificadorConfig(
                 usar_externo=usar_externo,
                 caminho_gpkg=caminho_gpkg_validado,
                 caminho_base_enxuta=caminho_base_enxuta_validado,
+                arq_centroides_municipios=caminho_centroides_municipios_validado,
                 limiar_nome=limiar_nome,
                 raio_confirma_m=raio_confirma_m,
                 raio_municipio_km=raio_municipio_km,
