@@ -47,7 +47,7 @@ BASES_DIR = os.path.abspath("bases")
 
 @dataclass
 class GeocodificadorConfig:
-    usar_externo: bool = False
+    usar_externo: bool = True
     caminho_gpkg: str = "bases/Faces_de_Quadra_-_Ceara_ARRUAMENTO.gpkg"
     caminho_base_enxuta: str = "bases/faces_quadras_ce.parquet"
     layer_gpkg: str = "reprojetado"
@@ -65,6 +65,8 @@ class GeocodificadorConfig:
     arcgis_timeout: int = 15
     arcgis_delay_s: float = 0.4
     arcgis_retries: int = 2
+    arcgis_location_type: str = "rooftop"
+    arcgis_score_minimo_exato: float = 85.0
 
     coluna_lat_saida: str = "lat"
     coluna_lon_saida: str = "lon"
@@ -74,6 +76,9 @@ class GeocodificadorConfig:
     coluna_dist_saida: str = "_dist_validacao_m"
     coluna_mesmo_ponto_saida: str = "Ocorrencias_Mesmo_Ponto"
     coluna_aproximada_saida: str = "_loc_aproximada"
+    coluna_motivo_saida: str = "Motivo_Geocodificacao"
+    coluna_arcgis_tipo_saida: str = "ArcGIS_Addr_type"
+    coluna_arcgis_score_saida: str = "ArcGIS_Score"
 
 
 # ============================================================================
@@ -563,7 +568,9 @@ class GeocodificadorDIESP:
                 except Exception:
                     tot = 0
 
-                regs.append((cod, sem_acento(nome), nome, lat, lon, tot))
+                nome_limpo = limpar_logradouro(nome)
+                nome_norm = sem_acento(nome_limpo or nome)
+                regs.append((cod, nome_norm, nome, lat, lon, tot))
 
         base = pd.DataFrame(
             regs,
@@ -592,6 +599,10 @@ class GeocodificadorDIESP:
 
             try:
                 base = pd.read_parquet(caminho_parquet)
+                if "nome_orig" in base.columns:
+                    base["nome_norm"] = base["nome_orig"].map(lambda x: sem_acento(limpar_logradouro(x) or x))
+                elif "nome_norm" in base.columns:
+                    base["nome_norm"] = base["nome_norm"].map(sem_acento)
                 self._log(f"[BASE] Base enxuta carregada: {len(base)} faces.")
                 return base.reset_index(drop=True)
             except Exception as e:
@@ -753,6 +764,18 @@ class GeocodificadorDIESP:
 
         return np.array([], dtype=int)
 
+    def _score_logradouro(self, consulta: str, candidato: str) -> int:
+        consulta_n = sem_acento(limpar_logradouro(consulta) or consulta)
+        candidato_n = sem_acento(limpar_logradouro(candidato) or candidato)
+
+        if not consulta_n or not candidato_n:
+            return 0
+
+        score_set = fuzz.token_set_ratio(consulta_n, candidato_n)
+        score_sort = fuzz.token_sort_ratio(consulta_n, candidato_n)
+        score_partial = fuzz.partial_ratio(consulta_n, candidato_n)
+        return int(max(score_set, score_sort, score_partial))
+
     def casar_rua(self, rua_norm: str, cod: str, ancora: Optional[Tuple[float, float]]):
         ix = self._idx_municipio(cod, ancora)
         if not len(ix):
@@ -760,7 +783,7 @@ class GeocodificadorDIESP:
 
         melhor, mscore = None, 0
         for j in ix:
-            s = fuzz.token_set_ratio(rua_norm, self.gnome[j])
+            s = self._score_logradouro(rua_norm, self.gnome[j])
             if s > mscore:
                 mscore, melhor = s, j
 
@@ -782,9 +805,8 @@ class GeocodificadorDIESP:
             return False, None
 
         nomes = self.gnome[ix]
-        msk = np.array(
-            [fuzz.token_set_ratio(rua_norm, n) >= self.config.limiar_nome for n in nomes]
-        )
+        scores = np.array([self._score_logradouro(rua_norm, n) for n in nomes])
+        msk = scores >= self.config.limiar_nome
         if not msk.any():
             return False, None
 
@@ -799,7 +821,7 @@ class GeocodificadorDIESP:
         num: Any,
         bairro: Any,
         municipio: Any,
-    ) -> Tuple[Any, Any, str, str, bool, Optional[float]]:
+    ) -> Tuple[Any, Any, str, str, bool, Optional[float], str, Optional[str], Optional[float]]:
         rua_l = limpar_logradouro(rua)
         bai_l = limpar_bairro(bairro, municipio)
         rua_n = sem_acento(rua_l)
@@ -807,10 +829,45 @@ class GeocodificadorDIESP:
         num_l = limpar_numero(num)
 
         if not rua_l:
-            c = self.obter_centroide_municipio(municipio, cod)
+            if bai_l and self.geocode_ext is not None:
+                consulta_bairro = ", ".join(
+                    p for p in [bai_l, str(municipio).strip(), "Ceara", "Brasil"] if p
+                )
+                loc_bairro = self.geocode_ext(consulta_bairro, out_fields="*")
+                if loc_bairro:
+                    at_bairro = str((((loc_bairro.raw or {}).get("attributes", {}) or {}).get("Addr_type", ""))).lower()
+                    score_bairro_raw = (((loc_bairro.raw or {}).get("attributes", {}) or {}).get("Score"))
+                    try:
+                        score_bairro = float(score_bairro_raw) if score_bairro_raw is not None else None
+                    except Exception:
+                        score_bairro = None
+                    if at_bairro in ("neighborhood", "district", "locality"):
+                        return (
+                            float(loc_bairro.latitude),
+                            float(loc_bairro.longitude),
+                            "Centroide de Bairro",
+                            "ArcGIS (bairro)",
+                            False,
+                            None,
+                            "Sem logradouro; fallback por bairro aplicado.",
+                            at_bairro,
+                            score_bairro,
+                        )
+
+            c = self.obter_centroide_municipio(municipio, cod) if hasattr(self, "obter_centroide_municipio") else self.cent_mun.get(cod)
             if c:
-                return (c[0], c[1], "Centroide de Cidade", "Centroide Municipio", False, None)
-            return (None, None, "Nao Encontrado", "-", False, None)
+                return (
+                    c[0],
+                    c[1],
+                    "Centroide de Cidade",
+                    "Centroide Municipio",
+                    False,
+                    None,
+                    "Sem logradouro; fallback por municipio aplicado.",
+                    None,
+                    None,
+                )
+            return (None, None, "Nao Encontrado", "-", False, None, "Sem logradouro e sem centroide municipal disponivel.", None, None)
 
         partes = [f"{rua_l}, {num_l}" if num_l else rua_l]
         if bai_l:
@@ -820,38 +877,113 @@ class GeocodificadorDIESP:
 
         ext = None
         if self.geocode_ext is not None:
-            loc = self.geocode_ext(consulta, out_fields="*")
+            try:
+                loc = self.geocode_ext(
+                    consulta,
+                    out_fields="*",
+                    location_type=self.config.arcgis_location_type,
+                )
+            except TypeError:
+                loc = self.geocode_ext(consulta, out_fields="*")
+
             if loc:
-                at = ((loc.raw or {}).get("attributes", {}) or {}).get("Addr_type", "")
-                ext = (float(loc.latitude), float(loc.longitude), str(at).lower())
+                attrs = ((loc.raw or {}).get("attributes", {}) or {})
+                at = str(attrs.get("Addr_type", "")).lower()
+                score_raw = attrs.get("Score")
+                try:
+                    score = float(score_raw) if score_raw is not None else None
+                except Exception:
+                    score = None
+                ext = {
+                    "lat": float(loc.latitude),
+                    "lon": float(loc.longitude),
+                    "addr_type": at,
+                    "score": score,
+                }
 
-        ancora = (ext[0], ext[1]) if ext else None
+        ancora = (ext["lat"], ext["lon"]) if ext else None
 
-        if ext and ext[2] in ROOFTOP and num_l:
-            ok, dist = self.validar(ext[0], ext[1], rua_n, cod, ancora)
-            if ok:
-                return (ext[0], ext[1], "Exato (Numero)", "ArcGIS+GPKG", True, dist)
+        if ext and ext["addr_type"] in ROOFTOP and num_l:
+            ok, dist = self.validar(ext["lat"], ext["lon"], rua_n, cod, ancora)
+            score_ok = ext["score"] is None or ext["score"] >= self.config.arcgis_score_minimo_exato
+            if ok and score_ok:
+                return (
+                    ext["lat"],
+                    ext["lon"],
+                    "Exato (Numero)",
+                    "ArcGIS+GPKG",
+                    True,
+                    dist,
+                    "Endereco validado com numero, addr_type preciso e proximidade espacial confirmada.",
+                    ext["addr_type"],
+                    ext["score"],
+                )
+            if not ok:
+                motivo = "ArcGIS retornou endereco preciso, mas a validacao espacial com a base local falhou."
+            else:
+                motivo = f"ArcGIS retornou endereco preciso, mas score abaixo do minimo configurado ({self.config.arcgis_score_minimo_exato})."
+        elif num_l and self.geocode_ext is None:
+            motivo = "Numero informado, mas ArcGIS esta desabilitado; nao ha como classificar como Exato (Numero)."
+        elif num_l and ext is None:
+            motivo = "Numero informado, mas ArcGIS nao retornou candidato para o endereco completo."
+        elif num_l and ext and ext["addr_type"] not in ROOFTOP:
+            motivo = f"ArcGIS retornou candidato com addr_type '{ext['addr_type']}', insuficiente para Exato (Numero)."
+        else:
+            motivo = "Numero ausente; fluxo segue para centroide de rua/bairro/municipio."
 
         g = self.casar_rua(rua_n, cod, ancora)
         if g:
-            return (g[0], g[1], "Centroide de Rua", "GPKG (Faces de Quadra)", True, 0.0)
+            motivo_rua = motivo if num_l else "Logradouro encontrado na base local; classificado por centroide de rua."
+            return (
+                g[0],
+                g[1],
+                "Centroide de Rua",
+                "GPKG (Faces de Quadra)",
+                True,
+                0.0,
+                motivo_rua,
+                ext["addr_type"] if ext else None,
+                ext["score"] if ext else None,
+            )
 
         if ext:
-            if ext[2] in ("streetname", "streetmidblock", "streetint") or num_l:
+            addr_type = ext["addr_type"]
+            if addr_type in ("streetname", "streetmidblock", "streetint", "streetaddress"):
                 nivel = "Centroide de Rua"
-            elif ext[2] in ("locality", "neighborhood", "district"):
+            elif addr_type in ("locality", "neighborhood", "district") and bai_l:
                 nivel = "Centroide de Bairro"
             else:
                 nivel = "Centroide de Cidade"
-            return (ext[0], ext[1], nivel, "ArcGIS (nao confirmado)", False, None)
+            return (
+                ext["lat"],
+                ext["lon"],
+                nivel,
+                "ArcGIS (nao confirmado)",
+                False,
+                None,
+                motivo,
+                ext["addr_type"],
+                ext["score"],
+            )
 
-        c = self.obter_centroide_municipio(municipio, cod)
+        c = self.obter_centroide_municipio(municipio, cod) if hasattr(self, "obter_centroide_municipio") else self.cent_mun.get(cod)
         if c:
-            return (c[0], c[1], "Centroide de Cidade", "Centroide Municipio", False, None)
+            return (
+                c[0],
+                c[1],
+                "Centroide de Cidade",
+                "Centroide Municipio",
+                False,
+                None,
+                motivo,
+                None,
+                None,
+            )
 
-        return (None, None, "Nao Encontrado", "-", False, None)
+        return (None, None, "Nao Encontrado", "-", False, None, motivo, None, None)
 
     def diagnosticar_coordenadas(
+
         self,
         df: pd.DataFrame,
         lat_col: Optional[str] = None,
@@ -903,6 +1035,7 @@ class GeocodificadorDIESP:
             )
 
         lats, lons, nivel, fonte, conf, dists, temnum = [], [], [], [], [], [], []
+        motivos, arcgis_tipos, arcgis_scores = [], [], []
         total = len(df)
 
         self._log(
@@ -926,6 +1059,9 @@ class GeocodificadorDIESP:
             conf.append(r[4])
             dists.append(r[5])
             temnum.append(bool(num))
+            motivos.append(r[6])
+            arcgis_tipos.append(r[7])
+            arcgis_scores.append(r[8])
 
             if (i + 1) % 25 == 0 or (i + 1) == total:
                 self._log(f"[GEO] {i + 1}/{total}")
@@ -937,6 +1073,9 @@ class GeocodificadorDIESP:
         df[self.config.coluna_confirmado_saida] = conf
         df[self.config.coluna_dist_saida] = dists
         df["_tem_numero"] = temnum
+        df[self.config.coluna_motivo_saida] = motivos
+        df[self.config.coluna_arcgis_tipo_saida] = arcgis_tipos
+        df[self.config.coluna_arcgis_score_saida] = arcgis_scores
 
         df = self.diagnosticar_coordenadas(df)
         df = df.drop(columns=["_tem_numero"], errors="ignore")
@@ -1161,7 +1300,7 @@ def interface_geocodificar() -> None:
             )
             usar_externo = st.toggle(
                 "Usar ArcGIS como fallback",
-                value=False,
+                value=True,
                 label_visibility="collapsed",
             )
 
