@@ -4,7 +4,7 @@ import io
 import re
 import unicodedata
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional, Tuple
 
 import pandas as pd
 
@@ -523,14 +523,29 @@ def converter_coordenadas_para_wgs84_auto(
     col_lon_destino: str = "LONG",
 ) -> pd.DataFrame:
     """
-    Detecta se as coordenadas estão em graus ou UTM e converte apenas quando necessário.
-    Assume UTM SIRGAS 2000 / 24S (EPSG:31984) quando detectar coordenadas projetadas.
+    Detecta automaticamente se as coordenadas estão em graus decimais (WGS84)
+    ou em UTM projetado, e converte apenas quando necessário.
+
+    Suporta três cenários:
+      - Graus decimais (lat/lon): passados diretamente para a saída.
+      - UTM com ordem correta (col_y=Northing, col_x=Easting): reprojetado via EPSG:31984 ou EPSG:31983.
+      - UTM com colunas invertidas (col_y=Easting, col_x=Northing): detecta a inversão e corrige
+        antes de reprojetar.
+
+    Zonas suportadas:
+      - EPSG:31984 — SIRGAS 2000 / UTM zona 24S.
+      - EPSG:31983 — SIRGAS 2000 / UTM zona 23S.
     """
     try:
         from pyproj import Transformer
 
-        transformer = Transformer.from_crs(
+        transformer_24s = Transformer.from_crs(
             "EPSG:31984",
+            "EPSG:4326",
+            always_xy=True,
+        )
+        transformer_23s = Transformer.from_crs(
+            "EPSG:31983",
             "EPSG:4326",
             always_xy=True,
         )
@@ -538,6 +553,26 @@ def converter_coordenadas_para_wgs84_auto(
         raise ImportError(
             "pyproj não está instalado. Adicione 'pyproj>=3.6.0' ao requirements.txt"
         ) from exc
+
+    _LON_MIN, _LON_MAX = -75.0, -28.0
+    _LAT_MIN, _LAT_MAX = -35.0, 6.0
+
+    def _reprojetar(
+        easting: float,
+        northing: float,
+    ) -> Optional[Tuple[float, float]]:
+        """
+        Tenta reprojetar via zona 24S; usa 23S como fallback.
+        Retorna (lat, lon) ou None.
+        """
+        for transformer in (transformer_24s, transformer_23s):
+            try:
+                lon, lat = transformer.transform(easting, northing)
+                if _LON_MIN <= lon <= _LON_MAX and _LAT_MIN <= lat <= _LAT_MAX:
+                    return lat, lon
+            except Exception:
+                continue
+        return None
 
     df = df.copy()
     lat_resultado = []
@@ -552,16 +587,40 @@ def converter_coordenadas_para_wgs84_auto(
             lon_resultado.append(pd.NA)
             continue
 
-        parecem_graus = (-90 <= y <= 90) and (-180 <= x <= 180)
-        parecem_utm = (100000 <= abs(x) <= 900000) and (1000000 <= abs(y) <= 10000000)
+        parecem_graus = (-90.0 <= y <= 90.0) and (-180.0 <= x <= 180.0)
+
+        parecem_utm_direto = (
+            100_000 <= abs(x) <= 900_000
+            and 1_000_000 <= abs(y) <= 10_000_000
+        )
+
+        parecem_utm_invertido = (
+            100_000 <= abs(y) <= 900_000
+            and 1_000_000 <= abs(x) <= 10_000_000
+        )
 
         if parecem_graus:
             lat_resultado.append(y)
             lon_resultado.append(x)
-        elif parecem_utm:
-            lon, lat = transformer.transform(x, y)
-            lat_resultado.append(lat)
-            lon_resultado.append(lon)
+
+        elif parecem_utm_direto:
+            resultado = _reprojetar(easting=x, northing=y)
+            if resultado is not None:
+                lat_resultado.append(resultado[0])
+                lon_resultado.append(resultado[1])
+            else:
+                lat_resultado.append(pd.NA)
+                lon_resultado.append(pd.NA)
+
+        elif parecem_utm_invertido:
+            resultado = _reprojetar(easting=y, northing=x)
+            if resultado is not None:
+                lat_resultado.append(resultado[0])
+                lon_resultado.append(resultado[1])
+            else:
+                lat_resultado.append(pd.NA)
+                lon_resultado.append(pd.NA)
+
         else:
             lat_resultado.append(pd.NA)
             lon_resultado.append(pd.NA)
